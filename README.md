@@ -35,3 +35,12 @@ AUTOPOET_HEADLESS=1 ./run.sh   # no window (CI); ./autopoetctl kill to stop
 - v2 — live shadow layer: Hebbian weights + surprise predictor on the real bus
 - v3 — proposal-only brain: two-model proposer via `Nexus.Llm`, `autopoetctl
   accept/reject` as the human gate
+
+## The face
+
+The window and control page show the nexus's face — composed locally from the
+vendored [notionists-neutral](https://www.dicebear.com/styles/notionists-neutral/)
+part library (Notionists by Zoish, CC0 1.0). `vendor/extract.mjs` extracts the
+parts into categorized fragments under `priv/avatar/<group>/`; composition is
+seeded (`AUTOPOET_SEED`, default `autopoet-1` — same face every boot), glasses
+excluded, no API calls. Rasterized for the native window via macOS QuickLook.

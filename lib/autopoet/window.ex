@@ -22,14 +22,33 @@ defmodule Autopoet.Window do
   @doc "Programmatic close — same wx close event the stoplight produces."
   def close, do: GenServer.cast(__MODULE__, :close)
 
+  # sizer constants (wx.hrl macros)
+  @wx_vertical 8
+  @wx_expand 0x2000
+  @wx_align_center_h 0x0100
+  @wx_all 0x00F0
+
   @impl true
   def init(nil) do
     :wx.new()
-    frame = :wxFrame.new(:wx.null(), -1, ~c"autopoet", size: {760, 500})
+    frame = :wxFrame.new(:wx.null(), -1, ~c"autopoet", size: {760, 640})
     :wxWindow.setBackgroundColour(frame, {255, 255, 255, 255})
 
     text = :wxTextCtrl.new(frame, -1, style: @wx_te_multiline ||| @wx_te_readonly)
     :wxWindow.setBackgroundColour(text, {255, 255, 255, 255})
+
+    sizer = :wxBoxSizer.new(@wx_vertical)
+
+    case avatar_bitmap(frame) do
+      nil ->
+        :ok
+
+      bmp_ctrl ->
+        :wxSizer.add(sizer, bmp_ctrl, proportion: 0, flag: @wx_align_center_h ||| @wx_all, border: 16)
+    end
+
+    :wxSizer.add(sizer, text, proportion: 1, flag: @wx_expand)
+    :wxWindow.setSizer(frame, sizer)
 
     :wxFrame.connect(frame, :close_window)
     :wxFrame.show(frame)
@@ -38,6 +57,30 @@ defmodule Autopoet.Window do
     for line <- Autopoet.Log.recent(100), do: append(text, line)
 
     {:ok, %{frame: frame, text: text}}
+  end
+
+  # The face of the nexus (Autopoet.Avatar), rasterized locally via macOS QuickLook
+  # (qlmanage) — no network, no extra deps. Any failure degrades to no avatar.
+  defp avatar_bitmap(frame) do
+    dir = Path.join(Autopoet.Discovery.home(), "data")
+    File.mkdir_p!(dir)
+    svg_path = Path.join(dir, "avatar.svg")
+    File.write!(svg_path, Autopoet.Avatar.svg())
+
+    {_, 0} = System.cmd("qlmanage", ["-t", "-s", "280", "-o", dir, svg_path], stderr_to_stdout: true)
+
+    image = :wxImage.new(~c"#{svg_path}.png")
+
+    if :wxImage.isOk(image) do
+      :wxStaticBitmap.new(frame, -1, :wxBitmap.new(image))
+    else
+      Autopoet.Log.puts("avatar: rasterized PNG unreadable — continuing without a face")
+      nil
+    end
+  rescue
+    e ->
+      Autopoet.Log.puts("avatar: skipped (#{Exception.message(e)})")
+      nil
   end
 
   @impl true

@@ -47,6 +47,10 @@ defmodule Autopoet.Control do
     text(conn, Enum.join(Log.recent(200), "\n") <> "\n")
   end
 
+  get "/avatar" do
+    conn |> put_resp_content_type("image/svg+xml") |> send_resp(200, Autopoet.Avatar.svg())
+  end
+
   get "/sse" do
     conn =
       conn
@@ -153,6 +157,7 @@ defmodule Autopoet.Control do
              max-width:72rem; margin:2rem auto; padding:0 1rem; }
       pre { white-space:pre-wrap; word-break:break-all; }
     </style>
+    <div style="text-align:center;margin-bottom:1rem"><img src="/avatar" width="240" alt=""></div>
     <pre id="log"></pre>
     <script>
       const log = document.getElementById("log");
