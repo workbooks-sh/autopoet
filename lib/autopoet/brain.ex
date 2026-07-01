@@ -3,12 +3,13 @@ defmodule Autopoet.Brain do
   The proposal-only brain — the injectable `proposer` for `Nexus.Autopoet.Worker`.
 
   Two-model flow with PROGRESSIVE DISCLOSURE:
-    1. The PLANNER (OpenRouter, `AUTOPOET_PLANNER_MODEL`, default Gemini 3.5 Flash;
-       Groq fallback) sees a token-minimal format primer + a one-line-per-page
-       index of the guide (`Autopoet.Guide`). If it needs depth it replies with
+    1. The PLANNER (OpenRouter, `AUTOPOET_PLANNER_MODEL`, default Gemini 3.5
+       Flash) sees a token-minimal format primer + a one-line-per-page index of
+       the guide (`Autopoet.Guide`). If it needs depth it replies with
        `NEED: <page>` lines; the pages load into ONE second planning round.
-    2. The DRAFTER (Mercury 2 / Inception; fallbacks follow) writes complete file
-       blocks, riding on the plan AND whatever guide pages the planner consulted.
+    2. The DRAFTER (Mercury 2 / Inception; OpenRouter fallback) writes complete
+       file blocks, riding on the plan AND whatever guide pages the planner
+       consulted. No Groq anywhere, by decree.
 
   v3 discipline unchanged: every result is recorded as a PENDING proposal; nothing
   merges except `Autopoet.Proposals.accept/2` (human), which re-runs the Eval gate.
@@ -36,7 +37,7 @@ defmodule Autopoet.Brain do
   def propose(item) do
     case completer() do
       nil ->
-        Autopoet.Log.puts("brain: no LLM keys (OPENROUTER/GROQ/INCEPTION) — skipping #{item[:target]}")
+        Autopoet.Log.puts("brain: no LLM keys (OPENROUTER/INCEPTION) — skipping #{item[:target]}")
         :skip
 
       complete ->
@@ -68,8 +69,7 @@ defmodule Autopoet.Brain do
         fn _role, prompt -> fun.(prompt) end
 
       Application.get_env(:autopoet, :brain_live, true) and
-          (Autopoet.Providers.openrouter?() or Autopoet.Providers.mercury?() or
-             Autopoet.Providers.groq?()) ->
+          (Autopoet.Providers.openrouter?() or Autopoet.Providers.mercury?()) ->
         &live_complete/2
 
       true ->
@@ -79,16 +79,9 @@ defmodule Autopoet.Brain do
 
   defp live_complete(:plan, prompt) do
     {planner, name} =
-      cond do
-        Autopoet.Providers.openrouter?() ->
-          {&Autopoet.Providers.openrouter/2, Autopoet.Providers.planner_model()}
-
-        Autopoet.Providers.groq?() ->
-          {&Autopoet.Providers.groq/2, "groq"}
-
-        true ->
-          {nil, nil}
-      end
+      if Autopoet.Providers.openrouter?(),
+        do: {&Autopoet.Providers.openrouter/2, Autopoet.Providers.planner_model()},
+        else: {nil, nil}
 
     with false <- is_nil(planner),
          {:ok, %{content: p}} when is_binary(p) <-
@@ -103,11 +96,9 @@ defmodule Autopoet.Brain do
 
   defp live_complete(:draft, prompt) do
     {drafter, name} =
-      cond do
-        Autopoet.Providers.mercury?() -> {&Autopoet.Providers.mercury/2, "mercury"}
-        Autopoet.Providers.openrouter?() -> {&Autopoet.Providers.openrouter/2, Autopoet.Providers.planner_model()}
-        true -> {&Autopoet.Providers.groq/2, "groq"}
-      end
+      if Autopoet.Providers.mercury?(),
+        do: {&Autopoet.Providers.mercury/2, "mercury"},
+        else: {&Autopoet.Providers.openrouter/2, Autopoet.Providers.planner_model()}
 
     case drafter.([%{role: "user", content: prompt}], max_tokens: 3000, temperature: 0.1) do
       {:ok, %{content: text}} when is_binary(text) ->

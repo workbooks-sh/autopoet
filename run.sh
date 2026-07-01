@@ -8,7 +8,7 @@ export AUTOPOET_HOME="$PWD"
 export WB_DATA="$PWD/data/nexus"
 mkdir -p "$WB_DATA"
 
-# inject .env secrets (GROQ_API_KEY / INCEPTION_API_KEY) — Nexus.Secrets resolves
+# inject .env secrets (OPENROUTER_API_KEY / INCEPTION_API_KEY) — Nexus.Secrets resolves
 # store-first with process-env fallback, so a dev .env is the injection point.
 if [ -f .env ]; then
   set -a

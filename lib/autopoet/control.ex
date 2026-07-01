@@ -236,10 +236,21 @@ defmodule Autopoet.Control do
       body { background:#fff; color:#222; font:12px/1.5 ui-monospace,monospace;
              max-width:72rem; margin:2rem auto; padding:0 1rem; }
       pre { white-space:pre-wrap; word-break:break-all; }
+      .card { border:1px solid #ddd; border-radius:6px; padding:1rem; margin:1rem 0; }
+      .card h3 { margin:0 0 .5rem 0; font-size:13px; }
+      .chg { background:#fafafa; border:1px solid #eee; padding:.5rem; }
+      button { font:inherit; padding:.2rem .8rem; cursor:pointer; }
+      .ok { background:#e8f5e9; } .no { background:#fdecea; }
     </style>
     <div style="text-align:center;margin-bottom:1rem"><img src="/avatar" width="240" alt=""></div>
+    #{proposals_html()}
     <pre id="log"></pre>
     <script>
+      const TOKEN = "#{Autopoet.Discovery.token()}";
+      function act(id, verb) {
+        fetch(`/proposal/${id}/${verb}`, {method:"POST", headers:{authorization:`Bearer ${TOKEN}`}})
+          .then(() => location.reload());
+      }
       const log = document.getElementById("log");
       new EventSource("/sse").onmessage = (e) => {
         log.textContent += e.data + "\\n";
@@ -248,4 +259,40 @@ defmodule Autopoet.Control do
     </script>
     """
   end
+
+  # The review surface: every pending proposal, full file contents, accept/reject.
+  # Localhost-only server; the per-boot token is embedded so the buttons are the
+  # same authenticated verbs the CLI uses.
+  defp proposals_html do
+    case Autopoet.Proposals.list() |> Enum.filter(fn {_, s} -> s == "pending" end) do
+      [] ->
+        ""
+
+      pending ->
+        cards =
+          Enum.map_join(pending, "\n", fn {id, _} ->
+            item = [Autopoet.Proposals.dir(), id, "item.txt"] |> Path.join() |> File.read!() |> esc()
+
+            files =
+              Enum.map_join(Autopoet.Proposals.changes(id), "", fn {rel, src} ->
+                "<h4>#{esc(rel)}</h4><pre class=\"chg\">#{esc(src)}</pre>"
+              end)
+
+            """
+            <div class="card">
+              <h3>#{id}
+                <button class="ok" onclick="act('#{id}','accept')">Accept</button>
+                <button class="no" onclick="act('#{id}','reject')">Reject</button>
+              </h3>
+              <details><summary>sensed item</summary><pre>#{item}</pre></details>
+              #{files}
+            </div>
+            """
+          end)
+
+        "<h2>pending proposals</h2>" <> cards
+    end
+  end
+
+  defp esc(s), do: s |> String.replace("&", "&amp;") |> String.replace("<", "&lt;")
 end
