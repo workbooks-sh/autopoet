@@ -1,0 +1,28 @@
+#!/bin/sh
+# Terminal control for the running autopoet app. Reads {port, token} from data/ctl
+# (written at boot, removed at shutdown — a stale file means a dead app).
+DIR="$(cd "$(dirname "$0")" && pwd)"
+CTL="$DIR/data/ctl"
+
+[ -f "$CTL" ] || { echo "autopoet not running (no $CTL)"; exit 1; }
+read -r PORT TOKEN <"$CTL"
+BASE="http://127.0.0.1:$PORT"
+
+case "${1:-status}" in
+  status | log)
+    curl -s "$BASE/${1:-status}"
+    ;;
+  tail)
+    curl -sN "$BASE/sse"
+    ;;
+  arm)
+    curl -s -X POST -H "authorization: Bearer $TOKEN" "$BASE/arm?every=${2:-15m}"
+    ;;
+  disarm | close | kill)
+    curl -s -X POST -H "authorization: Bearer $TOKEN" "$BASE/$1"
+    ;;
+  *)
+    echo "usage: autopoetctl status|log|tail|arm [every]|disarm|close|kill"
+    exit 2
+    ;;
+esac
