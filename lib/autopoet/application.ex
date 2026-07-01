@@ -34,8 +34,52 @@ defmodule Autopoet.Application do
 
     result = Supervisor.start_link(children, strategy: :one_for_one, name: Autopoet.Supervisor)
 
-    Autopoet.Log.puts("autopoet v0 up — ctl on 127.0.0.1:#{port}; heartbeat DISARMED (arm via ./autopoetctl arm)")
+    seed_workbook()
+    wire_brain()
+
+    Autopoet.Log.puts("autopoet up — ctl on 127.0.0.1:#{port}; heartbeat DISARMED (arm via ./autopoetctl arm)")
     result
+  end
+
+  # v3: inject the proposal-only brain into the heartbeat by registering OVER the
+  # neutral "autopoet.cycle" effect (the registry is open by design — the app
+  # supplies the brain; the runtime stays generic). Every cycle result is only ever
+  # a PROPOSAL; merges happen through autopoetctl accept alone.
+  defp wire_brain do
+    Nexus.Effects.register("autopoet.cycle", fn _args, _event, _ctx ->
+      report =
+        Nexus.Autopoet.Worker.run_once(
+          proposer: &Autopoet.Brain.propose/1,
+          notify: &Autopoet.Brain.notify/2
+        )
+
+      Autopoet.Log.puts("cycle: sensed #{report.sensed}, results #{inspect(Enum.map(report.results, & &1.action))}")
+      :ok
+    end)
+  end
+
+  # A fresh data dir gets a tiny starter workbook — the body the autopoet observes
+  # and proposes against. Never overwrites anything.
+  defp seed_workbook do
+    root = Nexus.Paths.data_dir()
+
+    if Path.wildcard(Path.join(root, "**/*.work")) == [] do
+      File.mkdir_p!(root)
+
+      File.write!(Path.join(root, "index.work"), """
+      # autopoet nexus
+
+      The local body of the autopoet desktop experiment. See [[journal]].
+      """)
+
+      File.write!(Path.join(root, "journal.work"), """
+      # Journal
+
+      Notes accumulate here. Tagged #journal.
+      """)
+
+      Autopoet.Log.puts("seeded starter workbook in #{root}")
+    end
   end
 
   defp window do

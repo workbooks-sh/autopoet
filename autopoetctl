@@ -9,7 +9,7 @@ read -r PORT TOKEN <"$CTL"
 BASE="http://127.0.0.1:$PORT"
 
 case "${1:-status}" in
-  status | log)
+  status | log | proposals)
     curl -s "$BASE/${1:-status}"
     ;;
   tail)
@@ -21,8 +21,12 @@ case "${1:-status}" in
   disarm | close | kill)
     curl -s -X POST -H "authorization: Bearer $TOKEN" "$BASE/$1"
     ;;
+  accept | reject)
+    [ -n "$2" ] || { echo "usage: autopoetctl $1 <proposal-id>"; exit 2; }
+    curl -s -X POST -H "authorization: Bearer $TOKEN" "$BASE/proposal/$2/$1"
+    ;;
   *)
-    echo "usage: autopoetctl status|log|tail|arm [every]|disarm|close|kill"
+    echo "usage: autopoetctl status|log|tail|proposals|arm [every]|disarm|accept <id>|reject <id>|close|kill"
     exit 2
     ;;
 esac

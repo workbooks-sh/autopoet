@@ -29,12 +29,20 @@ AUTOPOET_HEADLESS=1 ./run.sh   # no window (CI); ./autopoetctl kill to stop
 
 ## Roadmap (goal doc: workbooks/autopoet-chamber/PLAN.md)
 
-- v0 ✅ containment shell (this)
-- v1 — Phase 0: `cause:` stamps + `effect.settled` (nexus lib), telemetry persisted,
-  capture recorder always-on under `data/traces/`
-- v2 — live shadow layer: Hebbian weights + surprise predictor on the real bus
-- v3 — proposal-only brain: two-model proposer via `Nexus.Llm`, `autopoetctl
-  accept/reject` as the human gate
+- v0 ✅ containment shell — window kill switch verified end-to-end
+- v1 ✅ Phase 0 — `cause:` stamps + `effect.settled` (in the nexus lib, tests green);
+  capture recorder always-on (`data/traces/<date>.etfs`, replayable by the chamber's
+  `gym/replay.exs`); telemetry snapshots (framed file, Store-backed later)
+- v2 ✅ live shadow layer — Hebbian pathways + surprise predictor with the PINNED
+  detector on the real bus; drift raises `autopoet.attention` (zero actuators)
+- v3 ✅ proposal-only brain — proposer injected into the real heartbeat
+  (`autopoet.cycle` effect re-registered app-side; runtime stays neutral); Groq-class
+  model via `Nexus.Llm` when `GROQ_API_KEY` is set, harmless skip otherwise;
+  EVERYTHING lands as a pending proposal under `data/proposals/`; `autopoetctl
+  accept <id>` re-runs the real Eval gate before any file is touched; accept/reject
+  events are the labeled B9/B4 stream
+- next: real usage → first real concerns → the brain's first real proposals; then
+  Burrito bundling once the app has earned it
 
 ## The face
 

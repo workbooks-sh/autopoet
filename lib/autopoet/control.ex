@@ -57,6 +57,34 @@ defmodule Autopoet.Control do
     conn |> put_resp_content_type("image/svg+xml") |> send_resp(200, Autopoet.Avatar.svg())
   end
 
+  get "/proposals" do
+    body =
+      case Autopoet.Proposals.list() do
+        [] -> "no proposals\n"
+        ps -> Enum.map_join(ps, "\n", fn {id, status} -> "#{id} #{status}" end) <> "\n"
+      end
+
+    text(conn, body)
+  end
+
+  post "/proposal/:id/accept" do
+    authed!(conn, fn conn ->
+      case Autopoet.Proposals.accept(id, Nexus.Paths.data_dir()) do
+        :ok -> text(conn, "accepted #{id}\n")
+        {:error, reason} -> text(conn, "refused: #{inspect(reason)}\n")
+      end
+    end)
+  end
+
+  post "/proposal/:id/reject" do
+    authed!(conn, fn conn ->
+      case Autopoet.Proposals.reject(id) do
+        :ok -> text(conn, "rejected #{id}\n")
+        {:error, reason} -> text(conn, "refused: #{inspect(reason)}\n")
+      end
+    end)
+  end
+
   get "/sse" do
     conn =
       conn
