@@ -24,6 +24,7 @@ defmodule Autopoet.Application do
       [
         Autopoet.Log,
         Autopoet.Watchdog,
+        Autopoet.Requests,
         Autopoet.Capture,
         Autopoet.Snapshot,
         Autopoet.Shadow.Hebb,
@@ -47,13 +48,7 @@ defmodule Autopoet.Application do
   # a PROPOSAL; merges happen through autopoetctl accept alone.
   defp wire_brain do
     Nexus.Effects.register("autopoet.cycle", fn _args, _event, _ctx ->
-      report =
-        Nexus.Autopoet.Worker.run_once(
-          proposer: &Autopoet.Brain.propose/1,
-          notify: &Autopoet.Brain.notify/2
-        )
-
-      Autopoet.Log.puts("cycle: sensed #{report.sensed}, results #{inspect(Enum.map(report.results, & &1.action))}")
+      Autopoet.Brain.cycle()
       :ok
     end)
   end

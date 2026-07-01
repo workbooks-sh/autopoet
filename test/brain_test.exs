@@ -73,11 +73,8 @@ defmodule Autopoet.BrainTest do
     end
   end
 
-  test "without keys or injected LLM the brain skips harmlessly" do
+  test "without an injected LLM (and live mode off, as in all tests) the brain skips harmlessly" do
     Application.delete_env(:autopoet, :brain_llm)
-
-    if System.get_env("GROQ_API_KEY") in [nil, ""] do
-      assert :skip = Autopoet.Brain.propose(%{target: "anything", kind: :concern})
-    end
+    assert :skip = Autopoet.Brain.propose(%{target: "anything", kind: :concern})
   end
 end

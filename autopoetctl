@@ -25,8 +25,18 @@ case "${1:-status}" in
     [ -n "$2" ] || { echo "usage: autopoetctl $1 <proposal-id>"; exit 2; }
     curl -s -X POST -H "authorization: Bearer $TOKEN" "$BASE/proposal/$2/$1"
     ;;
+  request)
+    [ -n "$3" ] || { echo "usage: autopoetctl request <target> <change...>"; exit 2; }
+    TARGET="$2"
+    shift 2
+    curl -s -X POST -H "authorization: Bearer $TOKEN" \
+      --data-urlencode "target=$TARGET" --data-urlencode "change=$*" -G "$BASE/request" -X POST
+    ;;
+  cycle)
+    curl -s -X POST -H "authorization: Bearer $TOKEN" "$BASE/cycle"
+    ;;
   *)
-    echo "usage: autopoetctl status|log|tail|proposals|arm [every]|disarm|accept <id>|reject <id>|close|kill"
+    echo "usage: autopoetctl status|log|tail|proposals|arm [every]|disarm|request <target> <change>|cycle|accept <id>|reject <id>|close|kill"
     exit 2
     ;;
 esac

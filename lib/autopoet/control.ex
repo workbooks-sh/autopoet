@@ -135,6 +135,25 @@ defmodule Autopoet.Control do
     end)
   end
 
+  post "/request" do
+    authed!(conn, fn conn ->
+      target = conn.query_params["target"]
+      change = conn.query_params["change"]
+
+      case Autopoet.Requests.file(target, change) do
+        :ok -> text(conn, "filed: #{target} — #{change}\n")
+        {:error, reason} -> text(conn, "refused: #{inspect(reason)}\n")
+      end
+    end)
+  end
+
+  post "/cycle" do
+    authed!(conn, fn conn ->
+      report = Autopoet.Brain.cycle()
+      text(conn, "cycle: sensed #{report.sensed}, results #{inspect(Enum.map(report.results, & &1.action))}\n")
+    end)
+  end
+
   post "/kill" do
     authed!(conn, fn conn ->
       Log.puts("KILL via ctl — halting BEAM")
