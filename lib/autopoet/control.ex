@@ -154,6 +154,30 @@ defmodule Autopoet.Control do
     end)
   end
 
+  post "/research" do
+    authed!(conn, fn conn ->
+      q = conn.query_params["q"] || ""
+
+      if q == "" do
+        text(conn, "usage: research?q=<question>\n")
+      else
+        Autopoet.Limbs.research(q)
+        text(conn, "limb dispatched (async) — watch the log; findings arrive as a request, then a proposal\n")
+      end
+    end)
+  end
+
+  post "/oota" do
+    authed!(conn, fn conn ->
+      args = String.split(conn.query_params["args"] || "", " ", trim: true)
+
+      case Autopoet.Oota.run(args) do
+        {:ok, out} -> text(conn, out)
+        {:error, reason} -> text(conn, "oota error: #{inspect(reason)}\n")
+      end
+    end)
+  end
+
   post "/kill" do
     authed!(conn, fn conn ->
       Log.puts("KILL via ctl — halting BEAM")

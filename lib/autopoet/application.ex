@@ -37,6 +37,8 @@ defmodule Autopoet.Application do
 
     seed_workbook()
     Autopoet.Guide.seed()
+    seed_limbs()
+    Autopoet.Limbs.register_from_body()
     wire_brain()
 
     Autopoet.Log.puts("autopoet up — ctl on 127.0.0.1:#{port}; heartbeat DISARMED (arm via ./autopoetctl arm)")
@@ -52,6 +54,20 @@ defmodule Autopoet.Application do
       Autopoet.Brain.cycle()
       :ok
     end)
+  end
+
+  # Limb definitions ship in priv/seed and land in the body once (never overwrite —
+  # after that, limbs.work is human-editable body content; its agents re-register
+  # from the body at every boot).
+  defp seed_limbs do
+    src = Path.join(:code.priv_dir(:autopoet), "seed")
+    root = Nexus.Paths.data_dir()
+
+    for f <- Path.wildcard(Path.join(src, "*.work")),
+        target = Path.join(root, Path.basename(f)),
+        not File.exists?(target) do
+      File.cp!(f, target)
+    end
   end
 
   # A fresh data dir gets a tiny starter workbook — the body the autopoet observes
