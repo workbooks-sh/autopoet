@@ -30,6 +30,9 @@ defmodule Autopoet.Control do
     {up_ms, _} = :erlang.statistics(:wall_clock)
     {soft, hard} = Autopoet.Watchdog.caps()
 
+    hebb = Autopoet.Shadow.Hebb.stats()
+    surprise = Autopoet.Shadow.Surprise.stats()
+
     body = """
     armed: #{st.armed}
     spec: #{inspect(st.spec)}
@@ -38,6 +41,9 @@ defmodule Autopoet.Control do
     memory_mb: #{div(:erlang.memory(:total), 1_048_576)} (soft #{soft} / hard #{hard})
     uptime_s: #{div(up_ms, 1000)}
     window: #{if Process.whereis(Autopoet.Window), do: "open", else: "headless"}
+    captured_events: #{Autopoet.Capture.count()}
+    shadow_hebb: #{hebb.events} events, #{hebb.nodes} nodes, #{hebb.edges} edges, top #{inspect(hebb.top)}
+    shadow_surprise: #{surprise.events} events, fast #{fmt(surprise.fast)} / slow #{fmt(surprise.slow)} bits, alarms #{surprise.alarms}
     """
 
     text(conn, body)
@@ -120,6 +126,9 @@ defmodule Autopoet.Control do
   # ── helpers ──────────────────────────────────────────────────────────────────
 
   defp text(conn, body), do: conn |> put_resp_content_type("text/plain") |> send_resp(200, body)
+
+  defp fmt(nil), do: "-"
+  defp fmt(x), do: Float.round(x * 1.0, 2)
 
   defp authed!(conn, fun) do
     conn = fetch_query_params(conn)

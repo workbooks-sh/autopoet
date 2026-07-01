@@ -26,6 +26,8 @@ defmodule Autopoet.Application do
         Autopoet.Watchdog,
         Autopoet.Capture,
         Autopoet.Snapshot,
+        Autopoet.Shadow.Hebb,
+        Autopoet.Shadow.Surprise,
         {Bandit, plug: Autopoet.Control, ip: {127, 0, 0, 1}, port: port},
         {Autopoet.Discovery, port}
       ] ++ window()
