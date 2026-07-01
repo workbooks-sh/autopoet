@@ -134,9 +134,32 @@ defmodule Autopoet.Brain do
     end)
   end
 
+  # The complete .work primer, token-minimal by design: everything the models must
+  # know, nothing said twice. Sourced from the parser (Nexus.Literate), the time
+  # vocabulary (Nexus.Time org timestamps), and the purity rule (Nexus.Index).
+  # Today's date is cemented IN work format — the models have no clock.
+  defp format_primer do
+    """
+    .work format — complete reference:
+    - Plain markdown prose. A runnable block is `<kind> :name do ... end` (first word
+      is the kind: data|def|server|client|sandbox|agent|flow|hook|record|resource|check).
+    - Reactive: `hook :n do match tags: [:t] / trigger every: "1h" / <effect> end`.
+    - Prose refs are live graph edges: [[backlink]] #tag :atom @Type work://path.
+    - Dates are org timestamps only: today is <#{Date.utc_today()} #{dow()}>. Never
+      invent or reformat dates.
+    - index.work holds config/routing/ceiling ONLY — logic units there are refused.
+    - No HTML, no code fences, no JSON.
+    """
+  end
+
+  defp dow, do: Enum.at(~w(Mon Tue Wed Thu Fri Sat Sun), Date.day_of_week(Date.utc_today()) - 1)
+
   defp plan_prompt(item, ctx) do
     """
-    You are the planner for a workbook of `.work` literate files. Current tree:
+    You plan changes to a workbook of `.work` files.
+
+    #{format_primer()}
+    Current tree:
 
     #{ctx}
 
@@ -151,8 +174,10 @@ defmodule Autopoet.Brain do
 
   defp draft_prompt(item, ctx, plan) do
     """
-    You maintain a workbook of `.work` literate files (plain markdown-like prose;
-    runnable blocks are `kind :name do ... end`). Current tree:
+    You maintain a workbook of `.work` files.
+
+    #{format_primer()}
+    Current tree:
 
     #{ctx}
 
@@ -170,7 +195,7 @@ defmodule Autopoet.Brain do
     <the COMPLETE new content of that file>
 
     Rules: minimal change; keep existing content unless the plan says otherwise;
-    never touch index.work ceilings/grants; no commentary outside the blocks.
+    no commentary outside the blocks.
     """
   end
 
