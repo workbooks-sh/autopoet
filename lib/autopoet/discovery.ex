@@ -11,7 +11,8 @@ defmodule Autopoet.Discovery do
 
   def token, do: :persistent_term.get({__MODULE__, :token})
 
-  def home, do: System.get_env("AUTOPOET_HOME") || File.cwd!()
+  def home,
+    do: System.get_env("AUTOPOET_HOME") || Application.get_env(:autopoet, :home) || File.cwd!()
   def path, do: Path.join([home(), "data", "ctl"])
 
   @impl true

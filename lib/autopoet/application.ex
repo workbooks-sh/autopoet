@@ -24,6 +24,8 @@ defmodule Autopoet.Application do
       [
         Autopoet.Log,
         Autopoet.Watchdog,
+        Autopoet.Capture,
+        Autopoet.Snapshot,
         {Bandit, plug: Autopoet.Control, ip: {127, 0, 0, 1}, port: port},
         {Autopoet.Discovery, port}
       ] ++ window()
@@ -35,8 +37,17 @@ defmodule Autopoet.Application do
   end
 
   defp window do
-    if System.get_env("AUTOPOET_HEADLESS") in ~w(1 true), do: [], else: [Autopoet.Window]
+    headless? =
+      System.get_env("AUTOPOET_HEADLESS") in ~w(1 true) or
+        Application.get_env(:autopoet, :headless, false)
+
+    if headless?, do: [], else: [Autopoet.Window]
   end
 
-  def port, do: String.to_integer(System.get_env("AUTOPOET_PORT") || "4477")
+  def port do
+    case System.get_env("AUTOPOET_PORT") do
+      nil -> Application.get_env(:autopoet, :port, 4477)
+      p -> String.to_integer(p)
+    end
+  end
 end
