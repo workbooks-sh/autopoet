@@ -1,0 +1,102 @@
+# Literate Programming
+
+Most code is written for the machine first and the human second. The machine gets
+a precise list of instructions; the human gets some comments, a README that went
+stale months ago, and a wiki nobody opens. Workbooks start from the opposite idea:
+**write for the human first, and let the machine read the same document.** That
+idea is old, it has a name, and it turns out to be exactly what you want in a world
+where an AI agent is reading and writing your code alongside you.
+
+## Knuth
+
+In 1984 Donald Knuth described **literate programming**: a program should be a
+piece of *literature*. You write an explanation a person can follow — in plain
+prose, in the order that makes sense to a *reader* — and the runnable code lives
+right there inside the explanation. The prose and the code are not two artifacts
+that drift apart. They are one document. The compiler pulls the code out; the
+reader follows the prose.
+
+Knuth's point was that a program is mostly read, not written, so the writing
+should be aimed at the reader. A `.work` file is a literate document in exactly
+this sense: paragraphs narrate, and `do … end` blocks run.
+
+## The agent turn
+
+Here is what changed. For forty years "the reader" meant another developer. Now
+the reader is *also an agent* — and the agent doesn't just read your code, it
+writes it.
+
+When a machine is editing your codebase, the prose stops being decoration. It
+becomes the **shared context** that you and the agent both work from: what this is
+for, what must stay true, what to leave alone. A literate document co-locates the
+three things that usually live in three different places —
+
+- **intent** (the prose: what you're trying to do and why),
+- **execution** (the code: what actually runs),
+- **review** (both at once: you read the reasoning next to the change).
+
+An agent can read the intent, make the change, and you can verify it without
+hopping between a ticket, a wiki, and a diff. The document *is* the program *is*
+the spec.
+
+## What agent harnesses get wrong
+
+Two failure modes show up the moment you point an agent at a real codebase.
+
+**Detached docs.** The conventional wisdom says code and documentation should live
+apart — code in the repo, docs in a wiki, design notes in a folder of Markdown
+files. With a human team you can *just barely* keep those in sync. With an agent
+you cannot. The agent reads the code and the scattered docs as separate, often
+contradictory sources, and every gap between them is a place for the code to go
+fuzzy. The more you separate the explanation from the thing it explains, the worse
+the agent does. (We feel this so strongly that the first thing we did when writing
+these docs was delete a pile of stale Markdown that no longer matched the code —
+detached docs are a liability, not an asset.)
+
+**Lines-of-code buildup.** Agents are eager. Ask for a change and you tend to get
+*more* code — another file, another layer, another abstraction "to be safe." Do
+that for a few weeks and you have a thirty-thousand-line codebase where nobody,
+human or machine, can hold the whole picture, and every edit risks drift somewhere
+far away. The fix is not a bigger context window. The fix is to **force
+simplification**: let the agent write its reasoning *next to* its code, and a
+simpler path almost always appears. Prose is where you notice that three functions
+are really one.
+
+## Why Elixir
+
+If you're going to be opinionated about writing less, simpler code, you should be
+opinionated about the *language* too. We chose **Elixir**.
+
+Elixir is easy to read. You can hand a block of it to someone who has never seen it
+and they'll mostly follow along — it reads close to plain instructions. It's easy
+to learn and genuinely capable as a server-side language. We picked it for two
+concrete reasons: its **concurrency** model (lightweight isolated processes, the
+BEAM) is a perfect fit for running many workbooks and agents side by side, and it
+**fit the architecture** we needed rather than fighting it.
+
+And because a `.work` block can be written in Elixir, you get the full language —
+this really is Elixir, written inside a literate document:
+
+def greet :hello do
+  def run(name), do: "hello, #{name}"
+end
+
+We were inspired here by **org-mode** and **MDX** — both wonderful ways to mix
+prose and live content. We wanted to go further: deeper language concepts, and the
+ability to manage real parts of the codebase directly from these blocks, not just
+illustrate them.
+
+## Radical simplicity
+
+There's a piece we keep coming back to, [Radical Simplicity](https://www.radicalsimpli.city/happier-developers).
+Its argument: developers are happiest, and software is best, when you stop drowning
+in glue code and framework churn and get back to solving the actual problem — with
+**one database, one language**, as little machinery as possible.
+
+That's the same instinct, pointed at the agent era. Microservices and serverless
+sprawl don't just cost money at scale; they give an agent a hundred moving parts to
+keep consistent. Collapse the stack — one engine, one language, the document and
+its code in one file — and you give both the human and the agent something small
+enough to actually understand. Literate programming is the writing style. Radical
+simplicity is the discipline. Together they're how you keep an agent-built codebase
+from turning into the thing everyone's afraid of.

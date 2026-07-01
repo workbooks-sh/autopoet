@@ -1,0 +1,47 @@
+# Placement & languages
+
+Two things about a code block decide *how* it runs: its **placement** (where) and
+its **language** (what it's written in). Both are right there in the header.
+
+## Placement: where a block runs
+
+The kind word at the start of a block puts it somewhere. Three placements cover the
+ground:
+
+- **`client`** — runs in the **browser**. A `client` block is a browser island:
+  its body *is* the interface, emitted directly into the rendered page so it runs
+  client-side wherever the page loads. This is the lane that draws what people see.
+- **`server`** — runs on the [Nexus](/introduction/what-is-the-nexus), the engine,
+  on the BEAM. This is your backend: logic, data access, the work that shouldn't
+  happen in the browser.
+- **`sandbox`** — runs in a **capability-scoped box**. Guest code is compiled to
+  WebAssembly and given only the powers it's explicitly granted, so you can run
+  untrusted or risky work without handing it the keys to everything.
+
+client :counter do
+  <button onclick="count++">{count}</button>
+end
+
+Same file, but `client` draws in the browser while `server` runs on the engine —
+which is how one document describes the whole application.
+
+## Languages: what a block is written in
+
+A block's body is real code in a supported language. `elixir` runs natively on the
+BEAM; the rest compile to WebAssembly through the `work` toolchain:
+
+`elixir` (native) · `rust` · `c` · `cpp` · `zig` · `swift`
+
+You name the language in the header (`sandbox rust :scrape`,
+`client :counter`). Leave it off and the block uses its default. The body is
+ordinary code — there's no special dialect to learn, just the language you already
+know, written inside a literate document.
+
+## Placement and language are independent
+
+The two choices compose. You can write a `sandbox` in Rust, a `client` in the
+browser, a `server` in Elixir — pick the placement for *where the work belongs* and the
+language for *what fits the job*. That independence is the heart of the format:
+one workbook, many languages, each block running in the right place.
+
+Next, a compact tour of every kind: [Kinds reference](/language/kinds-reference).

@@ -36,6 +36,7 @@ defmodule Autopoet.Application do
     result = Supervisor.start_link(children, strategy: :one_for_one, name: Autopoet.Supervisor)
 
     seed_workbook()
+    Autopoet.Guide.seed()
     wire_brain()
 
     Autopoet.Log.puts("autopoet up — ctl on 127.0.0.1:#{port}; heartbeat DISARMED (arm via ./autopoetctl arm)")

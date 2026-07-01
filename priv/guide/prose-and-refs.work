@@ -1,0 +1,46 @@
+# The prose lane & refs
+
+Prose is a first-class lane, not a comment. It's where you explain the workbook in
+ordinary language — and where you wire ideas together with live references the
+tools understand.
+
+## It's just markdown
+
+The prose lane is markdown. Headings, paragraphs, **bold**, *italic*, `inline
+code`, lists, and [links](/introduction/what-is-a-workbook) all work the way you'd
+expect. Write naturally; the document reads like prose because it is prose.
+
+## References that mean something
+
+Inside prose you can point at other things directly, and the parser picks these
+tokens out in order:
+
+- **`[[backlinks]]`** — a link to another block or page in the workbook.
+- **`work://…`** — a link across the workbook, addressed by path.
+- **`:atom`** — a mention of a named block or value (the same `:name` a block
+  declares).
+- **`@type`** — a mention of a type.
+- **`#tag`** — a tag you can group and find things by.
+
+These aren't styling. They're how a workbook knits itself into a graph: when you
+mention `:submit` or write `[[Order]]`, that's a real edge the tools can follow —
+the same edges `work why` and `work near` walk when they answer "what depends on
+this?"
+
+## Refs inside code are examples, not links
+
+There's one sensible rule worth knowing: a reference written inside `inline code` is
+treated as a *syntax example*, not a real reference. So a sentence teaching you
+about `[[backlinks]]` (in code font, like this) doesn't accidentally create a link.
+Real references live in the running prose; quoted ones stay quoted. This very page
+mentions the syntax constantly without tangling itself in links.
+
+## Why prose carries the graph
+
+Because references are part of the prose lane, the explanation and the dependency
+graph are the same artifact. You don't maintain a separate map of how things relate
+— you write the relationships into the sentences, and the workbook *is* the map.
+That's a big part of why a `.work` file stays legible to an agent: the intent and
+the connections are right there in the text it's already reading.
+
+Next: the structure lane — [Declarations](/language/declarations).

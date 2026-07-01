@@ -1,0 +1,68 @@
+# Anatomy of a .work file
+
+A `.work` file looks like a document because it is one. As you read down it, the
+parser sees a simple sequence of pieces: headings, paragraphs, declarations, and
+runnable blocks. Those pieces sort into **four lanes**. Once you can spot the four
+lanes, you can read any workbook.
+
+Here's a small file with all four in it:
+
+# Orders
+
+This page tracks orders and shows them in a table.
+
+data Order do
+  id :int
+  total :money
+end
+
+server place :submit do
+  def run(order), do: Store.create(Order, order)
+end
+
+The heading and the sentence are prose. `data Order do … end` is a declaration.
+`server place :submit do … end` is code, and the word `server` is its placement.
+
+## Prose
+
+Prose is the rich text that explains. Paragraphs, headings, lists — ordinary
+writing aimed at the reader. Prose isn't a comment bolted onto code; it's a lane of
+its own, and it can carry live references to other parts of the workbook (see
+[The prose lane & refs](/language/prose-and-refs)).
+
+## Declaration
+
+A declaration is **structure with no body to run** — you're describing a shape, not
+an action. A `data` block declares a typed table, a list of atoms declares an enum,
+a record declares a struct. Declarations are how a workbook states what its data
+looks like. They get their own page: [Declarations](/language/declarations).
+
+## Code
+
+A code block is something that **runs**. It opens with a header and ends with
+`end`, and the body is real code in a supported language:
+
+server place :sum do
+  def run(items), do: Enum.sum(items)
+end
+
+A server unit, an agent, a browser island — if it executes, it's in the code
+lane. The `def`/`defp` functions you write live *inside* one of these units, not
+as a block of their own. The exact header shape is covered in
+[Block grammar](/language/block-grammar).
+
+## Placement
+
+Placement is the quiet fourth lane: the **first word of a code block says where it
+runs.** `client` runs in the browser, `server` runs on the
+[Nexus](/introduction/what-is-the-nexus), and `sandbox` runs in a capability-scoped
+box. Same literate file, but each block knows its home. This is what lets one
+document describe the browser and the server at once — see
+[Placement & languages](/language/placement-and-languages).
+
+## Why this matters
+
+Four lanes, one file. The thing people see (prose + `client`), the logic that runs
+it (`server`), and the data it stands on (`data`) aren't scattered across a repo —
+they sit next to each other, in reading order, in a single document. That's the
+anatomy that makes a workbook legible to a person and to an agent at the same time.
