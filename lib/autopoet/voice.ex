@@ -41,7 +41,8 @@ defmodule Autopoet.Voice do
   def sync, do: GenServer.call(__MODULE__, :sync)
 
   @impl true
-  def init(:ok), do: {:ok, %{queue: :queue.new(), task: nil, envelope: [], started: 0, utter: 0}}
+  def init(:ok),
+    do: {:ok, %{queue: :queue.new(), task: nil, envelope: [], text: "", started: 0, utter: 0}}
 
   @impl true
   def handle_cast({:speak, text}, state) do
@@ -66,10 +67,11 @@ defmodule Autopoet.Voice do
           utter: state.utter,
           elapsed_ms: System.monotonic_time(:millisecond) - state.started,
           window_ms: @window_ms,
-          envelope: state.envelope
+          envelope: state.envelope,
+          text: state.text
         }
       else
-        %{status: "idle", utter: state.utter, elapsed_ms: 0, window_ms: @window_ms, envelope: []}
+        %{status: "idle", utter: state.utter, elapsed_ms: 0, window_ms: @window_ms, envelope: [], text: ""}
       end
 
     {:reply, reply, state}
@@ -94,7 +96,7 @@ defmodule Autopoet.Voice do
             File.rm(aiff)
           end)
 
-        %{state | queue: rest, task: pid, envelope: env,
+        %{state | queue: rest, task: pid, envelope: env, text: text,
           started: System.monotonic_time(:millisecond), utter: state.utter + 1}
 
       {:empty, _} ->

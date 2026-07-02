@@ -1788,23 +1788,41 @@ function say(text) {
 // playhead. Pauses sit flat; syllables open the mouth; silence closes it.
 let voicePoll = null, mouthTimer = null, voiceSync = null, syncAt = 0;
 
-// classic animation mouth chart: SEPARATE static shapes swapped whole by
-// loudness bucket — never a tweened/scaled ellipse (that ruins the vibe)
-const TALK_SHAPES = [
-  null,   // 0 = shut → the real neutral mood line
-  `<ellipse cx="42" cy="47.4" rx="4.4" ry="1.7" fill="black"/>`,
-  `<ellipse cx="42" cy="47.7" rx="5.8" ry="3.3" fill="black"/>`,
-  `<ellipse cx="42" cy="48.1" rx="6.6" ry="5.1" fill="black"/>`
-];
-let talkBucket = -1;
-function setMouthBucket(b) {
-  if (b === talkBucket) return;   // swap only when the shape actually changes
-  talkBucket = b;
-  if (b <= 0) return setMouth("neutral");
+// the classic viseme chart (Preston Blair / Rhubarb set) — SEPARATE static
+// shapes, each a distinct phonetic mouth, swapped whole. Drawn in the face's
+// own 80×80 line-art style around the mouth anchor (42, 47.5).
+const VISEMES = {
+  X: null,   // rest → the real neutral mood line
+  A: `<path d="M35.5 47.1 q6.5 2.2 13 0 q-6.5 2.4 -13 0 Z" fill="black"/>`,                 // M B P — pressed bean
+  B: `<rect x="35.8" y="46.1" width="12.4" height="2.7" rx="1.35" fill="black"/>`,          // EE S T — teeth, spread
+  C: `<rect x="36.6" y="45.3" width="10.8" height="4.9" rx="2.4" fill="black"/>`,           // EH — half open
+  D: `<path d="M35.2 45.3 h13.6 q0 7 -6.8 7 q-6.8 0 -6.8 -7 Z" fill="black"/>`,             // AA — wide open
+  E: `<circle cx="42" cy="47.8" r="3.5" fill="black"/>`,                                    // AO ER — round open
+  F: `<circle cx="42" cy="47.6" r="1.9" fill="black"/>`,                                    // OO W — pucker
+  G: `<path d="M35.9 46.4 h12.2 v1.5 q-6.1 2.3 -12.2 0 Z" fill="black"/>`                   // F V — lip bite
+};
+let curViseme = null;
+function setViseme(v) {
+  if (v === curViseme) return;   // swap only when the shape actually changes
+  curViseme = v;
+  if (v === "X") return setMouth("neutral");
   const g = document.getElementById("ap-mouth");
-  if (g) g.innerHTML = TALK_SHAPES[b];
+  if (g) g.innerHTML = VISEMES[v];
 }
-const bucketOf = amp => amp < 0.12 ? 0 : amp < 0.4 ? 1 : amp < 0.7 ? 2 : 3;
+// which viseme: the letter under the playhead picks the shape class
+// (say's rate is fixed, so text position ≈ playhead fraction); amplitude
+// gates rest/openness within the class
+function visemeAt(text, frac, amp) {
+  if (amp < 0.1 || !text) return "X";
+  const i = Math.max(0, Math.min(text.length - 1, Math.round(frac * text.length)));
+  const near = (text.slice(i, i + 3).match(/[a-z]/i) || [text[i]])[0].toLowerCase();
+  if ("mbp".includes(near)) return "A";
+  if ("fv".includes(near)) return "G";
+  if ("ouw".includes(near)) return amp > 0.55 ? "E" : "F";
+  if (near === "a") return amp > 0.6 ? "D" : "C";
+  if ("eiy".includes(near)) return "B";
+  return amp > 0.5 ? "C" : "B";
+}
 
 function startVoicePoll() {
   if (voicePoll) return;
@@ -1818,18 +1836,19 @@ function startVoicePoll() {
   }, 250);
   mouthTimer = setInterval(() => {
     if (!voiceSync || voiceSync.status !== "speaking" || !voiceSync.envelope.length) {
-      setMouthBucket(0);
+      setViseme("X");
       return;
     }
     const playhead = voiceSync.elapsed_ms + (performance.now() - syncAt);
+    const duration = voiceSync.envelope.length * voiceSync.window_ms;
     const amp = voiceSync.envelope[Math.floor(playhead / voiceSync.window_ms)] ?? 0;
-    setMouthBucket(bucketOf(amp));
+    setViseme(visemeAt(voiceSync.text, playhead / duration, amp));
   }, 50);
 }
 function stopVoicePoll() {
   clearInterval(voicePoll); voicePoll = null;
   clearInterval(mouthTimer); mouthTimer = null;
-  voiceSync = null; talkBucket = -1;
+  voiceSync = null; curViseme = null;
   setMouth("neutral");
   document.getElementById("callcaption").classList.remove("on");
 }
