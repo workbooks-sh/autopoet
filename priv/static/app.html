@@ -5,11 +5,7 @@
   :root { --ink:#223; --paper:#fbfbf9; --grid:#e6e8ea; }
   html,body { margin:0; height:100%; overflow:hidden;
     font:13px/1.5 ui-monospace,SFMono-Regular,monospace; color:var(--ink);
-    background:
-      linear-gradient(var(--grid) 1px, transparent 1px),
-      linear-gradient(90deg, var(--grid) 1px, transparent 1px),
-      var(--paper);
-    background-size: 24px 24px, 24px 24px, auto; }
+    background:var(--paper); }  /* the grid is real geometry in the canvas, not wallpaper */
   #graph { position:fixed; inset:0; cursor:grab; }
   #graph:active { cursor:grabbing; }
 
@@ -71,6 +67,27 @@ const radius = n => n.type === "self" ? 46 : (n.type === "doc" ? 16 : 13);
 
 const svg = d3.select("#graph"), g = svg.append("g");
 svg.call(d3.zoom().scaleExtent([0.25, 3]).on("zoom", e => g.attr("transform", e.transform)));
+
+// The infinite sheet (Figma-style): graph paper as REAL geometry in the same
+// coordinate space as the nodes — userSpaceOnUse patterns ride the zoom transform,
+// so panning/zooming moves and scales the paper with the world.
+const defs = svg.append("defs");
+const minor = defs.append("pattern").attr("id", "grid-minor")
+  .attr("width", 24).attr("height", 24).attr("patternUnits", "userSpaceOnUse");
+minor.append("path").attr("d", "M 24 0 H 0 V 24")
+  .attr("fill", "none").attr("stroke", "var(--grid)").attr("stroke-width", 1);
+const major = defs.append("pattern").attr("id", "grid-major")
+  .attr("width", 120).attr("height", 120).attr("patternUnits", "userSpaceOnUse");
+major.append("path").attr("d", "M 120 0 H 0 V 120")
+  .attr("fill", "none").attr("stroke", "#d8dce0").attr("stroke-width", 1.2);
+
+const SHEET = 100000;  // ±50k units — effectively infinite at max pan/zoom
+function paper(sel) {
+  for (const id of ["grid-minor", "grid-major"])
+    sel.append("rect").attr("x", -SHEET/2).attr("y", -SHEET/2)
+       .attr("width", SHEET).attr("height", SHEET)
+       .attr("fill", `url(#${id})`).attr("pointer-events", "none");
+}
 
 // any uncaught error becomes visible ON the page — no devtools in the webview
 function fatal(msg) {
@@ -167,6 +184,7 @@ async function draw() {
   catch (err) { return fatal("graph.json fetch failed: " + err); }
   if (!data.nodes || !data.nodes.length) return fatal("graph.json returned no nodes");
   g.selectAll("*").remove();
+  paper(g);   // the sheet goes under everything, in world coordinates
 
   sim = d3.forceSimulation(data.nodes)
     .force("link", d3.forceLink(data.links).id(d => d.id)
