@@ -43,6 +43,7 @@ defmodule Autopoet.Body do
       clear_redo()
 
       emit(%{kind: "body.wrote", files: rels, history: hid, tags: []})
+      Autopoet.History.record_body(hid, rels)
       Autopoet.Log.puts("body: wrote #{length(rels)} file(s) directly [#{Enum.join(rels, ", ")}] — undo #{hid}")
       {:ok, hid}
     end
@@ -83,6 +84,7 @@ defmodule Autopoet.Body do
         for rel <- absent(base), do: File.rm(safe!(rel))
         File.write!(Path.join(base, ".undone"), to_string(System.unique_integer([:monotonic, :positive])))
         emit(%{kind: "body.undone", history: id, tags: []})
+        Autopoet.History.record_undo(id)
         Autopoet.Log.puts("body: undone #{id} — restored to pre-write state")
         :ok
     end
@@ -99,6 +101,7 @@ defmodule Autopoet.Body do
       restore(base, "after")
       File.rm(Path.join(base, ".undone"))
       emit(%{kind: "body.redone", history: id, tags: []})
+      Autopoet.History.record_redo(id)
       Autopoet.Log.puts("body: redone #{id} — re-applied the write")
       :ok
     end
