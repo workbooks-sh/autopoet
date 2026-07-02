@@ -285,7 +285,10 @@ defmodule Autopoet.Control do
             files =
               Enum.map_join(Autopoet.Proposals.changes(id), "", fn {rel, src} ->
                 "<h4>#{esc(rel)}</h4><pre class=\"chg\">#{esc(src)}</pre>"
-              end)
+              end) <>
+                Enum.map_join(Autopoet.Proposals.appends(id), "", fn {rel, src} ->
+                  "<h4>append → #{esc(rel)}</h4><pre class=\"chg\">#{esc(src)}</pre>"
+                end)
 
             """
             <div class="card">

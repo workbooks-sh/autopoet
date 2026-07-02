@@ -45,9 +45,10 @@ defmodule Autopoet.Brain do
         {plan, pages} = plan_with_disclosure(complete, item, ctx)
 
         with {:ok, text} <- complete.(:draft, draft_prompt(item, ctx, plan, pages)),
-             changes when map_size(changes) > 0 <- parse_files(text) do
-          Autopoet.Proposals.record(item, changes)
-          {:ok, changes}
+             {writes, appends} <- parse_files(text),
+             true <- map_size(writes) + map_size(appends) > 0 do
+          Autopoet.Proposals.record(item, writes, appends)
+          {:ok, Map.merge(writes, appends)}
         else
           other ->
             Autopoet.Log.puts("brain: no usable change for #{item[:target]} (#{inspect(other)})")
@@ -256,20 +257,31 @@ defmodule Autopoet.Brain do
 
     #{plan}
 
-    Produce the change. Reply ONLY with one or more complete file blocks:
+    Produce the change. Reply ONLY with file blocks, choosing the right mode:
 
     === file: <relative-path.work> ===
-    <the COMPLETE new content of that file>
+    <the COMPLETE new content — only for NEW files or full rewrites>
 
-    Rules: minimal change; keep existing content unless the plan says otherwise;
+    === append: <relative-path.work> ===
+    <ONLY the new lines to add at the end of the existing file>
+
+    Rules: to ADD to an existing file, ALWAYS use `append:` — never reproduce or
+    placeholder existing content (placeholders destroy files). Minimal change;
     no commentary outside the blocks.
     """
   end
 
   @doc false
   def parse_files(text) do
-    ~r/^=== file: (.+?) ===\n(.*?)(?=^=== file: |\z)/ms
-    |> Regex.scan(text)
-    |> Map.new(fn [_, path, body] -> {String.trim(path), String.trim_trailing(body) <> "\n"} end)
+    blocks =
+      ~r/^=== (file|append): (.+?) ===\n(.*?)(?=^=== (?:file|append): |\z)/ms
+      |> Regex.scan(text)
+      |> Enum.map(fn [_, mode, path, body] ->
+        {mode, String.trim(path), String.trim_trailing(body) <> "\n"}
+      end)
+
+    writes = for {"file", p, b} <- blocks, into: %{}, do: {p, b}
+    appends = for {"append", p, b} <- blocks, into: %{}, do: {p, b}
+    {writes, appends}
   end
 end

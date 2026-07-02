@@ -10,9 +10,15 @@ defmodule Autopoet.Proposals do
 
   def dir, do: Path.join([Autopoet.Discovery.home(), "data", "proposals"])
 
-  @doc "Record a proposal. Returns its id. Change paths are sanitized (no traversal) BEFORE anything is written — an unsafe set leaves no zombie proposal behind."
-  def record(item, changes) when is_map(changes) do
+  @doc """
+  Record a proposal. Returns its id. `changes` are whole-file writes; `appends` are
+  bodies added to a file's END at accept time (the safe mode — the drafter never
+  has to reproduce existing content, so placeholder-stub clobbering is impossible).
+  All paths sanitized BEFORE anything is written — an unsafe set leaves no zombie.
+  """
+  def record(item, changes, appends \\ %{}) when is_map(changes) and is_map(appends) do
     for {rel, _} <- changes, do: sanitize!(rel)
+    for {rel, _} <- appends, do: sanitize!(rel)
 
     id = "p#{System.os_time(:second)}-#{System.unique_integer([:positive])}"
     base = Path.join(dir(), id)
@@ -20,15 +26,15 @@ defmodule Autopoet.Proposals do
     File.write!(Path.join(base, "item.txt"), inspect(item, pretty: true) <> "\n")
     File.write!(Path.join(base, "status"), "pending\n")
 
-    for {rel, src} <- changes do
-      rel = sanitize!(rel)
-      target = Path.join([base, "changes", rel])
+    for {kind, map} <- [{"changes", changes}, {"appends", appends}], {rel, src} <- map do
+      target = Path.join([base, kind, sanitize!(rel)])
       File.mkdir_p!(Path.dirname(target))
       File.write!(target, src)
     end
 
+    n = map_size(changes) + map_size(appends)
     Nexus.Events.emit(%{kind: "proposal.recorded", proposal: id, target: item[:target], tags: []})
-    Autopoet.Log.puts("PROPOSAL #{id} recorded for #{item[:target]} (#{map_size(changes)} file(s)) — autopoetctl accept #{id}")
+    Autopoet.Log.puts("PROPOSAL #{id} recorded for #{item[:target]} (#{n} file(s)) — autopoetctl accept #{id}")
     id
   end
 
@@ -38,8 +44,11 @@ defmodule Autopoet.Proposals do
     end
   end
 
-  def changes(id) do
-    base = Path.join([dir(), sanitize!(id), "changes"])
+  def changes(id), do: read_set(id, "changes")
+  def appends(id), do: read_set(id, "appends")
+
+  defp read_set(id, kind) do
+    base = Path.join([dir(), sanitize!(id), kind])
 
     for f <- Path.wildcard(Path.join(base, "**/*")), File.regular?(f), into: %{} do
       {Path.relative_to(f, base), File.read!(f)}
@@ -53,7 +62,7 @@ defmodule Autopoet.Proposals do
   """
   def accept(id, root) do
     with "pending" <- status(id),
-         changes = changes(id),
+         changes = compose(id, root),
          %{verdict: :pass} = verdict <- Nexus.Autopoet.Eval.validate(root, changes) do
       base = Path.join(dir(), sanitize!(id))
 
@@ -130,6 +139,23 @@ defmodule Autopoet.Proposals do
     else
       other -> {:error, other}
     end
+  end
+
+  # Appends resolve against the CURRENT file at accept time (the gate validates the
+  # composed result), so a drift between record and accept can never lose content.
+  defp compose(id, root) do
+    appended =
+      Map.new(appends(id), fn {rel, body} ->
+        existing =
+          case File.read(Path.join(root, sanitize!(rel))) do
+            {:ok, s} -> if String.ends_with?(s, "\n"), do: s, else: s <> "\n"
+            _ -> ""
+          end
+
+        {rel, existing <> body}
+      end)
+
+    Map.merge(changes(id), appended)
   end
 
   def status(id), do: [dir(), sanitize!(id), "status"] |> Path.join() |> File.read!() |> String.trim()
