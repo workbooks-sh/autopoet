@@ -1,17 +1,16 @@
 defmodule Autopoet.AvatarTest do
   use ExUnit.Case
 
-  test "composition is deterministic per seed, layered, and eyes are fixed/blinkable" do
-    a = Autopoet.Avatar.svg("autopoet-1")
-    assert a == Autopoet.Avatar.svg("autopoet-1")
-    refute a == Autopoet.Avatar.svg("someone-else")
-
-    # animatable layers present
+  test "the face is minimal (eyes + mouth only) — no skin/hair/ears/background" do
+    a = Autopoet.Avatar.svg()
     assert a =~ ~s(id="ap-eyes")
     assert a =~ ~s(id="ap-mouth")
-    # color tokens fully resolved (no leftover placeholders)
+    assert a =~ ~s(id="ap-face")
+    assert a =~ ~s(id="ap-eyes-px")          # parallax depth wrapper
+    # nothing colored/identity: no tokens, no background rect, no hair layer
     refute a =~ "SKINCOLOR"
     refute a =~ "HAIRCOLOR"
+    refute a =~ "<rect"
   end
 
   test "all 7 dylan moods are available as swappable mouths" do

@@ -122,6 +122,41 @@ function startFace() {
   })();
 }
 
+// Cursor parallax: the face turns to look at the pointer. Features translate
+// toward it in viewBox units (eyes deeper than the base → parallax), plus a hair
+// of skew so it reads as a 3D turn, not a slide. Installed ONCE; it looks up the
+// live face each frame (the graph redraws swap the avatar node) and no-ops when
+// the face isn't present. rAF-throttled; transforms only.
+let parallaxOn = false;
+function startParallax() {
+  if (parallaxOn) return; parallaxOn = true;
+  let tx = 0, ty = 0, want = { x: 0, y: 0 }, raf = null;
+
+  function onMove(e) {
+    const av = document.getElementById("ap-svg");
+    if (!av) return;
+    const r = av.getBoundingClientRect();
+    if (!r.width) return;
+    want = {
+      x: Math.max(-1, Math.min(1, (e.clientX - (r.left + r.width / 2)) / (r.width * 0.9))),
+      y: Math.max(-1, Math.min(1, (e.clientY - (r.top + r.height / 2)) / (r.height * 0.9)))
+    };
+    if (!raf) raf = requestAnimationFrame(apply);
+  }
+  function apply() {
+    raf = null;
+    const face = document.getElementById("ap-face"), eyesPx = document.getElementById("ap-eyes-px");
+    if (!face || !eyesPx) return;
+    tx += (want.x - tx) * 0.35; ty += (want.y - ty) * 0.35;   // ease toward target
+    const k = 2.6;
+    face.setAttribute("transform",
+      `translate(${(tx * k).toFixed(2)} ${(ty * k).toFixed(2)}) skewX(${(-tx * 2.2).toFixed(2)}) skewY(${(ty * 1.2).toFixed(2)})`);
+    eyesPx.setAttribute("transform", `translate(${(tx * 1.7).toFixed(2)} ${(ty * 1.7).toFixed(2)})`);
+    if (Math.abs(want.x - tx) > 0.005 || Math.abs(want.y - ty) > 0.005) raf = requestAnimationFrame(apply);
+  }
+  addEventListener("mousemove", onMove, { passive: true });
+}
+
 let sim;
 async function draw() {
   const W = innerWidth, H = innerHeight;
@@ -176,9 +211,11 @@ async function draw() {
     const av = document.importNode(doc.documentElement, true);
     av.setAttribute("x", -S/2); av.setAttribute("y", -S/2);
     av.setAttribute("width", S); av.setAttribute("height", S);
+    av.id = "ap-svg";
     const holder = selfG.append("g").attr("clip-path", "url(#sq)").node();
     holder.appendChild(av);
     startFace();
+    startParallax();
   });
 
   node.append("text").attr("class", "lbl").attr("text-anchor", "middle")

@@ -16,35 +16,25 @@ defmodule Autopoet.Avatar do
   """
 
   @moods ~w(neutral happy superHappy sad angry hopeful confused)
-  @skins ~w(ffd6c0 c26450)
-  @hairs ~w(000000 ff543d fff500 1d5dff ffffff)
-  @backgrounds ~w(ffa6e6 619eff 29e051 ffd34e a78bfa 5ed3d0)
 
   def default_seed, do: System.get_env("AUTOPOET_SEED") || "autopoet-1"
 
-  @doc "Layered, animatable avatar SVG for `seed` at `size` px (default mouth: neutral)."
-  def svg(seed \\ default_seed(), size \\ 280) do
-    skin = pick(seed, "skin", @skins)
-    hair_c = pick(seed, "hair", @hairs)
-
-    beard =
-      if :erlang.phash2({seed, "beard?"}, 100) < 55 do
-        colorize(part("facialHair", pick(seed, "beard", variants("facialHair"))), hair_c)
-      else
-        ""
-      end
-
-    hair = colorize(part("hair", pick(seed, "hairstyle", variants("hair"))), hair_c)
-    bg = pick(seed, "bg", @backgrounds)
-
+  @doc """
+  The face — deliberately MINIMAL: just the eyes and mouth as line art on a
+  transparent ground (the white squircle shows through). No skin/hair/ears/beard/
+  background — this is the nexus's single brand face, not a random identity.
+  Nested groups let the page blink the eyes, swap the mouth, and parallax the whole
+  face toward the cursor (`#ap-face` base shift, `#ap-eyes-px` extra eye depth).
+  """
+  def svg(_seed \\ default_seed(), size \\ 280) do
     """
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" width="#{size}" height="#{size}" fill="none" shape-rendering="auto" preserveAspectRatio="xMidYMid meet">
-    <rect width="80" height="80" fill="##{bg}"/>
-    #{colorize(File.read!(base_path("base")), nil, skin)}
-    <g id="ap-eyes" style="transform-box:fill-box;transform-origin:center;transition:transform .09s ease">#{File.read!(base_path("eyes"))}</g>
-    #{beard}
-    <g id="ap-mouth">#{part("mood", "neutral")}</g>
-    #{hair}
+    <g id="ap-face" style="transition:transform .12s ease-out">
+      <g id="ap-eyes-px" style="transition:transform .12s ease-out">
+        <g id="ap-eyes" style="transform-box:fill-box;transform-origin:center;transition:transform .09s ease">#{File.read!(base_path("eyes"))}</g>
+      </g>
+      <g id="ap-mouth">#{part("mood", "neutral")}</g>
+    </g>
     </svg>
     """
   end
@@ -57,23 +47,7 @@ defmodule Autopoet.Avatar do
 
   # ── parts ────────────────────────────────────────────────────────────────────
 
-  defp variants(group) do
-    [dir(), group, "*.svg"] |> Path.join() |> Path.wildcard()
-    |> Enum.map(&Path.basename(&1, ".svg")) |> Enum.sort()
-  end
-
   defp part(group, name), do: File.read!(Path.join([dir(), group, name <> ".svg"]))
   defp base_path(name), do: Path.join(dir(), name <> ".svg")
   defp dir, do: Path.join(:code.priv_dir(:autopoet), "avatar-dylan")
-
-  defp pick(_seed, _key, []), do: nil
-  defp pick(seed, key, list), do: Enum.at(list, :erlang.phash2({seed, key}, length(list)))
-
-  # replace the extractor's color tokens with real hex — tokens are bare (no #),
-  # so we add it here (the missing # was why hair/beard rendered invisible).
-  defp colorize(svg, hair_c, skin_c \\ nil) do
-    svg
-    |> then(&if(hair_c, do: String.replace(&1, "HAIRCOLOR", "#" <> hair_c), else: &1))
-    |> then(&if(skin_c, do: String.replace(&1, "SKINCOLOR", "#" <> skin_c), else: &1))
-  end
 end
