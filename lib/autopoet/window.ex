@@ -32,7 +32,7 @@ defmodule Autopoet.Window do
     view = attach_view(frame)
 
     :wxFrame.connect(frame, :close_window)
-    :wxTopLevelWindow.maximize(frame, true)
+    :wxTopLevelWindow.maximize(frame)
     :wxFrame.show(frame)
 
     {:ok, %{frame: frame, view: view}}
