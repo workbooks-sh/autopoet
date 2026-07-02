@@ -175,6 +175,51 @@ defmodule Autopoet.Control do
     authed!(conn, fn conn -> Autopoet.Auth.signout(); text(conn, "out\n") end)
   end
 
+  # ── AI clustering: the human describes a grouping; the model assigns graph nodes
+  # to named clusters. Line-based reply (= Name / one id per line), parsed here. ──
+  post "/graph/cluster" do
+    authed!(conn, fn conn ->
+      {:ok, body, conn} = read_body(conn, length: 200_000)
+      [prompt | lines] = String.split(body, "\n")
+      catalog = Enum.join(lines, "\n")
+
+      system = """
+      You group graph nodes into named clusters. The user gives a grouping request and a
+      node catalog (one per line: id ⇥ type ⇥ label). Reply ONLY with groups in this form:
+
+      = Group Name
+      node-id
+      node-id
+
+      Every group needs at least one node id copied EXACTLY from the catalog. Nodes that
+      don't fit any group are simply omitted. No prose, no explanations.
+      """
+
+      case Autopoet.Chat.oneshot(system, "REQUEST: #{prompt}\n\nCATALOG:\n#{catalog}") do
+        {:ok, text} ->
+          groups =
+            text
+            |> String.split("\n")
+            |> Enum.map(&String.trim/1)
+            |> Enum.reduce([], fn
+              "= " <> name, acc -> [%{name: String.trim(name), members: []} | acc]
+              "", acc -> acc
+              id, [g | rest] -> [%{g | members: [id | g.members]} | rest]
+              _, [] -> []
+            end)
+            |> Enum.reverse()
+            |> Enum.map(fn g -> %{g | members: Enum.reverse(g.members)} end)
+            |> Enum.reject(fn g -> g.members == [] end)
+
+          conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(%{clusters: groups}))
+
+        {:error, reason} ->
+          conn |> put_resp_content_type("application/json")
+               |> send_resp(200, Jason.encode!(%{error: inspect(reason)}))
+      end
+    end)
+  end
+
   # ── the version-control timeline (jj repo at data/history) — the console's
   # history manager reads the REAL commit DAG from here ───────────────────────
   get "/history/log.json" do

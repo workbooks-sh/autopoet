@@ -28,3 +28,4 @@ autopoet-*.tar
 /compilers
 /kits
 .claude/worktrees/
+history/

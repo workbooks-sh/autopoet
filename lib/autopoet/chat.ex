@@ -123,6 +123,11 @@ defmodule Autopoet.Chat do
     end)
   end
 
+  @doc "One-shot completion outside any chat session (graph clustering, quick asks)."
+  def oneshot(system, user) do
+    complete([%{role: "system", content: system}, %{role: "user", content: user}])
+  end
+
   defp complete(messages) do
     result =
       cond do

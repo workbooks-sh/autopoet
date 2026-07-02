@@ -675,6 +675,76 @@
   #filterpop .flt-all { font:inherit; font-size:12px; color:#67707c; border:none; background:none; cursor:pointer; padding:6px 9px; border-radius:8px; width:100%; text-align:left; }
   #filterpop .flt-all:hover { background:#f2f4f7; color:#223; }
   #filterpop .flt-note { font:10.5px ui-monospace,monospace; color:#c7ccd4; padding:4px 9px 3px; }
+  #filterpop .flt-ic { border:none; background:none; color:#b3bac4; cursor:pointer; padding:2px;
+    border-radius:5px; display:flex; align-items:center; }
+  #filterpop .flt-ic:hover { background:#e8e8e2; color:#3a4250; }
+  #filterpop .flt-ic svg.lucide { width:12px; height:12px; }
+  #filterpop .flt-cl .flt-l { cursor:pointer; }
+  /* the tool row: icon squircles — click to arm a tool / open its composer */
+  #filterpop .flt-tools { display:flex; gap:6px; padding:2px 9px 7px; }
+  #filterpop .flt-tool { width:32px; height:32px; display:flex; align-items:center; justify-content:center;
+    border:1px solid var(--line); background:#fff; color:#67707c; border-radius:9px; cursor:pointer;
+    transition:background .15s ease, color .15s ease, border-color .15s ease; }
+  #filterpop .flt-tool:hover { background:#eef1f8; color:#223; border-color:#c7d0e0; }
+  #filterpop .flt-tool.sel { border-color:#5b8cc9; background:#f2f6fb; color:#2f6fdd; }
+  #filterpop .flt-tool svg.lucide { width:15px; height:15px; }
+  /* the ask composer: a proper multi-line prompt box */
+  #filterpop .flt-composer { padding:2px 9px 7px; }
+  #filterpop .flt-composer textarea { width:100%; box-sizing:border-box;
+    resize:vertical; min-height:58px; max-height:260px;
+    font:11.5px ui-monospace,monospace; line-height:1.5; color:#3a4250;
+    border:1px solid var(--line); border-radius:9px; padding:8px 10px; outline:none; }
+  #filterpop .flt-composer textarea:focus { border-color:#5b8cc9; }
+  #filterpop .flt-compbar { display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-top:5px; }
+  #filterpop .flt-compbar .hint { font:10px ui-monospace,monospace; color:#c7ccd4; }
+  #filterpop .flt-compbar button { display:flex; align-items:center; gap:6px; font:inherit; font-size:11.5px;
+    background:#2f6fdd; border:1px solid #2f6fdd; color:#fff; border-radius:8px; padding:5px 12px; cursor:pointer; }
+  #filterpop .flt-compbar button:hover { background:#245cc0; }
+  #filterpop .flt-compbar svg.lucide { width:12px; height:12px; }
+  /* collapsible filter section header */
+  #filterpop .flt-collhead { display:flex; align-items:center; gap:6px; width:100%; text-align:left;
+    font:inherit; font-size:11px; letter-spacing:.05em; text-transform:uppercase; color:#98a0ac;
+    border:none; background:none; cursor:pointer; padding:6px 9px 4px; border-radius:8px; }
+  #filterpop .flt-collhead:hover { color:#3a4250; }
+  #filterpop .flt-collhead svg.lucide { width:12px; height:12px; }
+  /* on-canvas cluster dressing */
+  .cl-lbl { font:600 12px ui-monospace,monospace; letter-spacing:.04em; pointer-events:all; }
+  .cl-count { font:700 13px ui-monospace,monospace; fill:#fff; pointer-events:none; }
+  .cl-badge-t { font:600 12px ui-monospace,monospace; letter-spacing:.02em; }
+  .cl-pin { fill:#fff; stroke-width:2; cursor:grab; }
+  .cl-pin:hover { r:6; }
+  .lasso { fill:rgba(91,140,201,.07); stroke:#5b8cc9; stroke-width:1.5;
+    stroke-dasharray:6 5; pointer-events:none; }
+  /* lassoed nodes: a dotted highlight ring */
+  g.selnode > circle, g.selnode > rect { stroke:#2f6fdd; stroke-dasharray:5 4; stroke-width:2.5; }
+  /* floating selection toolbar (appears while something is selected) */
+  #seltool { position:fixed; z-index:30; transform:translateX(-50%); display:none;
+    align-items:center; gap:9px; background:#fff; border:1px solid var(--line); border-radius:999px;
+    padding:7px 8px 7px 14px; box-shadow:0 10px 30px rgba(25,35,55,.16); }
+  #seltool.on { display:flex; }
+  #seltool .selcount { font:600 11.5px ui-monospace,monospace; color:#5a6472; }
+  #seltool button { display:flex; align-items:center; gap:6px; font:inherit; font-size:12px;
+    border:1px solid var(--line); background:#fff; color:#67707c; border-radius:999px;
+    padding:5px 12px; cursor:pointer; }
+  #seltool button:hover { background:#eef1f8; color:#223; }
+  #seltool #sel-group { background:#2f6fdd; border-color:#2f6fdd; color:#fff; }
+  #seltool #sel-group:hover { background:#245cc0; }
+  #seltool svg.lucide { width:13px; height:13px; }
+  /* colour palette (new-cluster modal + cluster panel) */
+  .clpal { display:flex; gap:7px; margin:11px 2px; }
+  .clpal .swb { width:20px; height:20px; border-radius:50%; border:2px solid transparent;
+    cursor:pointer; padding:0; box-shadow:0 0 0 1.5px #fff inset; }
+  .clpal .swb.sel { border-color:#1c2230; }
+  /* cluster panel fields */
+  #panel .clrow { margin:7px 0; }
+  #panel .clrow input, #panel .clrow textarea { width:100%; box-sizing:border-box; font:12px ui-monospace,monospace;
+    border:1px solid var(--line); border-radius:8px; padding:6px 9px; outline:none; resize:vertical; }
+  #panel .clrow input:focus, #panel .clrow textarea:focus { border-color:#5b8cc9; }
+  #panel .clacts { display:flex; gap:6px; margin-top:4px; }
+  #panel .clacts button { font:inherit; font-size:11.5px; padding:5px 12px; border-radius:8px;
+    border:1px solid var(--line); background:#fff; color:#67707c; cursor:pointer; }
+  #panel .clacts button:hover { color:#223; background:#f2f4f7; }
+  #panel .clacts .no:hover { background:#fdecea; color:#c0392b; }
 
   /* ── onboarding / sign-in (a pre-app screen; plain white, centered) ── */
   #onboard { position:fixed; inset:0; z-index:60; background:#fff; display:flex;
@@ -816,14 +886,18 @@
       <button class="end" id="callend" title="end voice"><i data-lucide="phone-off"></i></button>
     </div>
     <div id="canvasbar">
-      <div class="cb" id="cb-layout"><i data-lucide="layout-grid"></i><span class="tip">layout · force ⇄ grid</span></div>
       <div class="cb" id="cb-search"><i data-lucide="search"></i><input id="searchin"
         placeholder="search the world…" spellcheck="false"><span class="tip">search the world</span></div>
-      <div class="cb" id="cb-filter"><i data-lucide="sliders-horizontal"></i><span class="tip">filter · views</span></div>
+      <div class="cb" id="cb-filter"><i data-lucide="drafting-compass"></i><span class="tip">graph tools</span></div>
       <div class="cb" id="cb-bell"><i data-lucide="bell"></i><span class="bdg" id="bellbdg" style="display:none"></span><span class="tip">notifications</span></div>
     </div>
     <div id="searchpop"><div class="res" id="searchres"></div></div>
     <div id="filterpop"></div>
+    <div id="seltool">
+      <span class="selcount"></span>
+      <button id="sel-group"><i data-lucide="group"></i>group</button>
+      <button id="sel-clear">clear</button>
+    </div>
     <div id="notif">
       <div class="nh">NOTIFICATIONS</div>
       <div class="body" id="notifbody"></div>
@@ -1686,29 +1760,128 @@ sktext.addEventListener("blur", () => sktext.style.display = "none");
 // ══ THE WORLD (graph) ═══════════════════════════════════════════════════
 const COLORS = {
   self: "#223", doc: "#4a90d9", guide: "#8e7cc3", limb: "#e07a5f", request: "#d96ba0",
-  library: "#2aa198",
+  library: "#2aa198", cluster: "#5a6472",
   proposal: { pending:"#f2c14e", accepted:"#6aa84f", rejected:"#cc4125",
               "rejected-by-gate":"#a61c00", reverted:"#999" }
 };
-const color = n => n.type === "proposal" ? (COLORS.proposal[n.status] || "#f2c14e") : (COLORS[n.type] || "#888");
-const radius = n => n.type === "self" ? 46 : (n.type === "doc" ? 16 : n.type === "library" ? 18 : 13);
+const color = n => n.type === "cluster" ? ((clusterById(n.clusterId) || {}).color || COLORS.cluster)
+  : n.type === "proposal" ? (COLORS.proposal[n.status] || "#f2c14e") : (COLORS[n.type] || "#888");
+const radius = n => n.type === "self" ? 46 : (n.type === "doc" ? 16 : n.type === "library" || n.type === "cluster" ? 18 : 13);
 
 const svg = d3.select("#graph"), g = svg.append("g");
-const zoomB = d3.zoom().scaleExtent([0.25, 3]).on("zoom", e => g.attr("transform", e.transform));
+const zoomB = d3.zoom().scaleExtent([0.25, 3])
+  .on("zoom", e => { g.attr("transform", e.transform); persistZoom(e.transform); });
 svg.call(zoomB);
+// the camera survives reload
+let zoomSaveT = null;
+function persistZoom(t) {
+  clearTimeout(zoomSaveT);
+  zoomSaveT = setTimeout(() =>
+    localStorage.setItem("ap-zoom", JSON.stringify({ x: t.x, y: t.y, k: t.k })), 300);
+}
+function restoreZoom() {
+  try {
+    const z = JSON.parse(localStorage.getItem("ap-zoom"));
+    if (z) { svg.call(zoomB.transform, d3.zoomIdentity.translate(z.x, z.y).scale(z.k)); return true; }
+  } catch (_) {}
+  return false;
+}
 let worldData = { nodes: [], links: [] };
 let nodeSel = null, linkSel = null;
 
-// ── grid layout mode (square nodes snapped to the paper grid, 90° edges) ──
-const CELL = 48;                        // one "plot point" — aligns to the 24px paper grid
-let layoutMode = localStorage.getItem("ap-layout") || "force";
-let gridPos = {};                       // persisted { nodeId: {c,r} } cell assignments
-try { gridPos = JSON.parse(localStorage.getItem("ap-gridpos") || "{}"); } catch (_) {}
-let gridCentered = false;
-// node footprint in plot-points → pixel side (with padding that grows gently with size)
-const gridSpan = t => t === "self" ? 2.4 : t === "library" ? 1.8 : 1;
-const nodePx = t => Math.round(gridSpan(t) * CELL - (gridSpan(t) > 1 ? 11 : 8));
-const orthPath = (sx, sy, tx, ty) => `M ${sx} ${sy} L ${tx} ${sy} L ${tx} ${ty}`;   // single 90° corner
+// (the grid layout experiment was retired — force + clusters won)
+["ap-layout", "ap-gridpos", "ap-zoom-grid", "ap-zoom-force"].forEach(k => localStorage.removeItem(k));
+
+// ── clusters: named groups laid OVER the graph (view-state, never the filesystem).
+// A cluster is manual (lasso/AI → explicit members) or a LIVE RULE (type:/text match,
+// membership recomputed each draw). Collapsible into one compact node (the "pinch").
+let clusters = [];
+try { clusters = JSON.parse(localStorage.getItem("ap-clusters") || "[]"); } catch (_) {}
+// the arrangement is YOURS: node positions persist across reload/restart
+let forcePos = {};
+try { forcePos = JSON.parse(localStorage.getItem("ap-forcepos") || "{}"); } catch (_) {}
+function persistForcePos() {
+  for (const n of (worldData.nodes || [])) if (n.x != null)
+    forcePos[n.id] = { x: +n.x.toFixed(1), y: +n.y.toFixed(1) };
+  localStorage.setItem("ap-forcepos", JSON.stringify(forcePos));
+}
+// a cluster remembers its internal SHAPE (each member's offset from the centroid);
+// the layout springs members back to that arrangement instead of a shapeless blob
+function captureClusterShapes() {
+  let changed = false;
+  for (const c of clusters) {
+    if (c.collapsed) continue;
+    const ms = clusterMembers(c, worldData.nodes)
+      .map(id => worldData.nodes.find(n => n.id === id)).filter(n => n && n.x != null);
+    if (ms.length < 2) continue;
+    const cx = d3.mean(ms, n => n.x), cy = d3.mean(ms, n => n.y);
+    c.shape = {};
+    for (const n of ms) c.shape[n.id] = { x: +(n.x - cx).toFixed(1), y: +(n.y - cy).toFixed(1) };
+    changed = true;
+  }
+  if (changed) saveClusters();
+}
+const saveClusters = () => localStorage.setItem("ap-clusters", JSON.stringify(clusters));
+const CLPAL = ["#8e7cc3", "#6aa84f", "#e07a5f", "#4a90d9", "#d96ba0", "#2aa198", "#c9a04e"];
+function addCluster(c) {
+  c.id = c.id || "cl" + Date.now().toString(36) + Math.floor(Math.random() * 1e4);
+  c.color = c.color || CLPAL[clusters.length % CLPAL.length];
+  clusters.push(c); clusterChanged();
+  return c;
+}
+const clusterById = id => clusters.find(c => c.id === id);
+function removeCluster(id) {
+  const c = clusterById(id);
+  clusters = clusters.filter(x => x.id !== id);
+  saveClusters();
+  if (c && c.collapsed) draw(); else clusterChanged();   // expanded: hull just melts away
+}
+// membership/name changes adjust the LIVE layout in place — never a full reset.
+// (Only collapse/expand changes the node set and needs a real redraw.)
+function clusterChanged() {
+  saveClusters();
+  if (!sim) return draw();
+  const clustered = new Set();
+  for (const c of clusters) if (!c.collapsed)
+    for (const id of clusterMembers(c, worldData.nodes)) clustered.add(id);
+  sim.force("collide", d3.forceCollide(d => radius(d) + (clustered.has(d.id) ? 36 : 14)));
+  sim.alpha(0.3).restart();   // members drift in, hulls re-shape — nothing resets
+}
+// membership: explicit ids, or a live rule over the current nodes (self never joins)
+function clusterMembers(c, nodes) {
+  let ids;
+  if (c.rule && c.rule.kind === "type") ids = nodes.filter(n => n.type === c.rule.value).map(n => n.id);
+  else if (c.rule && c.rule.kind === "match") {
+    const q = c.rule.value.toLowerCase();
+    ids = nodes.filter(n => (n.label + " " + (n.detail || "") + " " + n.type).toLowerCase().includes(q)).map(n => n.id);
+  } else ids = (c.members || []).filter(id => nodes.some(n => n.id === id));
+  return ids.filter(id => id !== "self" && !id.startsWith("cluster:"));
+}
+// collapse pass (pre-layout): a collapsed cluster's members become ONE compact node;
+// their links re-route to it, internal links vanish, duplicates dedupe.
+function applyClusterTransform(data) {
+  const owner = {};
+  for (const c of clusters) if (c.collapsed)
+    for (const id of clusterMembers(c, data.nodes)) if (!owner[id]) owner[id] = c;
+  if (!Object.keys(owner).length) return data;
+  const nodes = data.nodes.filter(n => !owner[n.id]);
+  for (const c of clusters) if (c.collapsed) {
+    const count = Object.values(owner).filter(x => x === c).length;
+    if (count) nodes.push({ id: "cluster:" + c.id, type: "cluster", label: c.name, count,
+      clusterId: c.id, detail: `cluster · ${count} nodes collapsed\n${c.note || ""}` });
+  }
+  const seen = new Set(), links = [];
+  for (const l of data.links) {
+    const sid = l.source.id !== undefined ? l.source.id : l.source;
+    const tid = l.target.id !== undefined ? l.target.id : l.target;
+    const s = owner[sid] ? "cluster:" + owner[sid].id : sid;
+    const t = owner[tid] ? "cluster:" + owner[tid].id : tid;
+    if (s === t) continue;
+    const k = s + "→" + t + "·" + l.kind;
+    if (!seen.has(k)) { seen.add(k); links.push({ source: s, target: t, kind: l.kind }); }
+  }
+  return { nodes, links };
+}
 
 // infinite Figma-style sheet: the paper is geometry in world space
 const defs = svg.append("defs");
@@ -1792,7 +1965,6 @@ async function createFace(mount, opts = {}) {
 
 let sim;
 async function draw() {
-  if (layoutMode === "grid") return drawGrid();
   const stage = document.getElementById("stage");
   const W = stage.clientWidth, H = stage.clientHeight;
   svg.attr("width", W).attr("height", H);
@@ -1800,17 +1972,99 @@ async function draw() {
   try { data = await (await fetch("/graph.json")).json(); }
   catch (err) { return fatal("graph.json fetch failed: " + err); }
   if (!data.nodes || !data.nodes.length) return fatal("graph.json returned no nodes");
+  data = applyClusterTransform(data);
   worldData = data;
   renderNotifications();
   g.selectAll("*").remove();
   paper(g);
+  const hullLayer = g.append("g");   // cluster hulls sit under links + nodes
+  const byId = new Map(data.nodes.map(n => [n.id, n]));
+  // clustered nodes get extra elbow room so their labels never collide inside the hull
+  const clustered = new Set();
+  for (const c of clusters) if (!c.collapsed)
+    for (const id of clusterMembers(c, data.nodes)) clustered.add(id);
+
+  // restore the human's saved arrangement; brand-new nodes start near the centre
+  let restored = 0;
+  for (const n of data.nodes) {
+    const p = forcePos[n.id];
+    if (p) { n.x = p.x; n.y = p.y; restored++; }
+    else if (n.id !== "self") { n.x = W / 2 + (Math.random() - .5) * 220; n.y = H / 2 + (Math.random() - .5) * 220; }
+  }
 
   sim = d3.forceSimulation(data.nodes)
     .force("link", d3.forceLink(data.links).id(d => d.id)
       .distance(l => l.kind === "ref" ? 90 : 150).strength(l => l.kind === "ref" ? 0.5 : 0.06))
     .force("charge", d3.forceManyBody().strength(-320))
     .force("center", d3.forceCenter(W / 2, H / 2))
-    .force("collide", d3.forceCollide(d => radius(d) + 14));
+    .force("collide", d3.forceCollide(d => radius(d) + (clustered.has(d.id) ? 36 : 14)))
+    // the membrane is a HARD WALL for outsiders: any non-member that drifts inside a
+    // hull is shoved back out (actively-dragged nodes — fx pinned — pass through)
+    .force("membrane", alpha => {
+      for (const c of clusters) {
+        if (c.collapsed) continue;
+        const mset = new Set(clusterMembers(c, data.nodes));
+        const mpts = [...mset].map(id => byId.get(id)).filter(n => n && n.x != null).map(n => [n.x, n.y]);
+        if (!mpts.length) continue;
+        const poly = hullOffsetPts(withPins(c, mpts), 52);
+        const [cx, cy] = memberCentroid(mpts);
+        for (const n of data.nodes) {
+          if (n.fx != null || n.x == null || mset.has(n.id)) continue;
+          if (!inPoly([n.x, n.y], poly)) continue;
+          const dx = n.x - cx, dy = n.y - cy, L = Math.hypot(dx, dy) || 1;
+          n.vx += dx / L * (12 * alpha + 0.5);   // strong outward shove…
+          n.x += dx / L * 2.4; n.y += dy / L * 2.4;   // …plus direct correction: a wall, not a spring
+        }
+      }
+    })
+    // cluster members spring back to their REMEMBERED arrangement (centroid + each
+    // member's stored offset) — the group translates freely but keeps its shape
+    .force("cluster", alpha => {
+      for (const c of clusters) {
+        if (c.collapsed) continue;
+        const ms = clusterMembers(c, data.nodes).map(id => byId.get(id)).filter(n => n && n.x != null);
+        if (ms.length < 2) continue;
+        const cx = d3.mean(ms, n => n.x), cy = d3.mean(ms, n => n.y);
+        for (const n of ms) {
+          const rel = c.shape && c.shape[n.id];
+          const tx = rel ? cx + rel.x : cx, ty = rel ? cy + rel.y : cy;
+          const k = rel ? 0.3 : 0.16;
+          n.vx += (tx - n.x) * alpha * k; n.vy += (ty - n.y) * alpha * k;
+        }
+      }
+    });
+  // a mostly-remembered layout settles in place instead of re-exploding
+  if (restored >= data.nodes.length - 2) sim.alpha(0.08);
+  sim.on("end.persist", () => { persistForcePos(); captureClusterShapes(); });
+
+  function drawHulls() {
+    hullLayer.selectAll("*").remove();
+    for (const c of clusters) {
+      if (c.collapsed) continue;
+      const mpts = clusterMembers(c, data.nodes).map(id => byId.get(id))
+        .filter(n => n && n.x != null).map(n => [n.x, n.y]);
+      if (!mpts.length) continue;
+      const pts = withPins(c, mpts);
+      const gp = hullLayer.append("g").style("cursor", "pointer")
+        .on("click", e => hullClick(e, c, pts))
+        .on("contextmenu", e => { e.preventDefault(); clusterCtx(e, c); });
+      gp.append("path").attr("d", hullPath(pts, 44))
+        .attr("fill", c.color).attr("fill-opacity", .065)
+        .attr("stroke", c.color).attr("stroke-opacity", .3)
+        .attr("stroke-width", 1.4).attr("stroke-linejoin", "round");
+      // shape pins: small handles on the membrane — drag to sculpt, right-click to remove
+      const [ccx, ccy] = memberCentroid(mpts);
+      (c.pins || []).forEach((pin, i) => {
+        gp.append("circle").attr("cx", ccx + pin.dx).attr("cy", ccy + pin.dy).attr("r", 4.5)
+          .attr("class", "cl-pin").attr("stroke", c.color)
+          .on("mousedown", e => beginPinDrag(e, c, i))
+          .on("contextmenu", e => { e.preventDefault(); e.stopPropagation();
+            c.pins.splice(i, 1); clusterChanged(); });
+      });
+      const top = pts.reduce((a, p) => p[1] < a[1] ? p : a, pts[0]);
+      drawClusterBadge(gp, c, top[0], top[1] - 78);
+    }
+  }
 
   const self = data.nodes.find(n => n.id === "self");
   self.fx = W / 2; self.fy = H / 2;
@@ -1822,14 +2076,30 @@ async function draw() {
   const node = nodeSel = g.append("g").selectAll("g").data(data.nodes).join("g")
     .style("cursor", "pointer")
     .call(d3.drag()
-      .on("start", (e, d) => { if (!e.active) sim.alphaTarget(0.25).restart(); d.fx = d.x; d.fy = d.y; })
-      .on("drag", (e, d) => { d.fx = e.x; d.fy = e.y; })
+      .on("start", (e, d) => { if (!e.active) sim.alphaTarget(0.25).restart();
+        d.fx = d.x; d.fy = d.y; d._dv = 0; d._dlast = [e.x, e.y, performance.now()];
+        d._justJoined = null; d._justLeft = null; })
+      .on("drag", (e, d) => {
+        d.fx = e.x; d.fy = e.y;
+        const now = performance.now(), [lx, ly, lt] = d._dlast || [e.x, e.y, now];
+        d._dv = 0.7 * (d._dv || 0) + 0.3 * (Math.hypot(e.x - lx, e.y - ly) / Math.max(1, now - lt));
+        d._dlast = [e.x, e.y, now];
+        maybeElasticExit(d);    // membrane break — LIVE, mid-drag
+        maybeJoinCluster(d);    // membrane entry — the moment the border is crossed
+      })
       .on("end", (e, d) => { if (!e.active) sim.alphaTarget(0);
-        if (d.id !== "self") { d.fx = null; d.fy = null; } }))
-    .on("click", (e, d) => showPanel(d))
+        if (d.id !== "self") { d.fx = null; d.fy = null; }
+        d._justJoined = null; d._justLeft = null;
+        captureClusterShapes(); persistForcePos(); }))
+    .on("click", (e, d) => d.type === "cluster" ? showClusterPanel(clusterById(d.clusterId)) : showPanel(d))
     .on("contextmenu", (e, d) => {
       e.preventDefault();
+      if (d.type === "cluster") return clusterCtx(e, clusterById(d.clusterId));
       const items = [{ icon: "info", label: "details", fn: () => showPanel(d) }];
+      for (const c of clusters)
+        if (!c.rule && !c.collapsed && (c.members || []).includes(d.id))
+          items.push({ icon: "ungroup", label: `remove from # ${c.name}`,
+            fn: () => { c.members = c.members.filter(i => i !== d.id); saveClusters(); draw(); } });
       if (d.type === "proposal" && d.status === "pending") {
         const id = d.id.slice(5);
         items.push("-",
@@ -1845,9 +2115,16 @@ async function draw() {
       showCtx(e.clientX, e.clientY, items);
     });
 
-  node.filter(d => d.id !== "self").append("circle")
+  node.filter(d => d.id !== "self" && d.type !== "cluster").append("circle")
     .attr("r", radius).attr("fill", d => color(d))
     .attr("fill-opacity", 0.85).attr("stroke", "#fff").attr("stroke-width", 2);
+
+  // a collapsed cluster = one compact squircle carrying its member count
+  const clG = node.filter(d => d.type === "cluster");
+  clG.append("rect").attr("x", -20).attr("y", -20).attr("width", 40).attr("height", 40).attr("rx", 12)
+    .attr("fill", d => color(d)).attr("fill-opacity", 0.9).attr("stroke", "#fff").attr("stroke-width", 2);
+  clG.append("text").attr("class", "cl-count").attr("text-anchor", "middle").attr("dy", 4)
+    .text(d => d.count);
 
   const selfG = node.filter(d => d.id === "self");
   const S = 96, R = 30;
@@ -1869,99 +2146,16 @@ async function draw() {
     link.attr("x1", l => l.source.x).attr("y1", l => l.source.y)
         .attr("x2", l => l.target.x).attr("y2", l => l.target.y);
     node.attr("transform", d => `translate(${d.x},${d.y})`);
+    drawHulls();
   });
+  drawHulls();   // paint immediately too (a fully-restored layout barely ticks)
 
-  applyFilter();   // re-apply any active type filter to the fresh selection
+  if (!forceZoomed) { restoreZoom(); forceZoomed = true; }
+  applyFilter();          // re-apply any active type filter to the fresh selection
+  updateSelectionUI();    // dotted highlights survive redraws
 }
+let forceZoomed = false;
 
-// ── grid layout: square nodes on the paper grid, orthogonal (90°) edges ──
-async function drawGrid() {
-  const stage = document.getElementById("stage");
-  const W = stage.clientWidth, H = stage.clientHeight;
-  svg.attr("width", W).attr("height", H);
-  let data;
-  try { data = await (await fetch("/graph.json")).json(); }
-  catch (err) { return fatal("graph.json fetch failed: " + err); }
-  if (!data.nodes || !data.nodes.length) return;
-  worldData = data;
-  renderNotifications();
-  g.selectAll("*").remove();
-  paper(g);
-
-  // assign each node a UNIQUE grid cell — persisted position wins, else a radial seed;
-  // collisions spiral out to the nearest free cell so nothing overlaps.
-  const used = new Set(), key = (c, r) => c + "," + r;
-  const claim = (c, r) => {
-    for (let ring = 0; ring < 300; ring++)
-      for (let dc = -ring; dc <= ring; dc++) for (let dr = -ring; dr <= ring; dr++) {
-        if (Math.max(Math.abs(dc), Math.abs(dr)) !== ring) continue;
-        const k = key(c + dc, r + dr);
-        if (!used.has(k)) { used.add(k); return { c: c + dc, r: r + dr }; }
-      }
-    used.add(key(c, r)); return { c, r };
-  };
-  const nodes = [...data.nodes].sort((a, b) => (b.id === "self") - (a.id === "self"));
-  const pos = {};
-  let seed = 0;
-  for (const n of nodes) {
-    let c, r;
-    if (gridPos[n.id]) ({ c, r } = gridPos[n.id]);
-    else if (n.id === "self") { c = 0; r = 0; }
-    else {
-      const a = seed * 2.399963, rad = 3 + Math.sqrt(seed) * 1.7;   // phyllotaxis seed → grid
-      c = Math.round(Math.cos(a) * rad); r = Math.round(Math.sin(a) * rad); seed++;
-    }
-    pos[n.id] = claim(c, r);
-  }
-  const sid = e => e && e.id !== undefined ? e.id : e;   // link ends may be strings or objects
-  const X = id => (pos[id] ? pos[id].c : 0) * CELL, Y = id => (pos[id] ? pos[id].r : 0) * CELL;
-
-  const links = g.append("g").selectAll("path").data(data.links).join("path")
-    .attr("fill", "none").attr("stroke", l => l.kind === "ref" ? "#b8c4d0" : "#d2d7dd")
-    .attr("stroke-width", l => l.kind === "ref" ? 1.6 : 1.2)
-    .attr("d", l => orthPath(X(sid(l.source)), Y(sid(l.source)), X(sid(l.target)), Y(sid(l.target))));
-  const reroute = () => links.attr("d", l => orthPath(X(sid(l.source)), Y(sid(l.source)), X(sid(l.target)), Y(sid(l.target))));
-
-  const node = nodeSel = g.append("g").selectAll("g").data(data.nodes).join("g")
-    .attr("transform", d => `translate(${X(d.id)},${Y(d.id)})`)
-    .style("cursor", "grab")
-    .on("click", (e, d) => showPanel(d))
-    .call(d3.drag()
-      .on("start", function () { d3.select(this).style("cursor", "grabbing"); })
-      .on("drag", function (e, d) {
-        pos[d.id] = { c: Math.round(e.x / CELL), r: Math.round(e.y / CELL) };
-        d3.select(this).attr("transform", `translate(${X(d.id)},${Y(d.id)})`);
-        reroute();
-      })
-      .on("end", function (e, d) {
-        d3.select(this).style("cursor", "grab");
-        gridPos[d.id] = pos[d.id];
-        localStorage.setItem("ap-gridpos", JSON.stringify(gridPos));
-      }));
-
-  // non-self: a squircle square, sized by type, inset with padding inside its cell
-  node.filter(d => d.id !== "self").append("rect")
-    .attr("width", d => nodePx(d.type)).attr("height", d => nodePx(d.type))
-    .attr("x", d => -nodePx(d.type) / 2).attr("y", d => -nodePx(d.type) / 2)
-    .attr("rx", d => nodePx(d.type) * 0.3)
-    .attr("fill", d => color(d)).attr("fill-opacity", 0.9).attr("stroke", "#fff").attr("stroke-width", 2);
-
-  // self: the face inside a squircle square
-  const selfG = node.filter(d => d.id === "self"), SS = nodePx("self");
-  selfG.append("clipPath").attr("id", "sqg")
-    .append("rect").attr("x", -SS / 2).attr("y", -SS / 2).attr("width", SS).attr("height", SS).attr("rx", SS * 0.3);
-  selfG.append("rect").attr("x", -SS / 2).attr("y", -SS / 2).attr("width", SS).attr("height", SS)
-    .attr("rx", SS * 0.3).attr("fill", "#fff").attr("stroke", "rgba(0,0,0,.12)");
-  const cg = selfG.append("g").attr("clip-path", "url(#sqg)").node();
-  createFace(cg, { idPrefix: "", svgAttrs: { x: -SS / 2, y: -SS / 2, width: SS, height: SS },
-                   hoverTarget: selfG.node(), clickTarget: selfG.node() });
-
-  node.append("text").attr("class", "lbl").attr("text-anchor", "middle")
-    .attr("dy", d => nodePx(d.type) / 2 + 14).text(d => d.label.length > 22 ? d.label.slice(0, 21) + "…" : d.label);
-
-  if (!gridCentered) { svg.call(zoomB.transform, d3.zoomIdentity.translate(W / 2, H / 2)); gridCentered = true; }
-  applyFilter();
-}
 
 // ── node details panel ────────────────────────────────────────────────────
 const panel = document.getElementById("panel");
@@ -2388,7 +2582,8 @@ document.getElementById("cb-bell").onclick = () => {
 function clearSearchDim() { g.selectAll("g > g").attr("opacity", 1); }
 
 // ── filter · views: show/hide node types on the canvas ──
-let activeTypes = null;   // null = all shown; else a Set of visible type keys
+// modeled as HIDDEN types so anything new (e.g. a first cluster) defaults visible
+let hiddenTypes = new Set();
 const typeSwatch = t => t === "proposal" ? COLORS.proposal.pending : (COLORS[t] || "#888");
 const typeLabel = t => t === "self" ? "autopoet" : t;
 function presentTypes() {
@@ -2398,40 +2593,441 @@ function presentTypes() {
 }
 function applyFilter() {
   if (!nodeSel) return;
-  const on = t => !activeTypes || activeTypes.has(t);
+  const on = t => !hiddenTypes.has(t);
+  const typeOf = e => {   // link ends: node objects (force) or raw ids (grid)
+    const id = e && e.id !== undefined ? e.id : e;
+    const n = (worldData.nodes || []).find(x => x.id === id);
+    return n ? n.type : null;
+  };
   nodeSel.attr("opacity", d => on(d.type) ? 1 : 0.05).style("pointer-events", d => on(d.type) ? "all" : "none");
-  if (linkSel) linkSel.attr("opacity", l => (on((l.source || {}).type) && on((l.target || {}).type)) ? 1 : 0.04);
+  if (linkSel) linkSel.attr("opacity", l => (on(typeOf(l.source)) && on(typeOf(l.target))) ? 1 : 0.04);
 }
 function closeFilterPop() { document.getElementById("filterpop").classList.remove("on"); }
+let fltShowOpen = false, fltAiOpen = false;
 function openFilterPop() {
   const p = document.getElementById("filterpop");
   if (p.classList.contains("on")) return closeFilterPop();
-  if (!activeTypes) activeTypes = new Set(presentTypes().map(([t]) => t));
-  p.innerHTML = `<div class="flt-title">show</div>${presentTypes().map(([t, n]) =>
-    `<label class="flt-row"><input type="checkbox" data-t="${t}" ${activeTypes.has(t) ? "checked" : ""}>
-       <span class="flt-sw" style="background:${typeSwatch(t)}"></span>
-       <span class="flt-l">${esc(typeLabel(t))}</span><span class="flt-n">${n}</span></label>`).join("")}
-    <div class="flt-sep"></div><button class="flt-all" id="flt-all">reset · show all</button>
-    <div class="flt-note">// views &amp; grouping — coming</div>`;
+  const clusterRows = clusters.map(c => {
+    const n = clusterMembers(c, worldData.nodes).length + (c.collapsed ? (worldData.nodes.find(x => x.clusterId === c.id) || {}).count || 0 : 0);
+    return `<div class="flt-row flt-cl" data-cl="${c.id}">
+      <span class="flt-sw" style="background:${c.color};border-radius:50%"></span>
+      <span class="flt-l">${esc(c.name)}</span><span class="flt-n">${n}</span>
+      <button class="flt-ic" data-act="collapse" title="${c.collapsed ? "expand" : "collapse to one node"}"><i data-lucide="${c.collapsed ? "maximize-2" : "minimize-2"}"></i></button>
+      <button class="flt-ic" data-act="kill" title="dissolve"><i data-lucide="x"></i></button>
+    </div>`;
+  }).join("");
+  p.innerHTML = `
+    <div class="flt-title">tools</div>
+    <div class="flt-tools">
+      <button class="flt-tool" id="flt-lasso" title="lasso — sweep nodes into a selection"><i data-lucide="lasso"></i></button>
+      <button class="flt-tool ${fltAiOpen ? "sel" : ""}" id="flt-aitool" title="ask — describe a grouping in plain words"><i data-lucide="sparkles"></i></button>
+    </div>
+    <div class="flt-composer" id="flt-composer" style="display:${fltAiOpen ? "block" : "none"}">
+      <textarea id="flt-ai" rows="3" spellcheck="false"
+        placeholder="describe a grouping — “split the docs by theme”, “group everything about the business”…"></textarea>
+      <div class="flt-compbar"><span class="hint">⌘⏎</span>
+        <button id="flt-aigo"><i data-lucide="sparkles"></i>cluster</button></div>
+    </div>
+    <div class="flt-sep"></div>
+    <div class="flt-title">clusters</div>
+    ${clusterRows || `<div class="flt-note">// none yet — lasso nodes, or ask</div>`}
+    <div class="flt-sep"></div>
+    <button class="flt-collhead" id="flt-showhead"><i data-lucide="chevron-${fltShowOpen ? "down" : "right"}"></i>filter</button>
+    <div id="flt-showsec" style="display:${fltShowOpen ? "block" : "none"}">
+      ${presentTypes().map(([t, n]) =>
+        `<label class="flt-row"><input type="checkbox" data-t="${t}" ${hiddenTypes.has(t) ? "" : "checked"}>
+           <span class="flt-sw" style="background:${typeSwatch(t)}"></span>
+           <span class="flt-l">${esc(typeLabel(t))}</span><span class="flt-n">${n}</span></label>`).join("")}
+      <button class="flt-all" id="flt-all">reset · show all</button>
+    </div>`;
   p.classList.add("on");
+  refreshIcons();
   const r = document.getElementById("cb-filter").getBoundingClientRect();
   p.style.top = (r.bottom + 8) + "px"; p.style.right = (innerWidth - r.right) + "px"; p.style.left = "auto";
-  p.querySelectorAll("input[type=checkbox]").forEach(cb => cb.onchange = () => {
-    cb.checked ? activeTypes.add(cb.dataset.t) : activeTypes.delete(cb.dataset.t); applyFilter();
+  // tools
+  document.getElementById("flt-lasso").onclick = () => {
+    closeFilterPop(); setLassoMode(true);
+    toast("sweep around nodes — shift adds more, esc finishes");
+  };
+  document.getElementById("flt-aitool").onclick = () => {
+    fltAiOpen = !fltAiOpen;
+    document.getElementById("flt-composer").style.display = fltAiOpen ? "block" : "none";
+    document.getElementById("flt-aitool").classList.toggle("sel", fltAiOpen);
+    if (fltAiOpen) setTimeout(() => document.getElementById("flt-ai").focus(), 40);
+  };
+  const aiIn = document.getElementById("flt-ai");
+  const mkAi = () => { const v = aiIn.value.trim(); if (v) { closeFilterPop(); aiCluster(v); } };
+  document.getElementById("flt-aigo").onclick = mkAi;
+  aiIn.onkeydown = e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); mkAi(); } };
+  // cluster rows: name click = panel; collapse/dissolve inline
+  p.querySelectorAll(".flt-cl").forEach(row => {
+    const c = clusterById(row.dataset.cl);
+    row.querySelector(".flt-l").onclick = () => { closeFilterPop(); showClusterPanel(c); };
+    row.querySelector('[data-act="collapse"]').onclick = () => { c.collapsed = !c.collapsed; saveClusters(); closeFilterPop(); draw(); };
+    row.querySelector('[data-act="kill"]').onclick = () => { removeCluster(c.id); closeFilterPop(); };
   });
-  document.getElementById("flt-all").onclick = () => { activeTypes = new Set(presentTypes().map(([t]) => t)); applyFilter(); closeFilterPop(); };
+  // the collapsible filter section
+  document.getElementById("flt-showhead").onclick = () => {
+    fltShowOpen = !fltShowOpen;
+    document.getElementById("flt-showsec").style.display = fltShowOpen ? "block" : "none";
+    document.querySelector("#flt-showhead svg")?.remove();
+    document.getElementById("flt-showhead").insertAdjacentHTML("afterbegin",
+      `<i data-lucide="chevron-${fltShowOpen ? "down" : "right"}"></i>`);
+    refreshIcons();
+  };
+  p.querySelectorAll("#flt-showsec input[type=checkbox]").forEach(cb => cb.onchange = () => {
+    cb.checked ? hiddenTypes.delete(cb.dataset.t) : hiddenTypes.add(cb.dataset.t); applyFilter();
+  });
+  document.getElementById("flt-all").onclick = () => { hiddenTypes.clear(); applyFilter(); closeFilterPop(); };
 }
-// layout toggle: force-directed ⇄ grid
-function setLayout(mode) {
-  layoutMode = mode; localStorage.setItem("ap-layout", mode);
-  gridCentered = false;
-  if (mode === "force") svg.call(zoomB.transform, d3.zoomIdentity);   // let forceCenter re-place
-  document.getElementById("cb-layout").classList.toggle("active", mode === "grid");
-  draw();
-}
-document.getElementById("cb-layout").onclick = () => setLayout(layoutMode === "grid" ? "force" : "grid");
-document.getElementById("cb-layout").classList.toggle("active", layoutMode === "grid");
 
+// ── cluster interactions: lasso · AI · gather · panel · ctx ──
+function inPoly(pt, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if ((yi > pt[1]) !== (yj > pt[1]) && pt[0] < (xj - xi) * (pt[1] - yi) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+// lasso SELECTS (dotted highlight) — it never groups by itself. Shift-lasso adds to
+// the selection; the floating toolbar then groups / clears. Lasso mode stays on for
+// repeated sweeps until the button or Escape ends it.
+let lassoOn = false, lassoPts = [], lassoEl = null, lassoShift = false;
+let selectedIds = new Set();
+function setLassoMode(on) {
+  lassoOn = on;
+  svg.style("cursor", on ? "crosshair" : null);
+  if (on) svg.on(".zoom", null); else svg.call(zoomB);   // pan pauses while lassoing
+}
+function clearSelection() { selectedIds.clear(); updateSelectionUI(); }
+function updateSelectionUI() {
+  if (nodeSel) nodeSel.classed("selnode", d => selectedIds.has(d.id));
+  const st = document.getElementById("seltool");
+  if (!selectedIds.size) return st.classList.remove("on");
+  st.querySelector(".selcount").textContent = selectedIds.size + " selected";
+  const r = document.getElementById("stage").getBoundingClientRect();
+  st.style.left = (r.left + r.width / 2) + "px";
+  st.style.top = (r.bottom - 60) + "px";
+  st.classList.add("on");
+  refreshIcons();
+}
+svg.on("mousedown.lasso", e => {
+  if (!lassoOn) return;
+  e.preventDefault();
+  lassoShift = e.shiftKey;
+  lassoPts = [d3.pointer(e, g.node())];
+  lassoEl = g.append("path").attr("class", "lasso");
+});
+svg.on("mousemove.lasso", e => {
+  if (!lassoOn || !lassoEl) return;
+  lassoPts.push(d3.pointer(e, g.node()));
+  lassoEl.attr("d", "M" + lassoPts.map(p => p.join(",")).join("L"));
+});
+svg.on("mouseup.lasso", () => {
+  if (!lassoOn || !lassoEl) return;
+  const poly = lassoPts; lassoEl.remove(); lassoEl = null;
+  if (poly.length < 3) return;
+  const ids = worldData.nodes.filter(n =>
+    n.id !== "self" && n.type !== "cluster" && n.x != null && inPoly([n.x, n.y], poly)).map(n => n.id);
+  if (!lassoShift) selectedIds.clear();
+  ids.forEach(id => selectedIds.add(id));
+  updateSelectionUI();
+  if (!ids.length && !lassoShift) toast("lasso caught nothing");
+  if (!lassoShift) setLassoMode(false);   // shift keeps the lasso alive for more sweeps
+});
+addEventListener("keydown", e => { if (e.key === "Escape" && lassoOn) setLassoMode(false); });
+// the floating selection toolbar
+document.getElementById("sel-group").onclick = async () => {
+  setLassoMode(false);
+  const picked = await askClusterName(selectedIds.size);
+  if (picked) { addCluster({ name: picked.name, color: picked.color, members: [...selectedIds] }); clearSelection(); }
+};
+document.getElementById("sel-clear").onclick = () => { setLassoMode(false); clearSelection(); };
+// name + colour picker for a new cluster (palette from CLPAL)
+function askClusterName(count) {
+  return new Promise(resolve => {
+    let picked = CLPAL[clusters.length % CLPAL.length];
+    openModalRaw(`<h3>GROUP ${count} NODE${count === 1 ? "" : "S"}</h3>
+      <input id="modalname" placeholder="name the cluster" spellcheck="false">
+      <div class="clpal">${CLPAL.map(col => `<button class="swb" data-c="${col}" style="background:${col}"></button>`).join("")}</div>
+      <div class="acts"><button id="modalcancel">cancel</button><button class="go" id="modalgo">create</button></div>`);
+    const sync = () => document.querySelectorAll("#modal .swb").forEach(b => b.classList.toggle("sel", b.dataset.c === picked));
+    sync();
+    document.querySelectorAll("#modal .swb").forEach(b => b.onclick = () => { picked = b.dataset.c; sync(); });
+    const inp = document.getElementById("modalname");
+    setTimeout(() => inp.focus(), 60);
+    const done = v => { closeModal(); resolve(v); };
+    document.getElementById("modalcancel").onclick = () => done(null);
+    document.getElementById("modalgo").onclick = () => done(inp.value.trim() ? { name: inp.value.trim(), color: picked } : null);
+    inp.onkeydown = e => {
+      if (e.key === "Enter") done(inp.value.trim() ? { name: inp.value.trim(), color: picked } : null);
+      if (e.key === "Escape") done(null);
+    };
+  });
+}
+// AI clustering: prompt + node catalog → the model's named groups become clusters
+async function aiCluster(promptText) {
+  toast("clustering…");
+  const catalog = worldData.nodes.filter(n => n.id !== "self" && n.type !== "cluster")
+    .map(n => `${n.id}\t${n.type}\t${n.label}`).join("\n");
+  try {
+    const res = await (await fetch("/graph/cluster", { method: "POST", body: promptText + "\n" + catalog, ...authed })).json();
+    if (res.error) return toast("ai cluster failed: " + res.error);
+    const valid = new Set(worldData.nodes.map(n => n.id));
+    let made = 0;
+    for (const grp of res.clusters || []) {
+      const members = grp.members.filter(id => valid.has(id));
+      if (members.length) { addCluster({ name: grp.name, members }); made++; }
+    }
+    toast(made ? `${made} cluster${made === 1 ? "" : "s"} created` : "the model found no groups");
+  } catch (err) { toast("ai cluster failed"); }
+}
+// ── the cluster badge: a colour pill with a grip handle — grab it to move the
+// WHOLE cluster; a plain click opens the cluster panel ──
+// white text on saturated colours, black only when the pill is genuinely light
+function badgeInk(hex) {
+  const n = parseInt((hex || "#888").slice(1), 16);
+  const lum = 0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255);
+  return lum > 186 ? "#1c2230" : "#fff";
+}
+function drawClusterBadge(gp, c, x, y) {
+  const ink = badgeInk(c.color);
+  const bw = 30 + c.name.length * 7.4;
+  const b = gp.append("g").attr("transform", `translate(${x - bw / 2},${y})`)
+    .style("cursor", "grab")
+    .on("mousedown", e => beginClusterDrag(e, c));
+  b.append("rect").attr("width", bw).attr("height", 22).attr("rx", 11)
+    .attr("fill", c.color).attr("fill-opacity", .92);
+  for (let gy = 0; gy < 3; gy++) for (let gx = 0; gx < 2; gx++)
+    b.append("circle").attr("cx", 10 + gx * 4).attr("cy", 7 + gy * 4).attr("r", 1.15)
+      .attr("fill", ink).attr("fill-opacity", .75);
+  b.append("text").attr("x", 22).attr("y", 15).attr("class", "cl-badge-t").attr("fill", ink).text(c.name);
+}
+let clDrag = null;
+function beginClusterDrag(e, c) {
+  e.preventDefault(); e.stopPropagation();
+  const drag = { c, start: d3.pointer(e, g.node()), snap: {}, moved: false };
+  for (const id of clusterMembers(c, worldData.nodes)) {
+    const n = worldData.nodes.find(x => x.id === id);
+    if (n && n.x != null) { drag.snap[id] = { x: n.x, y: n.y }; n.fx = n.x; n.fy = n.y; }
+  }
+  if (sim) sim.alphaTarget(0.06).restart();
+  clDrag = drag;
+}
+addEventListener("mousemove", e => {
+  if (!clDrag) return;
+  const p = d3.pointer(e, g.node());
+  const dx = p[0] - clDrag.start[0], dy = p[1] - clDrag.start[1];
+  if (Math.hypot(dx, dy) > 4) clDrag.moved = true;
+  for (const [id, s] of Object.entries(clDrag.snap)) {
+    const n = worldData.nodes.find(x => x.id === id);
+    if (n) { n.fx = s.x + dx; n.fy = s.y + dy; }
+  }
+});
+addEventListener("mouseup", () => {
+  if (!clDrag) return;
+  const { c, moved, snap } = clDrag;
+  clDrag = null;
+  for (const id of Object.keys(snap)) {
+    const n = worldData.nodes.find(x => x.id === id);
+    if (n && n.id !== "self") { n.fx = null; n.fy = null; }
+  }
+  if (sim) sim.alphaTarget(0);
+  captureClusterShapes(); persistForcePos();
+  if (!moved) showClusterPanel(c);   // a click (no drag) opens the panel
+});
+
+// ── hull geometry (shared by the renderer, live join tests, and shape pins) ──
+const memberCentroid = pts => [d3.mean(pts, p => p[0]), d3.mean(pts, p => p[1])];
+// a cluster's hull is shaped by its members PLUS any purely-cosmetic shape pins
+// (stored as offsets from the member centroid, so they travel with the cluster)
+function withPins(c, mpts) {
+  if (!(c.pins || []).length || !mpts.length) return mpts;
+  const [cx, cy] = memberCentroid(mpts);
+  return mpts.concat(c.pins.map(p => [cx + p.dx, cy + p.dy]));
+}
+// the padded outline polygon: bbox corners for 1-2 points, radially-offset hull above
+function hullOffsetPts(pts, pad) {
+  if (pts.length < 3) {
+    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+    const x0 = Math.min(...xs) - pad, x1 = Math.max(...xs) + pad;
+    const y0 = Math.min(...ys) - pad, y1 = Math.max(...ys) + pad;
+    return [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+  }
+  const hull = d3.polygonHull(pts);
+  const [cx, cy] = d3.polygonCentroid(hull);
+  return hull.map(([x, y]) => {
+    const dx = x - cx, dy = y - cy, L = Math.hypot(dx, dy) || 1;
+    return [x + dx / L * pad, y + dy / L * pad];
+  });
+}
+// one uniform colour wash + subtle outline: a real rounded offset polygon, no donut
+function hullPath(pts, pad) {
+  const off = hullOffsetPts(pts, pad);
+  const n = off.length;
+  let d = "";
+  for (let i = 0; i < n; i++) {
+    const p0 = off[(i + n - 1) % n], p1 = off[i], p2 = off[(i + 1) % n];
+    const l1 = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) || 1, l2 = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) || 1;
+    const r = Math.min(22, l1 / 2, l2 / 2);
+    const a = [p1[0] - (p1[0] - p0[0]) / l1 * r, p1[1] - (p1[1] - p0[1]) / l1 * r];
+    const b = [p1[0] + (p2[0] - p1[0]) / l2 * r, p1[1] + (p2[1] - p1[1]) / l2 * r];
+    d += (i ? "L" : "M") + a.map(v => v.toFixed(1)) + " Q" + p1.map(v => v.toFixed(1)) + " " + b.map(v => v.toFixed(1)) + " ";
+  }
+  return d + "Z";
+}
+function distToPoly(p, poly) {
+  let best = Infinity;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [x1, y1] = poly[j], [x2, y2] = poly[i];
+    const L2 = (x2 - x1) ** 2 + (y2 - y1) ** 2 || 1;
+    const t = Math.max(0, Math.min(1, ((p[0] - x1) * (x2 - x1) + (p[1] - y1) * (y2 - y1)) / L2));
+    best = Math.min(best, Math.hypot(p[0] - (x1 + t * (x2 - x1)), p[1] - (y1 + t * (y2 - y1))));
+  }
+  return best;
+}
+// click near the membrane's EDGE plants a shape pin (pure sculpting, no meaning);
+// click the interior opens the cluster panel
+function hullClick(e, c, pts) {
+  const p = d3.pointer(e, g.node());
+  const outer = hullOffsetPts(pts, 44);
+  if (distToPoly(p, outer) < 16) {
+    const mpts = clusterMembers(c, worldData.nodes)
+      .map(id => worldData.nodes.find(n => n.id === id)).filter(n => n && n.x != null).map(n => [n.x, n.y]);
+    if (!mpts.length) return;
+    const [cx, cy] = memberCentroid(mpts);
+    (c.pins = c.pins || []).push({ dx: +(p[0] - cx).toFixed(1), dy: +(p[1] - cy).toFixed(1) });
+    clusterChanged();
+    toast("shape pin added — drag to sculpt, right-click to remove");
+  } else showClusterPanel(c);
+}
+let pinDrag = null;
+function beginPinDrag(e, c, idx) {
+  e.preventDefault(); e.stopPropagation();
+  pinDrag = { c, idx, start: d3.pointer(e, g.node()), orig: { ...c.pins[idx] } };
+  if (sim) sim.alphaTarget(0.05).restart();   // keep hulls repainting while sculpting
+}
+addEventListener("mousemove", e => {
+  if (!pinDrag) return;
+  const p = d3.pointer(e, g.node());
+  pinDrag.c.pins[pinDrag.idx] = {
+    dx: pinDrag.orig.dx + p[0] - pinDrag.start[0],
+    dy: pinDrag.orig.dy + p[1] - pinDrag.start[1]
+  };
+});
+addEventListener("mouseup", () => {
+  if (!pinDrag) return;
+  if (sim) sim.alphaTarget(0);
+  saveClusters();
+  pinDrag = null;
+});
+
+// the MEMBRANE: slow drags rearrange members INSIDE the cluster freely; breaking out
+// takes active effort — a decisive pull (speed × stretch) or dragging genuinely far.
+// Fires live mid-drag, so the hull visibly lets go while you're still holding.
+function maybeElasticExit(d) {
+  if (!d || d.x == null) return false;
+  for (const c of clusters) {
+    if (c.rule || c.collapsed || !(c.members || []).includes(d.id)) continue;
+    const others = clusterMembers(c, worldData.nodes).filter(id => id !== d.id)
+      .map(id => worldData.nodes.find(n => n.id === id)).filter(n => n && n.x != null);
+    if (!others.length) continue;
+    const cx = d3.mean(others, n => n.x), cy = d3.mean(others, n => n.y);
+    if (d._justJoined === c.id) continue;   // just pulled in this gesture — settle first
+    const dist = Math.hypot(d.x - cx, d.y - cy);
+    const v = d._dv || 0;   // smoothed drag speed (px/ms)
+    if (dist > 320 || (dist > 170 && v > 0.85)) {
+      c.members = c.members.filter(i => i !== d.id);
+      if (c.shape) delete c.shape[d.id];
+      d._justLeft = c.id;   // don't get re-swallowed while still dragging nearby
+      toast(`popped out of ${c.name}`);
+      clusterChanged();
+      return true;
+    }
+  }
+  return false;
+}
+// membrane ENTRY is easy and immediate: while you're actively dragging a node, the
+// instant it crosses the hull border it belongs — no release needed. (Passive
+// overlap never captures; the wall force below keeps outsiders from drifting in.)
+function maybeJoinCluster(d) {
+  if (!d || d.id === "self" || d.type === "cluster" || d.x == null) return;
+  for (const c of clusters) {
+    if (c.collapsed || c.rule || (c.members || []).includes(d.id)) continue;
+    if (d._justLeft === c.id) continue;   // popped out this gesture — don't re-swallow
+    const mpts = clusterMembers(c, worldData.nodes)
+      .map(id => worldData.nodes.find(n => n.id === id)).filter(n => n && n.x != null).map(n => [n.x, n.y]);
+    if (!mpts.length) continue;
+    if (!inPoly([d.x, d.y], hullOffsetPts(withPins(c, mpts), 44))) continue;
+    (c.members = c.members || []).push(d.id);
+    d._justJoined = c.id;   // hysteresis: entering doesn't instantly bounce back out
+    toast(`joined ${c.name}`);
+    clusterChanged();
+    return;
+  }
+}
+function clusterCtx(e, c) {
+  if (!c) return;
+  showCtx(e.clientX, e.clientY, [
+    { icon: "info", label: "details", fn: () => showClusterPanel(c) },
+    { icon: c.collapsed ? "maximize-2" : "minimize-2", label: c.collapsed ? "expand" : "collapse to one node",
+      fn: () => { c.collapsed = !c.collapsed; saveClusters(); draw(); } },
+    "-",
+    { icon: "trash-2", label: "dissolve cluster", danger: true, fn: () => removeCluster(c.id) }
+  ]);
+}
+// the cluster's context lives ON the cluster (name/tags/note), not the filesystem
+function showClusterPanel(c) {
+  if (!c) return;
+  const n = c.collapsed
+    ? (worldData.nodes.find(x => x.clusterId === c.id) || {}).count || 0
+    : clusterMembers(c, worldData.nodes).length;
+  panel.innerHTML = `
+    <h3>${esc(c.name)}</h3>
+    <span class="tag" style="background:${c.color}">cluster · ${n} node${n === 1 ? "" : "s"}${c.rule ? " · rule: " + esc(c.rule.kind === "type" ? "type:" + c.rule.value : c.rule.value) : ""}</span>
+    <div class="clrow"><input id="cl-name" value="${esc(c.name)}" spellcheck="false" title="name"></div>
+    <div class="clrow"><input id="cl-tags" value="${esc((c.tags || []).join(", "))}" placeholder="tags, comma separated…" spellcheck="false"></div>
+    <div class="clrow"><textarea id="cl-note" rows="3" placeholder="context for this group…" spellcheck="false">${esc(c.note || "")}</textarea></div>
+    <div class="clpal">${CLPAL.map(col =>
+      `<button class="swb ${col === c.color ? "sel" : ""}" data-c="${col}" style="background:${col}"></button>`).join("")}</div>
+    <div class="clacts">
+      <button id="cl-collapse">${c.collapsed ? "expand" : "collapse"}</button>
+      <button id="cl-dissolve" class="no">dissolve</button>
+    </div>`;
+  panel.style.display = "block";
+  const commit = () => {
+    c.name = document.getElementById("cl-name").value.trim() || c.name;
+    c.tags = document.getElementById("cl-tags").value.split(",").map(s => s.trim()).filter(Boolean);
+    c.note = document.getElementById("cl-note").value;
+    saveClusters();
+  };
+  ["cl-name", "cl-tags", "cl-note"].forEach(id => document.getElementById(id).onchange = () => { commit(); clusterChanged(); });
+  panel.querySelectorAll(".swb").forEach(b => b.onclick = () => {
+    c.color = b.dataset.c; commit(); clusterChanged();
+    panel.querySelectorAll(".swb").forEach(x => x.classList.toggle("sel", x === b));
+  });
+  document.getElementById("cl-collapse").onclick = () => { commit(); c.collapsed = !c.collapsed; saveClusters(); panel.style.display = "none"; draw(); };
+  document.getElementById("cl-dissolve").onclick = () => { removeCluster(c.id); panel.style.display = "none"; };
+}
+// in-theme one-field prompt (same frame the rename dialog uses)
+function askText(title, value, placeholder) {
+  return new Promise(resolve => {
+    openModalRaw(`<h3>${esc(title)}</h3>
+      <input id="modalname" value="${esc(value || "")}" placeholder="${esc(placeholder || "")}" spellcheck="false">
+      <div class="acts"><button id="modalcancel">cancel</button>
+      <button class="go" id="modalgo">create</button></div>`);
+    const inp = document.getElementById("modalname");
+    setTimeout(() => inp.focus(), 60);
+    const done = v => { closeModal(); resolve(v); };
+    document.getElementById("modalcancel").onclick = () => done(null);
+    document.getElementById("modalgo").onclick = () => done(inp.value.trim() || null);
+    inp.onkeydown = e => {
+      if (e.key === "Enter") done(inp.value.trim() || null);
+      if (e.key === "Escape") done(null);
+    };
+  });
+}
 document.getElementById("cb-filter").onclick = e => { e.stopPropagation(); collapseSearch(); openFilterPop(); };
 addEventListener("mousedown", e => {
   const p = document.getElementById("filterpop");
