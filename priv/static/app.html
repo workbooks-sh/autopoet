@@ -889,11 +889,16 @@
     box-shadow:0 4px 12px rgba(25,35,55,.07); }
   .fxisle .finame { font:600 9.5px ui-monospace,monospace; color:#1c2230; }
   .fxisle .fitag { font:8px ui-monospace,monospace; color:#b3bac4; }
-  /* the bloom: one of you becomes n of you, same build */
-  .fxbloom { position:absolute; display:grid; grid-template-columns:repeat(6, 14px); gap:8px;
-    align-items:center; justify-items:center; }
-  .fxbloom .bdot { width:8px; height:8px; border-radius:50%; background:#8e7cc3; display:block; }
-  .fxbloom .bdot.you { width:11px; height:11px; background:#1c2230; }
+  .fxlab { position:absolute; font:9px ui-monospace,monospace; color:#b3bac4; white-space:nowrap; }
+  /* the clone grid: the SAME little app, dealt out live for everyone */
+  .fxgrid { position:absolute; display:grid; grid-template-columns:repeat(3, 42px); gap:10px; }
+  .fxmini { position:relative; width:42px; height:32px; background:#fff; border:1px solid #dfe3e9;
+    border-radius:7px; box-shadow:0 2px 7px rgba(25,35,55,.06); }
+  .fxmini.you { border-color:#8e7cc3; }
+  .fxmini .mbar { position:absolute; left:5px; top:5px; width:14px; height:4px; border-radius:2px; background:#8e7cc3; }
+  .fxmini .mln { position:absolute; left:5px; top:14px; width:26px; height:3px; border-radius:2px; background:#e4e8ee; }
+  .fxmini .mln.s { top:21px; width:18px; }
+  .fxmini .mdot { position:absolute; right:4px; top:4px; width:5px; height:5px; border-radius:50%; background:#6aa84f; }
   /* ephemeral sandboxes: sealed (dashed) while running, a green blink when done */
   .fxsbx { position:absolute; width:30px; height:30px; border-radius:9px; background:#fff;
     border:1.5px dashed #c3b8dd; display:flex; align-items:center; justify-content:center;
@@ -4580,7 +4585,7 @@ const SLIDES = [
       gsap.to(all, { y: "-=6", duration: 2.4, yoyo: true, repeat: -1, ease: "sine.inOut", stagger: .35, delay: 1.4 });
     } },
   { title: "dense by design", mood: "superHappy",
-    sub: "one engine underneath hosts the sites, runs the agents, seals the worlds — and it's already cloud-shaped: what you build for yourself runs, unchanged, for n of you.",
+    sub: "underneath, one engine carries it all — your sites, your agents, the sealed worlds. and what you build for yourself is already cloud-shaped: the identical build serves everyone.",
     fx(fx) {
       // LEFT: the engine and its three duties, one panel. RIGHT: the bloom — 1 → n.
       const eng = fxEl(`<div class="fxchat" style="left:0;top:22%;width:152px">
@@ -4589,19 +4594,23 @@ const SLIDES = [
         <div class="fxmsg bot" style="align-self:stretch">runs your agents</div>
         <div class="fxmsg bot" style="align-self:stretch">seals the worlds</div>
       </div>`);
-      const bloom = fxEl(`<div class="fxbloom" style="right:1%;top:20%"></div>`);
-      for (let i = 0; i < 24; i++) bloom.append(fxEl(`<span class="bdot${i === 0 ? " you" : ""}"></span>`));
-      const blab = fxEl(`<div class="fxlab" style="right:2%;top:72%">one of you → n of you. same build.</div>`);
-      fx.append(eng, bloom, blab);
+      // RIGHT: your app — then the SAME app, cloned live for everyone
+      const mini = (you) => fxEl(
+        `<div class="fxmini${you ? " you" : ""}"><span class="mbar"></span><span class="mln"></span><span class="mln s"></span><span class="mdot"></span></div>`);
+      const grid = fxEl(`<div class="fxgrid" style="right:1%;top:18%"></div>`);
+      const minis = Array.from({ length: 9 }, (_, i) => mini(i === 0));
+      minis.forEach(m => grid.append(m));
+      const glab = fxEl(`<div class="fxlab" style="right:3%;top:74%">your build, serving everyone.</div>`);
+      fx.append(eng, grid, glab);
       refreshIcons();
       fxIn(eng, .2);
       gsap.from(eng.querySelectorAll(".fxmsg"), { autoAlpha: 0, x: -12, duration: .4, delay: .6, stagger: .22, ease: "power2.out" });
-      const dots = bloom.querySelectorAll(".bdot");
-      gsap.set(dots, { autoAlpha: 0 });
-      gsap.to(dots[0], { autoAlpha: 1, duration: .3, delay: 1.5 });   // you
-      gsap.to([...dots].slice(1), { autoAlpha: 1, duration: .25, delay: 2.0, stagger: .05, ease: "power1.in" });
-      gsap.from(blab, { autoAlpha: 0, duration: .5, delay: 3.3 });
-      gsap.to(dots, { scale: 1.25, duration: 1.6, yoyo: true, repeat: -1, ease: "sine.inOut", stagger: { each: .05, from: "start" }, delay: 3.9 });
+      // one app appears… then the engine deals out identical copies, each going live
+      gsap.set(minis.slice(1), { autoAlpha: 0 });
+      gsap.from(minis[0], { scale: 0, duration: .5, delay: 1.4, ease: "back.out(2.5)" });
+      gsap.to(minis.slice(1), { autoAlpha: 1, duration: .3, delay: 2.1, stagger: .14, ease: "power1.out" });
+      gsap.from(minis.slice(1), { scale: .4, duration: .3, delay: 2.1, stagger: .14, ease: "back.out(2)" });
+      gsap.from(glab, { autoAlpha: 0, duration: .5, delay: 3.6 });
     } }
 ];
 let _slideFaceApi = null, _slideIdx = -1, _slideCleanup = null, _slidesKeyed = false;
