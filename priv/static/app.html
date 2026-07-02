@@ -526,8 +526,9 @@
     <div id="callcaption"></div>
     <div id="callbar">
       <span class="ind"><span class="dotp"></span>voice link</span>
-      <input id="callin" placeholder="say something… (mic soon)" spellcheck="false">
-      <button id="callspeaker" title="autopoet speaks events aloud"><i data-lucide="volume-2"></i></button>
+      <input id="callin" placeholder="say something…" spellcheck="false">
+      <button id="callmic" title="mic" style="display:none"><i data-lucide="mic"></i></button>
+      <button id="callspeaker" title="speaker"><i data-lucide="volume-2"></i></button>
       <button class="end" id="callend" title="end voice"><i data-lucide="phone-off"></i></button>
     </div>
     <div id="canvasbar">
@@ -1542,12 +1543,10 @@ function setComm(state) {
   document.getElementById("callbar").classList.toggle("on", state === "voice");
   if (state === "voice") {
     zoomTo("self", false);                       // the call focuses on the face
-    say("voice link up. I'm here.");
-    startVoicePoll();
+    startVoice();
     setTimeout(() => document.getElementById("callin").focus(), 400);
   } else if (wasVoice) {
-    authedPost("/speak/stop", "");
-    stopVoicePoll();
+    stopVoice();
   }
   relayout();
 }
@@ -1773,15 +1772,142 @@ document.getElementById("callspeaker").onclick = () => {
   b.classList.toggle("off", !voiceSpeaker);
   b.innerHTML = `<i data-lucide="${voiceSpeaker ? "volume-2" : "volume-x"}"></i>`;
   refreshIcons();
-  if (!voiceSpeaker) authedPost("/speak/stop", "");
+  if (voiceMode === "live") { if (live.gain) live.gain.gain.value = voiceSpeaker ? 1 : 0; }
+  else if (!voiceSpeaker) authedPost("/speak/stop", "");
 };
 
 function say(text) {
   if (voiceSpeaker) authedPost("/speak", text);
+  showCaption(text);
+}
+function showCaption(text) {
   const cap = document.getElementById("callcaption");
   cap.textContent = text;
   cap.classList.add("on");
 }
+
+// ══ the LIVE call (Gemini realtime): ws bridge, mic in, native audio out ═══
+let voiceMode = "local";
+const live = { ws: null, ctx: null, gain: null, playhead: 0, sources: [], amps: [],
+               mic: null, micCtx: null, micOn: true, caption: "" };
+
+async function startVoice() {
+  voiceMode = (await (await fetch("/voice/mode")).text()).trim();
+  startVoicePoll();
+  if (voiceMode !== "live") { say("voice link up. I'm here."); return; }
+  const ws = new WebSocket(`ws://127.0.0.1:${location.port}/voice/live?token=${TOKEN}`);
+  live.ws = ws;
+  live.ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+  live.gain = live.ctx.createGain();
+  live.gain.connect(live.ctx.destination);
+  live.playhead = 0; live.caption = "";
+  ws.onmessage = ev => {
+    const m = JSON.parse(ev.data);
+    if (m.type === "ready") { startMic(); showCaption("voice link up — say something"); }
+    else if (m.type === "audio") queueLiveAudio(m.data);
+    else if (m.type === "caption") { live.caption += m.text; showCaption(live.caption); }
+    else if (m.type === "turn_complete") { live.caption = ""; setTimeout(() =>
+      document.getElementById("callcaption").classList.remove("on"), 1600); }
+    else if (m.type === "interrupted") flushLiveAudio();
+  };
+  ws.onclose = () => { if (commState === "voice" && voiceMode === "live") showCaption("voice link dropped"); };
+}
+function stopVoice() {
+  stopVoicePoll();
+  if (voiceMode === "live") {
+    try { live.ws?.close(); } catch (_) {}
+    flushLiveAudio();
+    try { live.ctx?.close(); } catch (_) {}
+    live.mic?.getTracks().forEach(t => t.stop());
+    try { live.micCtx?.close(); } catch (_) {}
+    live.ws = live.ctx = live.mic = live.micCtx = null;
+    document.getElementById("callmic").style.display = "none";
+  } else {
+    authedPost("/speak/stop", "");
+  }
+}
+
+// audio OUT: 24kHz pcm16 chunks → scheduled buffers + amplitude timeline
+function queueLiveAudio(b64) {
+  const raw = atob(b64);
+  const n = raw.length / 2;
+  const f32 = new Float32Array(n);
+  const rms = [];
+  const win = Math.round(24000 * 0.05);
+  let sum = 0;
+  for (let i = 0; i < n; i++) {
+    let v = raw.charCodeAt(2 * i) | (raw.charCodeAt(2 * i + 1) << 8);
+    if (v >= 0x8000) v -= 0x10000;
+    const s = v / 32768;
+    f32[i] = s; sum += s * s;
+    if ((i + 1) % win === 0) { rms.push(Math.sqrt(sum / win)); sum = 0; }
+  }
+  const buf = live.ctx.createBuffer(1, n, 24000);
+  buf.getChannelData(0).set(f32);
+  const src = live.ctx.createBufferSource();
+  src.buffer = buf; src.connect(live.gain);
+  const t0 = Math.max(live.ctx.currentTime + 0.06, live.playhead);
+  src.start(t0);
+  live.playhead = t0 + buf.duration;
+  live.sources.push(src);
+  live.amps.push({ t0, dur: buf.duration, rms });
+  src.onended = () => { live.sources = live.sources.filter(s => s !== src); };
+}
+function flushLiveAudio() {
+  live.sources.forEach(s => { try { s.stop(); } catch (_) {} });
+  live.sources = []; live.amps = [];
+  if (live.ctx) live.playhead = live.ctx.currentTime;
+}
+function liveAmpNow() {
+  if (!live.ctx) return 0;
+  const t = live.ctx.currentTime;
+  const seg = live.amps.find(a => t >= a.t0 && t < a.t0 + a.dur);
+  if (!seg) return 0;
+  // normalize against the segment's own peak so quiet voices still move the mouth
+  const peak = Math.max(0.08, ...seg.rms);
+  return (seg.rms[Math.floor((t - seg.t0) / 0.05)] ?? 0) / peak;
+}
+
+// audio IN: mic → downsample to 16kHz pcm16 → b64 chunks up the socket
+async function startMic() {
+  try {
+    live.mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+  } catch (err) {
+    showCaption("mic unavailable (" + err.name + ") — type below to talk");
+    return;
+  }
+  document.getElementById("callmic").style.display = "flex";
+  live.micCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const srcNode = live.micCtx.createMediaStreamSource(live.mic);
+  const proc = live.micCtx.createScriptProcessor(4096, 1, 1);
+  const ratio = live.micCtx.sampleRate / 16000;
+  proc.onaudioprocess = e => {
+    if (!live.micOn || !live.ws || live.ws.readyState !== 1) return;
+    const inp = e.inputBuffer.getChannelData(0);
+    const out = new Int16Array(Math.floor(inp.length / ratio));
+    for (let i = 0; i < out.length; i++) {
+      // average the group — cheap anti-alias for the downsample
+      const a = Math.floor(i * ratio), b = Math.floor((i + 1) * ratio);
+      let s = 0;
+      for (let j = a; j < b; j++) s += inp[j];
+      out[i] = Math.max(-32768, Math.min(32767, (s / (b - a)) * 32768));
+    }
+    let bin = "";
+    const bytes = new Uint8Array(out.buffer);
+    for (let i = 0; i < bytes.length; i += 8192)
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+    live.ws.send(JSON.stringify({ type: "audio", data: btoa(bin) }));
+  };
+  srcNode.connect(proc);
+  proc.connect(live.micCtx.destination);   // ScriptProcessor needs a sink to run
+}
+document.getElementById("callmic").onclick = () => {
+  live.micOn = !live.micOn;
+  const b = document.getElementById("callmic");
+  b.classList.toggle("off", !live.micOn);
+  b.innerHTML = `<i data-lucide="${live.micOn ? "mic" : "mic-off"}"></i>`;
+  refreshIcons();
+};
 
 // ── REAL lip sync: mouth openness follows the audio's amplitude envelope ────
 // The server parses the rendered AIFF into RMS-per-50ms; we sample it at the
@@ -1835,6 +1961,12 @@ function startVoicePoll() {
     } catch (_) {}
   }, 250);
   mouthTimer = setInterval(() => {
+    if (voiceMode === "live") {
+      // live call: amplitude from the playing PCM; shape class from the caption tail
+      const amp = liveAmpNow();
+      setViseme(amp < 0.1 ? "X" : visemeAt(live.caption || "aeo", 0.92, amp));
+      return;
+    }
     if (!voiceSync || voiceSync.status !== "speaking" || !voiceSync.envelope.length) {
       setViseme("X");
       return;
@@ -1853,13 +1985,20 @@ function stopVoicePoll() {
   document.getElementById("callcaption").classList.remove("on");
 }
 
-// push-to-talk (typed until the mic lands): planner replies, spoken + captioned
+// typed push-to-talk: in a live call it's a text turn on the socket; in local
+// mode it's planner → say
 let voiceBusy = false;
 document.getElementById("callin").addEventListener("keydown", async e => {
   if (e.key !== "Enter" || voiceBusy) return;
   const inp = e.target, msg = inp.value.trim();
   if (!msg) return;
-  inp.value = ""; inp.placeholder = "…thinking";
+  inp.value = "";
+  if (voiceMode === "live" && live.ws?.readyState === 1) {
+    live.caption = "";
+    live.ws.send(JSON.stringify({ type: "text", text: msg }));
+    return;
+  }
+  inp.placeholder = "…thinking";
   voiceBusy = true;
   try {
     const res = await authedPost("/chat/send?id=voice", msg);
@@ -1869,7 +2008,7 @@ document.getElementById("callin").addEventListener("keydown", async e => {
     say("connection trouble.");
   }
   voiceBusy = false;
-  inp.placeholder = "say something… (mic soon)";
+  inp.placeholder = "say something…";
   inp.focus();
 });
 

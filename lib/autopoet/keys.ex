@@ -6,6 +6,7 @@ defmodule Autopoet.Keys do
   """
   def inception, do: Nexus.Secrets.get("INCEPTION_API_KEY")
   def openrouter, do: Nexus.Secrets.get("OPENROUTER_API_KEY")
+  def gemini, do: Nexus.Secrets.get("GEMINI_API_KEY")
 end
 
 defmodule Autopoet.Providers do

@@ -87,7 +87,8 @@ defmodule Autopoet.Chat do
     [%{role: "system", content: system_prompt()} | turns]
   end
 
-  defp system_prompt do
+  @doc "The autopoet's identity + world snapshot — shared by chat and the live voice."
+  def system_prompt do
     pending = length(Autopoet.Proposals.pending())
 
     vault =

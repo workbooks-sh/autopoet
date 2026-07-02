@@ -129,6 +129,25 @@ defmodule Autopoet.Control do
     conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(Autopoet.Voice.sync()))
   end
 
+  # live | local — the UI picks its voice pipeline by this
+  get "/voice/mode" do
+    text(conn, if(Autopoet.GeminiLive.available?(), do: "live\n", else: "local\n"))
+  end
+
+  # the realtime call: browser WebSocket ⇄ Gemini Live (token in query — the
+  # WS API can't set headers)
+  get "/voice/live" do
+    conn = fetch_query_params(conn)
+
+    if conn.query_params["token"] == Autopoet.Discovery.token() do
+      conn
+      |> WebSockAdapter.upgrade(Autopoet.VoiceSock, %{}, timeout: 600_000)
+      |> halt()
+    else
+      send_resp(conn, 401, "bad token\n")
+    end
+  end
+
   post "/notes/save" do
     authed!(conn, fn conn ->
       {:ok, body, conn} = read_body(conn, length: 10_000_000)
