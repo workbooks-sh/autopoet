@@ -713,6 +713,7 @@
   .cl-badge-t { font:600 12px ui-monospace,monospace; letter-spacing:.02em; }
   .cl-pin { fill:#fff; stroke-width:2; cursor:grab; }
   .cl-pin:hover { r:6; }
+  .cl-pin-preview { opacity:.5; stroke-dasharray:2.5 2.5; }
   .lasso { fill:rgba(91,140,201,.07); stroke:#5b8cc9; stroke-width:1.5;
     stroke-dasharray:6 5; pointer-events:none; }
   /* lassoed nodes: a dotted highlight ring */
@@ -2047,15 +2048,23 @@ async function draw() {
       const pts = withPins(c, mpts);
       const gp = hullLayer.append("g").style("cursor", "pointer")
         .on("click", e => hullClick(e, c, pts))
-        .on("contextmenu", e => { e.preventDefault(); clusterCtx(e, c); });
+        .on("contextmenu", e => { e.preventDefault(); clusterCtx(e, c); })
+        // hovering the membrane edge previews the pin you'd plant there
+        .on("mousemove", e => {
+          const p = d3.pointer(e, g.node());
+          const near = nearestOnPoly(p, hullOffsetPts(pts, 44));
+          if (near.d < 16 && pinPreview)
+            pinPreview.attr("cx", near.pt[0]).attr("cy", near.pt[1]).attr("stroke", c.color).style("display", null);
+          else if (pinPreview) pinPreview.style("display", "none");
+        })
+        .on("mouseleave", () => pinPreview && pinPreview.style("display", "none"));
       gp.append("path").attr("d", hullPath(pts, 44))
         .attr("fill", c.color).attr("fill-opacity", .065)
         .attr("stroke", c.color).attr("stroke-opacity", .3)
         .attr("stroke-width", 1.4).attr("stroke-linejoin", "round");
-      // shape pins: small handles on the membrane — drag to sculpt, right-click to remove
-      const [ccx, ccy] = memberCentroid(mpts);
-      (c.pins || []).forEach((pin, i) => {
-        gp.append("circle").attr("cx", ccx + pin.dx).attr("cy", ccy + pin.dy).attr("r", 4.5)
+      // shape pins: handles sitting ON the membrane — drag to sculpt, right-click to remove
+      pinPoints(c, mpts).forEach((pp, i) => {
+        gp.append("circle").attr("cx", pp[0]).attr("cy", pp[1]).attr("r", 4.5)
           .attr("class", "cl-pin").attr("stroke", c.color)
           .on("mousedown", e => beginPinDrag(e, c, i))
           .on("contextmenu", e => { e.preventDefault(); e.stopPropagation();
@@ -2069,9 +2078,12 @@ async function draw() {
   const self = data.nodes.find(n => n.id === "self");
   self.fx = W / 2; self.fy = H / 2;
 
-  const link = linkSel = g.append("g").selectAll("line").data(data.links).join("line")
+  // links are paths so sibling edges can BUNDLE through a cluster's shape pins
+  const link = linkSel = g.append("g").selectAll("path").data(data.links).join("path")
+    .attr("fill", "none")
     .attr("stroke", l => l.kind === "ref" ? "#b8c4d0" : "#e2e6ea")
     .attr("stroke-width", l => l.kind === "ref" ? 1.6 : 1);
+  let pinPreview = null;
 
   const node = nodeSel = g.append("g").selectAll("g").data(data.nodes).join("g")
     .style("cursor", "pointer")
@@ -2142,13 +2154,57 @@ async function draw() {
   node.append("text").attr("class", "lbl").attr("text-anchor", "middle")
     .attr("dy", d => radius(d) + 14).text(d => d.label.length > 22 ? d.label.slice(0, 21) + "…" : d.label);
 
+  // edge bundling: sibling links from ONE external node into a cluster share a pin —
+  // they merge into a single trunk to the membrane, then disperse to their members.
+  // More pins = more trunks (each source group takes its nearest pin); spare pins
+  // just shape. Recomputed per tick so trunks track the layout.
+  function routeLinks() {
+    const memberOf = new Map(), pinPos = new Map();
+    for (const c of clusters) {
+      if (c.collapsed) continue;
+      const ids = clusterMembers(c, data.nodes);
+      const mpts = ids.map(id => byId.get(id)).filter(n => n && n.x != null).map(n => [n.x, n.y]);
+      if (!mpts.length) continue;
+      for (const id of ids) if (!memberOf.has(id)) memberOf.set(id, c);
+      if ((c.pins || []).length) pinPos.set(c.id, pinPoints(c, mpts));
+    }
+    const routeOf = l => {
+      const cs = memberOf.get(l.source.id), ct = memberOf.get(l.target.id);
+      if (ct && cs !== ct) return { ext: l.source, mem: l.target, cl: ct };
+      if (cs && cs !== ct) return { ext: l.target, mem: l.source, cl: cs };
+      return null;
+    };
+    const groups = new Map();
+    for (const l of data.links) {
+      const r = routeOf(l);
+      if (r && pinPos.has(r.cl.id)) {
+        const k = r.ext.id + "→" + r.cl.id;
+        groups.set(k, (groups.get(k) || 0) + 1);
+      }
+    }
+    link.attr("d", l => {
+      const r = routeOf(l);
+      if (r && pinPos.has(r.cl.id) && groups.get(r.ext.id + "→" + r.cl.id) >= 2) {
+        let best = null, bd = Infinity;
+        for (const pp of pinPos.get(r.cl.id)) {
+          const dd = Math.hypot(pp[0] - r.ext.x, pp[1] - r.ext.y);
+          if (dd < bd) { bd = dd; best = pp; }
+        }
+        return `M${r.ext.x},${r.ext.y}L${best[0]},${best[1]}L${r.mem.x},${r.mem.y}`;
+      }
+      return `M${l.source.x},${l.source.y}L${l.target.x},${l.target.y}`;
+    });
+  }
+
   sim.on("tick", () => {
-    link.attr("x1", l => l.source.x).attr("y1", l => l.source.y)
-        .attr("x2", l => l.target.x).attr("y2", l => l.target.y);
+    routeLinks();
     node.attr("transform", d => `translate(${d.x},${d.y})`);
     drawHulls();
   });
-  drawHulls();   // paint immediately too (a fully-restored layout barely ticks)
+  routeLinks(); drawHulls();   // paint immediately too (a fully-restored layout barely ticks)
+  // the pin hover-preview ghost rides above everything
+  pinPreview = g.append("circle").attr("class", "cl-pin cl-pin-preview").attr("r", 4.5)
+    .style("display", "none").style("pointer-events", "none");
 
   if (!forceZoomed) { restoreZoom(); forceZoomed = true; }
   applyFilter();          // re-apply any active type filter to the fresh selection
@@ -2840,12 +2896,34 @@ addEventListener("mouseup", () => {
 
 // ── hull geometry (shared by the renderer, live join tests, and shape pins) ──
 const memberCentroid = pts => [d3.mean(pts, p => p[0]), d3.mean(pts, p => p[1])];
-// a cluster's hull is shaped by its members PLUS any purely-cosmetic shape pins
-// (stored as offsets from the member centroid, so they travel with the cluster)
+// a cluster's hull is shaped by its members PLUS any purely-cosmetic shape pins.
+// A pin's stored offset is its VISUAL spot ON the membrane stroke (relative to the
+// member centroid, so it travels with the cluster); for the hull geometry the point
+// is pulled ~pad inward so the drawn outline passes through the pin.
 function withPins(c, mpts) {
   if (!(c.pins || []).length || !mpts.length) return mpts;
   const [cx, cy] = memberCentroid(mpts);
-  return mpts.concat(c.pins.map(p => [cx + p.dx, cy + p.dy]));
+  return mpts.concat(c.pins.map(p => {
+    const L = Math.hypot(p.dx, p.dy) || 1, pull = Math.min(44, L * 0.8);
+    return [cx + p.dx - p.dx / L * pull, cy + p.dy - p.dy / L * pull];
+  }));
+}
+// the visual (on-stroke) pin positions for a cluster
+function pinPoints(c, mpts) {
+  const [cx, cy] = memberCentroid(mpts);
+  return (c.pins || []).map(p => [cx + p.dx, cy + p.dy]);
+}
+function nearestOnPoly(p, poly) {
+  let best = { d: Infinity, pt: poly[0] };
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [x1, y1] = poly[j], [x2, y2] = poly[i];
+    const L2 = (x2 - x1) ** 2 + (y2 - y1) ** 2 || 1;
+    const t = Math.max(0, Math.min(1, ((p[0] - x1) * (x2 - x1) + (p[1] - y1) * (y2 - y1)) / L2));
+    const q = [x1 + t * (x2 - x1), y1 + t * (y2 - y1)];
+    const d = Math.hypot(p[0] - q[0], p[1] - q[1]);
+    if (d < best.d) best = { d, pt: q };
+  }
+  return best;
 }
 // the padded outline polygon: bbox corners for 1-2 points, radially-offset hull above
 function hullOffsetPts(pts, pad) {
@@ -2877,27 +2955,17 @@ function hullPath(pts, pad) {
   }
   return d + "Z";
 }
-function distToPoly(p, poly) {
-  let best = Infinity;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const [x1, y1] = poly[j], [x2, y2] = poly[i];
-    const L2 = (x2 - x1) ** 2 + (y2 - y1) ** 2 || 1;
-    const t = Math.max(0, Math.min(1, ((p[0] - x1) * (x2 - x1) + (p[1] - y1) * (y2 - y1)) / L2));
-    best = Math.min(best, Math.hypot(p[0] - (x1 + t * (x2 - x1)), p[1] - (y1 + t * (y2 - y1))));
-  }
-  return best;
-}
-// click near the membrane's EDGE plants a shape pin (pure sculpting, no meaning);
-// click the interior opens the cluster panel
+// click near the membrane's EDGE plants a shape pin exactly ON the stroke (pure
+// sculpting, no meaning); click the interior opens the cluster panel
 function hullClick(e, c, pts) {
   const p = d3.pointer(e, g.node());
-  const outer = hullOffsetPts(pts, 44);
-  if (distToPoly(p, outer) < 16) {
+  const near = nearestOnPoly(p, hullOffsetPts(pts, 44));
+  if (near.d < 16) {
     const mpts = clusterMembers(c, worldData.nodes)
       .map(id => worldData.nodes.find(n => n.id === id)).filter(n => n && n.x != null).map(n => [n.x, n.y]);
     if (!mpts.length) return;
     const [cx, cy] = memberCentroid(mpts);
-    (c.pins = c.pins || []).push({ dx: +(p[0] - cx).toFixed(1), dy: +(p[1] - cy).toFixed(1) });
+    (c.pins = c.pins || []).push({ dx: +(near.pt[0] - cx).toFixed(1), dy: +(near.pt[1] - cy).toFixed(1) });
     clusterChanged();
     toast("shape pin added — drag to sculpt, right-click to remove");
   } else showClusterPanel(c);
