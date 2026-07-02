@@ -4395,52 +4395,6 @@ const SLIDES = [
       gsap.from(comp.querySelectorAll(".fxline"), { width: 0, duration: .45, delay: 2.5, stagger: .15, ease: "power2.out" });
       gsap.from(comp.querySelector(".fxcompbtn"), { scale: 0, duration: .45, delay: 2.85, ease: "back.out(3)" });
     } },
-  { title: "a living document", mood: "neutral",
-    sub: "edit a note and the diff flows through — the output updates in place. not a chat: a document that stays true.",
-    fx(fx) {
-      // the note gets EDITED — old line struck out, new line typed in…
-      const doc = fxEl(`<div class="fxcard" style="left:2%;top:24%;width:146px;min-height:70px;white-space:normal">the hero copy should feel <span id="fxold">quiet and warm</span><span id="fxnew" style="color:#6aa84f;font-weight:600"></span>.</div>`);
-      fx.append(doc);
-      fxIn(doc);
-      // …and the REAL component updates in place, no rebuild, no conversation
-      const comp = fxEl(`<div class="fxcomp" style="right:3%;top:26%">
-        <div class="fxcompav"></div>
-        <div class="fxcomplines"><div class="fxline" style="width:62px"></div><div class="fxline" style="width:44px"></div></div>
-        <div class="fxcompbtn">go</div>
-      </div>`);
-      fx.append(comp);
-      fxIn(comp, .25);
-      const calls = [];
-      calls.push(gsap.delayedCall(1.0, () => {
-        const o = doc.querySelector("#fxold");
-        if (o) { o.style.textDecoration = "line-through"; o.style.color = "#c0392b"; }
-      }));
-      const text = "bold";
-      const span = doc.querySelector("#fxnew");
-      let i = 0, t = null;
-      calls.push(gsap.delayedCall(1.4, () => {
-        t = setInterval(() => { span.textContent = " " + text.slice(0, ++i); if (i >= text.length) clearInterval(t); }, 70);
-      }));
-      // the diff travels: note → THROUGH the face → component
-      const dot = fxEl(`<div class="fxnode" style="width:9px;height:9px;left:31%;top:47%;background:#6aa84f"></div>`);
-      fx.append(dot);
-      gsap.set(dot, { autoAlpha: 0 });
-      gsap.to(dot, { autoAlpha: 1, duration: .2, delay: 2.5 });
-      gsap.to(dot, { left: "64%", duration: .9, delay: 2.6, ease: "power1.inOut" });
-      gsap.to(dot, { autoAlpha: 0, duration: .2, delay: 3.4 });
-      // the orb spooks it mid-pass — a quick :O then back to business
-      calls.push(gsap.delayedCall(2.85, () => {
-        const m = _slideFaceApi && _slideFaceApi.el("mouth");
-        if (m) m.innerHTML = `<circle cx="40.5" cy="49" r="4.2" fill="white" stroke="black" stroke-width="2"/>`;
-      }));
-      calls.push(gsap.delayedCall(3.4, () => _slideFaceApi && _slideFaceApi.setMouth("neutral")));
-      // tone: bold. — and the component IS bolder: heavier text, shouting button
-      gsap.to(comp.querySelectorAll(".fxline"), { background: "#57627a", height: 9, duration: .45, delay: 3.5, ease: "power2.out" });
-      gsap.to(comp.querySelector(".fxcompbtn"), { background: "#1c2230", scale: 1.12, duration: .4, delay: 3.5, ease: "back.out(2)" });
-      calls.push(gsap.delayedCall(3.55, () => { const b = comp.querySelector(".fxcompbtn"); if (b) b.textContent = "GO"; }));
-      gsap.fromTo(comp, { scale: 1 }, { scale: 1.05, duration: .22, delay: 3.45, yoyo: true, repeat: 1, ease: "sine.inOut" });
-      return () => { if (t) clearInterval(t); calls.forEach(c => c.kill()); };
-    } },
   { title: "but sure, you can chat", mood: "happy",
     sub: "chat and voice are right there too — real tool calls and all. (yes, after everything you just saw. some days you want to talk.)",
     fx(fx) {
