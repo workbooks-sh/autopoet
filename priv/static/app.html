@@ -142,11 +142,10 @@
     border:1px solid var(--line); background:#fff; cursor:pointer; }
   #modal .acts .go { background:#223; color:#fff; border-color:#223; }
 
-  /* ── command / live mode ─────────────────────────────────────────────── */
-  #modetoggle { position:fixed; top:0; left:calc(var(--tree-w,240px) - 84px);
-    height:32px; z-index:10; display:flex; align-items:center;
-    -webkit-app-region:no-drag; }
-  #modetoggle .seg { display:flex; border:1px solid var(--line); border-radius:7px;
+  /* ── command / live mode: lives IN the stoplight row of column 1 only ─── */
+  #modetoggle { position:absolute; top:7px; right:8px; z-index:6;
+    display:flex; align-items:center; -webkit-app-region:no-drag; }
+  #modetoggle .seg { display:flex; border:1px solid var(--line); border-radius:999px;
     overflow:hidden; background:#fff; }
   #modetoggle button { font:10px ui-monospace,monospace; border:none; background:none;
     padding:2px 8px; cursor:pointer; color:#98a0ac; display:flex; align-items:center; gap:4px;
@@ -154,21 +153,31 @@
   #modetoggle button.sel { background:#223; color:#fff; }
   #modetoggle svg.lucide { width:10px; height:10px; }
 
-  #savebar { position:fixed; bottom:44px; left:12px; z-index:12;
-    width:calc(var(--tree-w,240px) - 24px);
-    display:flex; align-items:center; gap:10px; padding:9px 14px;
-    background:#223; color:#e8eaf0; border-radius:10px;
-    box-shadow:0 10px 30px rgba(0,0,0,.22);
-    opacity:0; transform:translateY(10px); pointer-events:none;
-    transition:opacity .22s ease, transform .22s cubic-bezier(.22,.9,.24,1),
-               width .28s cubic-bezier(.22,.9,.24,1); }
-  #app.editing #savebar { width:calc(var(--tree-w,240px) + var(--ed-w,480px) - 24px); }
-  #savebar.on { opacity:1; transform:none; pointer-events:auto; }
-  #savebar kbd { background:#3a4250; border-radius:5px; padding:1px 7px; font:inherit; }
-  #savebar .msg { flex:1; font-size:11px; }
-  #savebar button { font:10px ui-monospace,monospace; border:1px solid #4a5262;
-    background:none; color:#aab4be; border-radius:6px; padding:2px 9px; cursor:pointer; }
-  #savebar button:hover { color:#fff; }
+  /* ── the savebar: a designed one-row pill, in-theme, centered over the
+     left panel(s), with a blue SAVE button ──────────────────────────────── */
+  #savebar { position:fixed; bottom:44px; z-index:12;
+    left:calc(var(--tree-w,240px) / 2);
+    display:flex; align-items:center; gap:12px; padding:6px 7px 6px 16px;
+    background:#fff; color:#3a4250; border:1px solid var(--line);
+    border-radius:999px; box-shadow:0 10px 32px rgba(25,35,55,.16);
+    white-space:nowrap; opacity:0; pointer-events:none;
+    transform:translateX(-50%) translateY(12px);
+    transition:opacity .22s ease, transform .25s cubic-bezier(.22,.9,.24,1),
+               left .28s cubic-bezier(.22,.9,.24,1); }
+  #app.editing #savebar { left:calc((var(--tree-w,240px) + var(--ed-w,480px)) / 2); }
+  #savebar.on { opacity:1; transform:translateX(-50%) translateY(0); pointer-events:auto; }
+  #savebar .msg { font-size:11px; color:#67707c; }
+  #savebar .golive { font:10px ui-monospace,monospace; border:none; background:none;
+    color:#98a0ac; cursor:pointer; padding:2px 4px; }
+  #savebar .golive:hover { color:#3a4250; }
+  #savebar .save { display:flex; align-items:center; gap:7px; border:none;
+    background:#2f6fdd; color:#fff; border-radius:999px; padding:6px 14px;
+    font:11px ui-monospace,monospace; cursor:pointer;
+    transition:background .15s ease, transform .12s ease; }
+  #savebar .save:hover { background:#245cc0; }
+  #savebar .save:active { transform:scale(.97); }
+  #savebar .save kbd { background:rgba(255,255,255,.22); border-radius:5px;
+    padding:0 6px; font:inherit; }
 
   /* custom chrome (frameless mode) */
   #chrome { position:fixed; top:0; left:0; width:240px; height:32px; z-index:9;
@@ -187,6 +196,10 @@
 <div id="app">
   <div id="tree">
     <div class="rs" id="treers"></div>
+    <div id="modetoggle"><div class="seg">
+      <button id="mode-command" title="changes wait for ⌘S"><i data-lucide="command"></i>cmd</button>
+      <button id="mode-live" title="changes translate as you type"><i data-lucide="zap"></i>live</button>
+    </div></div>
     <div class="hd"><b>VAULT</b>
       <button id="newnote" title="new document"><i data-lucide="file-plus-2"></i></button>
       <button id="newsketch" title="new sketch"><i data-lucide="pen-tool"></i></button>
@@ -223,14 +236,10 @@
 
 <div id="panel"></div>
 
-<div id="modetoggle"><div class="seg">
-  <button id="mode-command" title="changes wait for ⌘S"><i data-lucide="command"></i>cmd</button>
-  <button id="mode-live" title="changes translate as you type"><i data-lucide="zap"></i>live</button>
-</div></div>
-
 <div id="savebar">
-  <span class="msg">unsaved changes — <kbd>⌘S</kbd> to save &amp; translate</span>
-  <button id="golive">go live</button>
+  <span class="msg">unsaved changes</span>
+  <button class="golive" id="golive">go live</button>
+  <button class="save" id="dosave">save <kbd>⌘S</kbd></button>
 </div>
 
 <div id="shade"></div>
@@ -341,6 +350,7 @@ function setMode(m) {
 document.getElementById("mode-command").onclick = () => setMode("command");
 document.getElementById("mode-live").onclick = () => setMode("live");
 document.getElementById("golive").onclick = () => setMode("live");
+document.getElementById("dosave").onclick = () => { flushSave(); showSavebar(false); };
 function showSavebar(on) { document.getElementById("savebar").classList.toggle("on", on); }
 
 addEventListener("keydown", e => {
