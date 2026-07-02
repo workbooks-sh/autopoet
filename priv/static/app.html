@@ -33,6 +33,10 @@
   #tree .hd button:hover { background:#e8e8e2; color:#3a4250; }
   #tree .hd button svg { width:15px; height:15px; }
   #tree svg.lucide { width:14px; height:14px; flex:none; }
+  #tree .tw { display:flex; margin-left:-4px; transition:transform .18s ease; color:#98a0ac; }
+  #tree .tw svg.lucide { width:12px; height:12px; }
+  #tree .row.openf .tw { transform:rotate(90deg); }
+  #tree ul.hide { display:none; }
   .ic-folder { color:#c9a04e; } .ic-note { color:#5b8cc9; } .ic-sketch { color:#a97bc0; }
   /* IDE-style dirty marker on unsaved files */
   #tree .row.isdirty::after { content:"●"; color:#f2a33c; font-size:9px; margin-left:auto; }
@@ -434,6 +438,12 @@ async function loadTree() {
   document.querySelectorAll("#tree .row[data-path]").forEach(el => {
     const path = el.dataset.path, kind = el.dataset.kind, folder = el.dataset.folder !== undefined;
     if (!folder) el.onclick = () => openFile(path, kind);
+    if (folder) el.onclick = () => {
+      if (closedFolders.has(path)) closedFolders.delete(path); else closedFolders.add(path);
+      persistFolders();
+      el.classList.toggle("openf");
+      el.parentElement.querySelector("ul")?.classList.toggle("hide");
+    };
     if (path === open.path) el.classList.add("open");
     el.classList.toggle("isdirty", !!buffers[path]);
     el.addEventListener("dblclick", () => renameNote(path, kind));
@@ -463,11 +473,22 @@ document.getElementById("tree").addEventListener("contextmenu", e => {
     { icon: "folder-plus", label: "new folder", fn: () => openModal("folder") }
   ]);
 });
+// folders remember their open/closed state (default open); closed set persists
+let closedFolders = new Set();
+try { closedFolders = new Set(JSON.parse(localStorage.getItem("ap-closed") || "[]")); } catch (_) {}
+const persistFolders = () => localStorage.setItem("ap-closed", JSON.stringify([...closedFolders]));
+
 function renderTree(items) {
-  return items.map(n => n.type === "folder"
-    ? `<li><div class="row" data-path="${esc(n.path)}" data-folder>${ICONS.folder}<span>${esc(n.name)}</span></div><ul>${renderTree(n.children || [])}</ul></li>`
-    : `<li><div class="row" data-path="${esc(n.path)}" data-kind="${n.type}">${ICONS[n.type]}<span>${esc(n.name)}</span></div></li>`
-  ).join("");
+  return items.map(n => {
+    if (n.type === "folder") {
+      const closed = closedFolders.has(n.path);
+      return `<li><div class="row ${closed ? "" : "openf"}" data-path="${esc(n.path)}" data-folder>
+        <span class="tw"><i data-lucide="chevron-right"></i></span>
+        ${ICONS.folder}<span>${esc(n.name)}</span></div>
+        <ul class="${closed ? "hide" : ""}">${renderTree(n.children || [])}</ul></li>`;
+    }
+    return `<li><div class="row" data-path="${esc(n.path)}" data-kind="${n.type}">${ICONS[n.type]}<span>${esc(n.name)}</span></div></li>`;
+  }).join("");
 }
 const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
 
