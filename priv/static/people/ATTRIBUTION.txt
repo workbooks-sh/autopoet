@@ -1,0 +1,11 @@
+Portraits served at /static/people/* — sourced from Wikimedia Commons (en.wikipedia
+thumbnail API), used in the onboarding "built on science" slide.
+
+darwin.jpg  — Charles Darwin, seated (crop). Public domain (photo c. 1854).
+godel.jpg   — Kurt Gödel. Public domain (US, published without notice).
+merkle.png  — Ralph Merkle. Wikimedia Commons, CC BY-SA (see commons file page "Ralph Merkle.png").
+rivest.jpg  — Ronald L. Rivest. Wikimedia Commons, CC BY-SA (see commons file page "Ronald L Rivest photo.jpg").
+hut.jpg     — Piet Hut. Wikimedia Commons (see commons file page "Piet-Hut-174x200.jpg").
+
+CC-licensed images require attribution; this file is that attribution. Verify the
+individual commons file pages before any redistribution beyond the app.

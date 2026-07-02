@@ -52,6 +52,18 @@ defmodule Autopoet.Control do
     conn |> put_resp_content_type("text/javascript") |> send_resp(200, js)
   end
 
+  # portraits for the onboarding "built on science" slide (Wikimedia Commons, attributed)
+  get "/static/people/:name" do
+    path = Path.join([:code.priv_dir(:autopoet), "static", "people", Path.basename(name)])
+
+    if File.exists?(path) and Path.extname(name) in [".png", ".jpg"] do
+      type = if String.ends_with?(name, ".png"), do: "image/png", else: "image/jpeg"
+      conn |> put_resp_content_type(type) |> send_resp(200, File.read!(path))
+    else
+      send_resp(conn, 404, "no portrait\n")
+    end
+  end
+
   get "/static/micons/:name" do
     path = Path.join([:code.priv_dir(:autopoet), "static", "micons", Path.basename(name)])
 
