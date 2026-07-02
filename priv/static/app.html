@@ -2934,10 +2934,16 @@ function maybeElasticExit(d) {
       .map(id => worldData.nodes.find(n => n.id === id)).filter(n => n && n.x != null);
     if (!others.length) continue;
     const cx = d3.mean(others, n => n.x), cy = d3.mean(others, n => n.y);
-    if (d._justJoined === c.id) continue;   // just pulled in this gesture — settle first
+    if (d._justJoined === c.id) {
+      // still settling inside — but crossing back OUT of the hull re-arms the membrane,
+      // so one held gesture can take a node in and out repeatedly
+      const mpts = others.map(n => [n.x, n.y]);
+      if (inPoly([d.x, d.y], hullOffsetPts(withPins(c, mpts), 44))) continue;
+      d._justJoined = null;
+    }
     const dist = Math.hypot(d.x - cx, d.y - cy);
     const v = d._dv || 0;   // smoothed drag speed (px/ms)
-    if (dist > 320 || (dist > 170 && v > 0.85)) {
+    if (dist > 360 || (dist > 210 && v > 1.0)) {
       c.members = c.members.filter(i => i !== d.id);
       if (c.shape) delete c.shape[d.id];
       d._justLeft = c.id;   // don't get re-swallowed while still dragging nearby
@@ -2955,11 +2961,16 @@ function maybeJoinCluster(d) {
   if (!d || d.id === "self" || d.type === "cluster" || d.x == null) return;
   for (const c of clusters) {
     if (c.collapsed || c.rule || (c.members || []).includes(d.id)) continue;
-    if (d._justLeft === c.id) continue;   // popped out this gesture — don't re-swallow
     const mpts = clusterMembers(c, worldData.nodes)
       .map(id => worldData.nodes.find(n => n.id === id)).filter(n => n && n.x != null).map(n => [n.x, n.y]);
     if (!mpts.length) continue;
-    if (!inPoly([d.x, d.y], hullOffsetPts(withPins(c, mpts), 44))) continue;
+    const inside = inPoly([d.x, d.y], hullOffsetPts(withPins(c, mpts), 44));
+    if (d._justLeft === c.id) {
+      if (inside) continue;      // still within the old hull — don't re-swallow
+      d._justLeft = null;        // fully clear of it — the NEXT crossing joins again
+      continue;
+    }
+    if (!inside) continue;
     (c.members = c.members || []).push(d.id);
     d._justJoined = c.id;   // hysteresis: entering doesn't instantly bounce back out
     toast(`joined ${c.name}`);
