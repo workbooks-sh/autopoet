@@ -12,6 +12,14 @@
     background-size: 24px 24px, 24px 24px, auto; }
   #graph { position:fixed; inset:0; cursor:grab; }
   #graph:active { cursor:grabbing; }
+
+  /* custom chrome (frameless mode): our own macOS-style traffic lights */
+  #chrome { position:fixed; top:0; left:0; right:0; height:32px; z-index:5;
+    display:flex; align-items:center; gap:8px; padding-left:13px;
+    -webkit-app-region: drag; }        /* drag region (Chromium/elixir-desktop) */
+  .tl { width:12px; height:12px; border-radius:50%; cursor:pointer;
+    -webkit-app-region: no-drag; }
+  .tl.close { background:#ff5f57; } .tl.min { background:#febc2e; } .tl.max { background:#28c840; }
   text.lbl { font:11px ui-monospace,monospace; fill:#556; pointer-events:none; }
 
   #panel { position:fixed; top:16px; right:16px; width:340px; max-height:70vh;
@@ -33,6 +41,11 @@
     word-break:break-all; font-size:11px; color:#445; }
 </style>
 
+<div id="chrome" style="display:__CHROME__">
+  <span class="tl close" title="close"></span>
+  <span class="tl min" title="minimize"></span>
+  <span class="tl max" title="zoom"></span>
+</div>
 <svg id="graph"></svg>
 <div id="panel"></div>
 <button id="logbtn">log</button>
@@ -40,6 +53,13 @@
 <script src="/static/d3.v7.min.js"></script>
 <script>
 const TOKEN = "__TOKEN__";
+// custom chrome → real window controls (close routes through the kill switch)
+function win(action) {
+  fetch("/win/" + action, { method: "POST", headers: { authorization: `Bearer ${TOKEN}` } });
+}
+document.querySelector("#chrome .close")?.addEventListener("click", () => win("close"));
+document.querySelector("#chrome .min")?.addEventListener("click", () => win("minimize"));
+document.querySelector("#chrome .max")?.addEventListener("click", () => win("maximize"));
 const COLORS = {
   self: "#223", doc: "#4a90d9", guide: "#8e7cc3", limb: "#e07a5f", request: "#d96ba0",
   proposal: { pending:"#f2c14e", accepted:"#6aa84f", rejected:"#cc4125",

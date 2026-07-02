@@ -22,11 +22,19 @@ defmodule Autopoet.Window do
   @doc "Programmatic close — same wx close event the stoplight produces."
   def close, do: GenServer.cast(__MODULE__, :close)
 
+  # wxRESIZE_BORDER only — no wxCAPTION, so macOS draws NO native title bar and NO
+  # native traffic lights; the page draws its own (custom chrome, the elixir-desktop
+  # pattern). Default frame otherwise.
+  @wx_resize_border 0x0040
+  @wx_default_frame_style 0x0009_09FF
+
+  def frameless?, do: System.get_env("AUTOPOET_FRAMELESS") in ~w(1 true)
+
   @impl true
   def init(nil) do
     :wx.new()
-    # no title text: the bar reads as an invisible strip with the stoplight
-    frame = :wxFrame.new(:wx.null(), -1, ~c"", size: {1440, 900})
+    style = if frameless?(), do: @wx_resize_border, else: @wx_default_frame_style
+    frame = :wxFrame.new(:wx.null(), -1, ~c"", size: {1440, 900}, style: style)
     :wxWindow.setBackgroundColour(frame, {251, 251, 249, 255})
 
     view = attach_view(frame)
@@ -37,6 +45,12 @@ defmodule Autopoet.Window do
 
     {:ok, %{frame: frame, view: view}}
   end
+
+  @doc "Window control from the page's custom chrome (frameless mode)."
+  def control(:close), do: close()
+  def control(:minimize), do: GenServer.cast(__MODULE__, :minimize)
+  def control(:maximize), do: GenServer.cast(__MODULE__, :maximize)
+  def control(_), do: :ok
 
   # The app UI: a native WKWebView filling the frame (single child auto-fills).
   defp attach_view(frame) do
@@ -70,6 +84,16 @@ defmodule Autopoet.Window do
   @impl true
   def handle_cast(:close, s) do
     :wxFrame.close(s.frame)
+    {:noreply, s}
+  end
+
+  def handle_cast(:minimize, s) do
+    :wxTopLevelWindow.iconize(s.frame)
+    {:noreply, s}
+  end
+
+  def handle_cast(:maximize, s) do
+    :wxTopLevelWindow.maximize(s.frame, not :wxTopLevelWindow.isMaximized(s.frame))
     {:noreply, s}
   end
 end

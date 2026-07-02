@@ -27,6 +27,7 @@ defmodule Autopoet.Control do
       |> Path.join()
       |> File.read!()
       |> String.replace("__TOKEN__", Autopoet.Discovery.token())
+      |> String.replace("__CHROME__", if(Autopoet.Window.frameless?(), do: "flex", else: "none"))
 
     conn |> put_resp_content_type("text/html") |> send_resp(200, html)
   end
@@ -224,6 +225,13 @@ defmodule Autopoet.Control do
         {:ok, out} -> text(conn, out)
         {:error, reason} -> text(conn, "oota error: #{inspect(reason)}\n")
       end
+    end)
+  end
+
+  post "/win/:action" do
+    authed!(conn, fn conn ->
+      Autopoet.Window.control(String.to_existing_atom(action))
+      text(conn, "ok\n")
     end)
   end
 

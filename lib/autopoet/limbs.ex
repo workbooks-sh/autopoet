@@ -80,7 +80,7 @@ defmodule Autopoet.Limbs do
   the caller's business (self-grown organs get a lane without bespoke plumbing).
   Returns the output path it will write.
   """
-  def dispatch(name, task) when is_binary(task) and task != "" do
+  def dispatch(name, task, opts \\ []) when is_binary(task) and task != "" do
     # second-resolution alone collides when several limbs dispatch in one second
     # (four parallel fact-checkers proved it) — unique_integer disambiguates
     out =
@@ -94,6 +94,16 @@ defmodule Autopoet.Limbs do
           File.write!(out, answer)
           Autopoet.Log.puts("limb #{name} returned: #{byte_size(answer)}B in #{result[:turns] || "?"} turns -> #{Path.relative_to(out, Autopoet.Discovery.home())}")
           Nexus.Events.emit(%{kind: "limb.returned", limb: to_string(name), out: out, bytes: byte_size(answer), tags: []})
+
+          # close the loop: file the finding back as an issue so the heartbeat turns
+          # it into a proposal (the generic lane's answer is untrusted evidence too)
+          case Keyword.get(opts, :file_to) do
+            target when is_binary(target) ->
+              Autopoet.Requests.file(target, "#{Keyword.get(opts, :note, "record this limb finding")} (untrusted limb evidence): #{answer}")
+
+            _ ->
+              :ok
+          end
 
         {:error, reason} ->
           Autopoet.Log.puts("limb #{name} failed: #{inspect(reason)} — filing issue")

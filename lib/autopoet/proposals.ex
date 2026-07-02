@@ -25,6 +25,7 @@ defmodule Autopoet.Proposals do
     File.mkdir_p!(Path.join(base, "changes"))
     File.write!(Path.join(base, "item.txt"), inspect(item, pretty: true) <> "\n")
     File.write!(Path.join(base, "status"), "pending\n")
+    File.write!(Path.join(base, "target"), to_string(item[:target] || "?") <> "\n")
 
     for {kind, map} <- [{"changes", changes}, {"appends", appends}], {rel, src} <- map do
       target = Path.join([base, kind, sanitize!(rel)])
@@ -43,6 +44,9 @@ defmodule Autopoet.Proposals do
       {Path.basename(base), base |> Path.join("status") |> File.read!() |> String.trim()}
     end
   end
+
+  @doc "Proposals awaiting a decision — the ephemeral inbox. Resolved ones stay on disk for revert/audit but are not active state."
+  def pending, do: list() |> Enum.filter(fn {_, s} -> s == "pending" end)
 
   def changes(id), do: read_set(id, "changes")
   def appends(id), do: read_set(id, "appends")

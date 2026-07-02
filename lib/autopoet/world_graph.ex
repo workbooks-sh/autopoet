@@ -57,16 +57,21 @@ defmodule Autopoet.WorldGraph do
         }
       end
 
+    # Proposals are EPHEMERAL — a pending inbox, not durable world state. Resolved
+    # ones live on disk for revert/audit but never clutter the graph (an accepted
+    # proposal already IS body content; a rejected one's trace is in the capture log).
     proposal_nodes =
-      Autopoet.Proposals.list()
-      |> Enum.sort_by(&elem(&1, 0), :desc)
-      |> Enum.take(14)
-      |> Enum.map(fn {id, status} ->
-        item =
-          case File.read(Path.join([Autopoet.Proposals.dir(), id, "item.txt"])) do
-            {:ok, t} -> String.slice(t, 0, 400)
-            _ -> ""
-          end
+      for {id, status} <- Autopoet.Proposals.pending() do
+        base = Path.join(Autopoet.Proposals.dir(), id)
+        target = case File.read(Path.join(base, "target")) do
+          {:ok, t} -> String.trim(t)
+          _ -> "?"
+        end
+
+        item = case File.read(Path.join(base, "item.txt")) do
+          {:ok, t} -> String.slice(t, 0, 400)
+          _ -> ""
+        end
 
         files =
           Map.keys(Autopoet.Proposals.changes(id)) ++
@@ -74,12 +79,13 @@ defmodule Autopoet.WorldGraph do
 
         %{
           id: "prop:#{id}",
-          label: id,
+          # human-readable: what it touches + its state, not the raw hash
+          label: "#{target} · #{status}",
           type: "proposal",
           status: status,
-          detail: "status: #{status}\nfiles: #{Enum.join(files, ", ")}\n\n#{item}"
+          detail: "proposal #{id}\nstatus: #{status}\nfiles: #{Enum.join(files, ", ")}\n\n#{item}"
         }
-      end)
+      end
 
     request_nodes =
       Autopoet.Requests.pending()

@@ -27,9 +27,13 @@ defmodule Autopoet.Brain do
         notify: &notify/2
       )
 
-    Autopoet.Log.puts(
-      "cycle: sensed #{report.sensed}, results #{inspect(Enum.map(report.results, & &1.action))}"
-    )
+    # Idle beats are silent (the self-node shows the heartbeat is armed) — only a
+    # beat that actually sensed work is worth a log line.
+    if report.sensed > 0 do
+      Autopoet.Log.puts(
+        "cycle: sensed #{report.sensed}, results #{inspect(Enum.map(report.results, & &1.action))}"
+      )
+    end
 
     report
   end
