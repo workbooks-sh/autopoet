@@ -58,7 +58,10 @@ defmodule Autopoet.Notes do
           r = if rel == "", do: entry, else: rel <> "/" <> entry
 
           if File.dir?(a) do
-            %{name: entry, path: r, type: "folder", children: build_tree(a, r)}
+            # a workspace is a folder marked with a .workspace file — a grouping (shown
+            # with # in the tree, like the Nexus `workspaces=` subtree concept)
+            type = if File.exists?(Path.join(a, ".workspace")), do: "workspace", else: "folder"
+            %{name: entry, path: r, type: type, children: build_tree(a, r)}
           else
             %{name: entry, path: r, type: kind_of(a)}
           end
@@ -169,6 +172,13 @@ defmodule Autopoet.Notes do
 
   defp do_create(p, "folder") do
     File.mkdir_p!(p)
+    :ok
+  end
+
+  # a workspace is a folder + a .workspace marker (a grouping in the tree, shown with #)
+  defp do_create(p, "workspace") do
+    File.mkdir_p!(p)
+    File.write!(Path.join(p, ".workspace"), "")
     :ok
   end
 

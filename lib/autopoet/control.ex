@@ -97,19 +97,29 @@ defmodule Autopoet.Control do
     end)
   end
 
-  # the body's change history + undo (agent writes .work directly; nothing is unrecoverable)
+  # the body's change history + undo/redo (agent writes .work directly; nothing is
+  # unrecoverable, and any edit is reversible in both directions)
   get "/body/history.json" do
     conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(Autopoet.Body.history()))
+  end
+
+  get "/body/undostate.json" do
+    state = %{undo: Autopoet.Body.can_undo?(), redo: Autopoet.Body.can_redo?()}
+    conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(state))
   end
 
   post "/body/undo" do
     authed!(conn, fn conn ->
       id = conn.query_params["id"] || :latest
+      _ = Autopoet.Body.undo(id)
+      undo_state(conn)
+    end)
+  end
 
-      case Autopoet.Body.undo(id) do
-        :ok -> text(conn, "undone\n")
-        {:error, reason} -> text(conn, "refused: #{inspect(reason)}\n")
-      end
+  post "/body/redo" do
+    authed!(conn, fn conn ->
+      _ = Autopoet.Body.redo()
+      undo_state(conn)
     end)
   end
 
@@ -120,6 +130,12 @@ defmodule Autopoet.Control do
       do: raise(ArgumentError, "unsafe path: #{rel}")
 
     Path.join(Nexus.Paths.data_dir(), rel)
+  end
+
+  # after an undo/redo, hand back the fresh availability so the UI buttons re-enable
+  defp undo_state(conn) do
+    state = %{undo: Autopoet.Body.can_undo?(), redo: Autopoet.Body.can_redo?()}
+    conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(state))
   end
 
   # ── chat: conversations with the autopoet ─────────────────────────────────

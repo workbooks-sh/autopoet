@@ -8,22 +8,50 @@
     background:var(--paper); }
 
   #app { display:grid; height:100vh;
-    grid-template-columns:var(--tree-w,240px) 0px 1fr;
+    grid-template-columns:var(--tree-w,280px) 0px 1fr;
     grid-template-rows:1fr var(--cons-h,30px);
     transition:grid-template-columns .32s cubic-bezier(.22,.9,.24,1),
                grid-template-rows .28s cubic-bezier(.22,.9,.24,1); }
-  #app.editing { grid-template-columns:var(--tree-w,240px) var(--ed-w,480px) 1fr; }
+  #app.editing { grid-template-columns:var(--tree-w,280px) var(--ed-w,480px) 1fr; }
   #app.dragging { transition:none; }   /* 1:1 tracking while a handle is held */
 
   /* resize handles */
   .rs { position:absolute; top:0; bottom:0; right:-3px; width:6px; cursor:col-resize; z-index:8; }
   .rs:hover { background:rgba(80,120,220,.18); }
-  #consgrip { position:absolute; left:0; right:0; top:-3px; height:6px; cursor:row-resize; z-index:8; }
+  /* the console resize handle exists ONLY when the console is open (collapsed = no grip) */
+  #consgrip { display:none; position:absolute; left:0; right:0; top:-3px; height:6px; cursor:row-resize; z-index:8; }
+  #app.console-open #consgrip { display:block; }
   #consgrip:hover { background:rgba(80,120,220,.25); }
 
   /* ── vault tree (green in the mock) ─────────────────────────────────── */
   #tree { grid-row:1; grid-column:1; border-right:1px solid var(--line);
-    background:#f7f7f4; overflow:auto; padding:40px 0 64px; position:relative; }
+    background:#f7f7f4; overflow:hidden; padding:40px 0 0; position:relative;
+    display:flex; flex-direction:column; }
+  #tree > #treeroot { flex:1 1 auto; overflow:auto; min-height:0; }
+  /* undo/redo + the cmd/live toggle share one floating top strip */
+  #toprow { position:absolute; top:7px; right:8px; z-index:11;
+    display:flex; align-items:center; gap:7px; -webkit-app-region:no-drag; }
+  #histbtns { display:flex; gap:3px; }
+  #histbtns button { border:1px solid var(--line); background:#fff; color:#7a8290;
+    border-radius:9px; padding:6px 8px; cursor:pointer; display:flex; align-items:center;
+    transition:background .15s ease, color .15s ease; -webkit-app-region:no-drag; }
+  #histbtns button:hover:not(:disabled) { background:#eef1f8; color:#223; }
+  #histbtns button:disabled { opacity:.35; cursor:default; }
+  #histbtns svg.lucide { width:15px; height:15px; }
+  /* the vault action toolbar — one row of VS Code Material icons, each carrying a
+     + badge so every button clearly reads as "add" (file / sketch / folder / workspace) */
+  #vaultbar { flex:none; display:flex; gap:5px; padding:2px 10px 10px; }
+  #vaultbar .add { position:relative; display:flex; align-items:center; justify-content:center;
+    width:32px; height:32px; border:1px solid var(--line); background:#fff; border-radius:9px;
+    cursor:pointer; transition:background .15s ease, border-color .15s ease; }
+  #vaultbar .add:hover { background:#eef1f8; border-color:#c7d0e0; }
+  #vaultbar .add .mic { width:18px; height:18px; }
+  #vaultbar .add .wshash { font:800 16px ui-monospace,monospace; color:#8e7cc3; line-height:1; }
+  #vaultbar .add .pl { position:absolute; right:-4px; bottom:-4px; width:14px; height:14px;
+    background:#f0f1f3; color:#aab1bc; border:1.5px solid #f7f7f4; border-radius:50%;
+    font:800 10px ui-monospace,monospace; line-height:1;
+    display:flex; align-items:center; justify-content:center; }
+  #vaultbar .add:hover .pl { background:#e7e9ec; color:#8b95a3; }
   #tree .hd { display:flex; align-items:center; gap:6px; padding:2px 10px 8px;
     color:#889; font-size:11px; }
   #tree .hd b { flex:1; font-weight:600; letter-spacing:.06em; }
@@ -38,6 +66,10 @@
   #tree .row.openf .tw { transform:rotate(90deg); }
   #tree ul.hide { display:none; }
   .ic-folder { color:#c9a04e; } .ic-note { color:#5b8cc9; } .ic-sketch { color:#a97bc0; }
+  /* a workspace = a #-prefixed grouping (like a folder, but a named group of notes) */
+  #tree .row.wsrow { margin-top:5px; font-weight:600; color:#5a6472; letter-spacing:.02em; }
+  #tree .row.wsrow .hashtag { color:#8e7cc3; font-weight:800; width:13px; flex:none;
+    display:inline-flex; justify-content:center; font-family:ui-monospace,monospace; }
   /* IDE-style dirty marker on unsaved files */
   #tree .row.isdirty::after { content:"●"; color:#f2a33c; font-size:9px; margin-left:auto; }
   #tree ul { list-style:none; margin:0; padding-left:14px; }
@@ -186,8 +218,7 @@
   #modal .acts .go { background:#223; color:#fff; border-color:#223; }
 
   /* ── command / live mode: lives IN the stoplight row of column 1 only ─── */
-  #modetoggle { position:absolute; top:7px; right:8px; z-index:11;  /* above the drag strip */
-    display:grid; align-items:center; -webkit-app-region:no-drag; }
+  #modetoggle { position:relative; display:grid; align-items:center; -webkit-app-region:no-drag; }
   /* the two faces of the slot share one cell and crossfade-flip between:
      cmd/live toggle  ⇄  revert/save prompt (while a command-mode save is due —
      you CAN'T switch to live mid-save because the toggle isn't there) */
@@ -195,37 +226,36 @@
   #modetoggle.saving .seg { opacity:0; transform:scale(.92) translateY(-3px); pointer-events:none; }
   #modetoggle:not(.saving) .saveseg { opacity:0; transform:scale(.92) translateY(3px); pointer-events:none; }
   #modetoggle .saveseg { display:flex; gap:4px; justify-self:end; }
-  #modetoggle .saveseg button { font:10px ui-monospace,monospace; border:1px solid var(--line);
-    background:#fff; color:#67707c; border-radius:999px; padding:5px 10px; cursor:pointer;
-    display:flex; align-items:center; gap:5px; }
+  #modetoggle .saveseg button { border:1px solid var(--line);
+    background:#fff; color:#67707c; border-radius:9px; padding:7px 10px; cursor:pointer;
+    display:flex; align-items:center; }
+  #modetoggle .saveseg svg.lucide { width:14px; height:14px; }
   #modetoggle .saveseg button:hover { color:#223; }
   #modetoggle .saveseg .save { background:#2f6fdd; border-color:#2f6fdd; color:#fff; }
   #modetoggle .saveseg .save:hover { background:#245cc0; color:#fff; }
   #modetoggle .saveseg kbd { background:rgba(255,255,255,.22); border-radius:4px; padding:0 4px; font:inherit; }
   #modetoggle .seg { display:flex; position:relative; border:1px solid var(--line);
-    border-radius:999px; overflow:hidden; background:#fff; padding:2px; }
+    border-radius:10px; overflow:hidden; background:#fff; padding:2px; }   /* squircle, not pill */
   /* the sliding thumb — animates between the two halves */
   #modetoggle .thumb { position:absolute; top:2px; bottom:2px; left:2px; width:calc(50% - 2px);
-    background:#223; border-radius:999px;
+    background:#223; border-radius:8px;
     transition:transform .22s cubic-bezier(.3,.9,.3,1.15); }
   #modetoggle .seg.live .thumb { transform:translateX(100%); }
-  #modetoggle button { position:relative; z-index:1; flex:1; justify-content:center;
-    font:10px ui-monospace,monospace; border:none; background:none;
-    padding:5px 10px; cursor:pointer; color:#98a0ac; display:flex; align-items:center; gap:4px;
-    transition:color .2s ease; }
-  #modetoggle button.sel { color:#fff; }
-  #modetoggle svg.lucide { width:10px; height:10px; }
+  #modetoggle .seg button { position:relative; z-index:1; flex:1; justify-content:center;
+    border:none; background:none; padding:7px 13px; cursor:pointer; color:#98a0ac;
+    display:flex; align-items:center; transition:color .2s ease; }
+  #modetoggle .seg button.sel { color:#fff; }
+  #modetoggle .seg svg.lucide { width:14px; height:14px; }
   /* command = blue, live = yellow */
   #modetoggle .thumb { background:#2f6fdd; }
   #modetoggle .seg.live .thumb { background:#f2a33c; }
   #modetoggle .seg.live button.sel { color:#223; }
 
-  /* ── comm bar: persistent chat/voice switcher, bottom of column 1 only ── */
-  #commbar { position:fixed; bottom:42px; left:16px; z-index:12;
-    width:calc(var(--tree-w,240px) - 32px); box-sizing:border-box; display:flex; gap:6px;
+  /* ── comm bar: persistent chat/voice switcher, pinned to the sidebar bottom ──
+     lives INSIDE #tree (in-flow, flex:none) so an expanding console never overlays it */
+  #commbar { flex:none; margin:8px 12px 12px; box-sizing:border-box; display:flex; gap:6px;
     background:#fff; border:1px solid var(--line); border-radius:999px;
-    padding:6px; box-shadow:0 2px 8px rgba(25,35,55,.06);
-    transition:width .28s cubic-bezier(.22,.9,.24,1); }
+    padding:6px; box-shadow:0 2px 8px rgba(25,35,55,.06); }
   #commbar button { flex:1; display:flex; align-items:center; justify-content:center; gap:7px;
     font:11px ui-monospace,monospace; border:none; background:none; color:#7a8290;
     border-radius:999px; padding:10px 0; cursor:pointer;
@@ -241,7 +271,7 @@
   #commbar svg.lucide { width:13px; height:13px; }
 
   /* ── chat panel: shares the column-2 slot with files (one or the other) ── */
-  #app.chatting { grid-template-columns:var(--tree-w,240px) var(--ed-w,480px) 1fr; }
+  #app.chatting { grid-template-columns:var(--tree-w,280px) var(--ed-w,480px) 1fr; }
   #chatpanel { grid-row:1; grid-column:2; border-right:1px solid var(--line);
     display:none; flex-direction:column; background:#fff; min-width:0; position:relative;
     opacity:0; transform:translateX(-8px);
@@ -457,23 +487,34 @@
 <div id="app">
   <div id="tree">
     <div class="rs" id="treers"></div>
-    <div id="modetoggle">
-      <div class="seg" id="modeseg">
-        <div class="thumb"></div>
-        <button id="mode-command" title="changes wait for ⌘S"><i data-lucide="command"></i>cmd</button>
-        <button id="mode-live" title="changes translate as you type"><i data-lucide="zap"></i>live</button>
+    <div id="toprow">
+      <div id="histbtns">
+        <button id="doundo" title="undo last change" disabled><i data-lucide="undo-2"></i></button>
+        <button id="doredo" title="redo" disabled><i data-lucide="redo-2"></i></button>
       </div>
-      <div class="saveseg">
-        <button id="dorevert">revert</button>
-        <button class="save" id="dosave">save <kbd>⌘S</kbd></button>
+      <div id="modetoggle">
+        <div class="seg" id="modeseg">
+          <div class="thumb"></div>
+          <button id="mode-command" title="command — changes wait for ⌘S"><i data-lucide="command"></i></button>
+          <button id="mode-live" title="live — changes translate as you type"><i data-lucide="zap"></i></button>
+        </div>
+        <div class="saveseg">
+          <button id="dorevert" title="revert changes"><i data-lucide="rotate-ccw"></i></button>
+          <button class="save" id="dosave" title="save (⌘S)"><i data-lucide="check"></i></button>
+        </div>
       </div>
     </div>
-    <div class="hd"><b>VAULT</b>
-      <button id="newnote" title="new document"><i data-lucide="file-plus-2"></i></button>
-      <button id="newsketch" title="new sketch"><i data-lucide="pen-tool"></i></button>
-      <button id="newfolder" title="new folder"><i data-lucide="folder-plus"></i></button>
+    <div id="vaultbar">
+      <button class="add" id="newnote" title="new document"><img class="mic" src="/static/micons/markdown.svg" alt=""><span class="pl">+</span></button>
+      <button class="add" id="newsketch" title="new sketch"><img class="mic" src="/static/micons/svg.svg" alt=""><span class="pl">+</span></button>
+      <button class="add" id="newfolder" title="new folder"><img class="mic" src="/static/micons/folder.svg" alt=""><span class="pl">+</span></button>
+      <button class="add" id="newworkspace" title="new workspace"><span class="wshash">#</span><span class="pl">+</span></button>
     </div>
     <ul id="treeroot"></ul>
+    <div id="commbar">
+      <button id="comm-chat"><i data-lucide="message-square"></i>chat</button>
+      <button id="comm-voice"><i data-lucide="audio-lines"></i>voice</button>
+    </div>
   </div>
 
   <div id="editor">
@@ -570,11 +611,6 @@
 <div id="panel"></div>
 <div id="ctx"></div>
 
-<div id="commbar">
-  <button id="comm-chat"><i data-lucide="message-square"></i>chat</button>
-  <button id="comm-voice"><i data-lucide="audio-lines"></i>voice</button>
-</div>
-
 <div id="shade"></div>
 <div id="modal">
   <h3>NEW IN VAULT</h3>
@@ -592,6 +628,11 @@
     <img class="mic" style="width:19px;height:19px" src="/static/micons/folder.svg" alt="">
     <div><div class="t">folder</div>
       <div class="d">you can put shit in it</div></div>
+  </div>
+  <div class="kind" data-kind="workspace">
+    <i data-lucide="hash"></i>
+    <div><div class="t">workspace</div>
+      <div class="d">a named grouping — bundles related notes under one # heading</div></div>
   </div>
   <input id="modalname" placeholder="name (nest with /)" spellcheck="false">
   <div class="acts">
@@ -689,6 +730,13 @@ const persistFolders = () => localStorage.setItem("ap-closed", JSON.stringify([.
 
 function renderTree(items) {
   return items.map(n => {
+    if (n.type === "workspace") {
+      // a grouping — a # instead of a folder chevron, still collapsible
+      const closed = closedFolders.has(n.path);
+      return `<li><div class="row wsrow ${closed ? "" : "openf"}" data-path="${esc(n.path)}" data-folder data-ws>
+        <span class="hashtag">#</span><span>${esc(n.name)}</span></div>
+        <ul class="${closed ? "hide" : ""}">${renderTree(n.children || [])}</ul></li>`;
+    }
     if (n.type === "folder") {
       const closed = closedFolders.has(n.path);
       return `<li><div class="row ${closed ? "" : "openf"}" data-path="${esc(n.path)}" data-folder>
@@ -737,7 +785,7 @@ async function saveOne(key) {
     : "/notes/save?path=" + encodeURIComponent(key);
   await fetch(url, { method: "POST", body: b.content, ...authed });
   clearDirty(key);
-  if (body) draw();   // the organism changed — refresh the world
+  if (body) { draw(); refreshUndoState(); }   // the organism changed — refresh the world + undo state
 }
 async function saveAll() {
   for (const path of Object.keys(buffers)) await saveOne(path);
@@ -901,12 +949,33 @@ function createFromModal() {
              : full;   // documents: any name, extension optional (no ext = document)
   fetch(`/notes/new?path=${encodeURIComponent(path)}&kind=${modalKind}`, { method: "POST", ...authed })
     .then(() => loadTree())
-    .then(() => { closeModal(); if (modalKind !== "folder") openFile(path, modalKind); });
+    .then(() => { closeModal(); if (modalKind !== "folder" && modalKind !== "workspace") openFile(path, modalKind); });
 }
 bindNewFileModal();
 document.getElementById("newnote").onclick = () => openModal("note");
 document.getElementById("newsketch").onclick = () => openModal("sketch");
 document.getElementById("newfolder").onclick = () => openModal("folder");
+document.getElementById("newworkspace").onclick = () => openModal("workspace");
+
+// ── body undo / redo (the agent writes .work directly; every write is reversible) ──
+function applyUndoState(s) {
+  document.getElementById("doundo").disabled = !s.undo;
+  document.getElementById("doredo").disabled = !s.redo;
+}
+async function refreshUndoState() {
+  try { applyUndoState(await (await fetch("/body/undostate.json")).json()); } catch (_) {}
+}
+async function bodyHistory(dir) {
+  try {
+    const s = await (await fetch("/body/" + dir, { method: "POST", ...authed })).json();
+    applyUndoState(s);
+    draw();                                   // the organism changed — refresh the world
+    if (open.src === "body") openBody(open.path);   // a body page is open — reflect the change
+  } catch (_) {}
+}
+document.getElementById("doundo").onclick = () => bodyHistory("undo");
+document.getElementById("doredo").onclick = () => bodyHistory("redo");
+refreshUndoState();
 
 // ── sketch: MS-Paint bones, Excalidraw-grade ink (perfect-freehand), SVG out ──
 const sk = document.getElementById("sketch");
@@ -1322,7 +1391,8 @@ function dragVar(handle, cssVar, compute) {
     addEventListener("pointermove", move); addEventListener("pointerup", up);
   });
 }
-dragVar(document.getElementById("treers"), "--tree-w", ev => Math.max(140, Math.min(420, ev.clientX)));
+// min 272px keeps the top-right commands (undo/redo + cmd/live) clear of the macOS stoplight
+dragVar(document.getElementById("treers"), "--tree-w", ev => Math.max(272, Math.min(460, ev.clientX)));
 dragVar(document.getElementById("edrs"), "--ed-w",
   ev => Math.max(300, Math.min(innerWidth * 0.6, ev.clientX - document.getElementById("tree").offsetWidth)));
 dragVar(document.getElementById("consgrip"), "--cons-h",
@@ -1377,6 +1447,8 @@ new EventSource("/sse").onmessage = e => {
       authedPost("/speak", e.data.replace(/^\d\d:\d\d:\d\d /, ""));
   }
   if (/PROPOSAL|ACCEPTED|REVERTED|rejected|limb registered/.test(e.data)) draw();
+  // the agent authored/undid its body — refresh the world + the undo/redo buttons
+  if (/body: (wrote|undone|redone)/.test(e.data)) { draw(); refreshUndoState(); }
 };
 
 // after the editor slide animation settles, land the face on final center
