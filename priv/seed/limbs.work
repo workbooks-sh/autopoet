@@ -21,6 +21,6 @@ agent :research_limb do
   model "xiaomi/mimo-v2.5"
   tools coreutils
   grant net
-  limit turns: 12, timeout: 240_000
+  limit timeout: 240_000
   management frozen
 end
