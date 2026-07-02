@@ -37,20 +37,26 @@ defmodule Autopoet.Notes do
     :ok
   end
 
-  @doc "The vault as a tree of %{name, path, type: folder|note|sketch, children?}."
+  @doc """
+  The vault as a tree of %{name, path, type: folder|note|sketch, children?} in
+  SET-LIST order (human-arranged via drag-drop; per-dir order persisted in
+  notes-state; unknown entries append in filesystem order).
+  """
   def tree, do: build_tree(dir(), "")
 
   defp build_tree(abs, rel) do
     case File.ls(abs) do
       {:ok, entries} ->
-        for entry <- Enum.sort(entries), not String.starts_with?(entry, ".") do
+        entries = entries |> Enum.reject(&String.starts_with?(&1, ".")) |> apply_order(rel)
+
+        for entry <- entries do
           a = Path.join(abs, entry)
           r = if rel == "", do: entry, else: rel <> "/" <> entry
 
           if File.dir?(a) do
             %{name: entry, path: r, type: "folder", children: build_tree(a, r)}
           else
-            %{name: entry, path: r, type: kind(entry)}
+            %{name: entry, path: r, type: kind_of(a)}
           end
         end
 
@@ -59,8 +65,85 @@ defmodule Autopoet.Notes do
     end
   end
 
+  @doc """
+  A file's kind STICKS regardless of its name: extension first, else content sniff
+  (a renamed sketch with no extension is still a sketch — it contains <svg).
+  No extension at all = a document.
+  """
+  def kind_of(abs) do
+    cond do
+      String.ends_with?(abs, ".sketch.svg") -> "sketch"
+      String.ends_with?(abs, ".md") -> "note"
+      sniff_svg?(abs) -> "sketch"
+      true -> "note"
+    end
+  end
+
+  defp sniff_svg?(abs) do
+    case File.open(abs, [:read], &IO.binread(&1, 200)) do
+      {:ok, head} when is_binary(head) -> head |> String.trim_leading() |> String.starts_with?("<svg")
+      _ -> false
+    end
+  end
+
   def kind(name) do
     if String.ends_with?(name, ".sketch.svg"), do: "sketch", else: "note"
+  end
+
+  # ── set-list ordering ─────────────────────────────────────────────────────
+
+  defp order_path(rel_dir),
+    do: Path.join(state_dir(), "order-" <> Base.url_encode64(rel_dir, padding: false) <> ".txt")
+
+  @doc "Persist the human's arrangement of a directory (one name per line)."
+  def reorder(rel_dir, names) when is_list(names) do
+    File.mkdir_p!(state_dir())
+    File.write!(order_path(rel_dir), Enum.join(names, "\n") <> "\n")
+    :ok
+  end
+
+  defp apply_order(entries, rel_dir) do
+    case File.read(order_path(rel_dir)) do
+      {:ok, body} ->
+        order = String.split(body, "\n", trim: true)
+        ranked = Enum.with_index(order) |> Map.new()
+        Enum.sort_by(entries, fn e -> Map.get(ranked, e, 1_000_000) end)
+
+      _ ->
+        entries
+    end
+  end
+
+  # ── rename / delete (real actions behind the context menu) ────────────────
+
+  def rename(from, to) do
+    src = safe!(from)
+    dst = safe!(to)
+
+    if File.exists?(src) and not File.exists?(dst) do
+      File.mkdir_p!(Path.dirname(dst))
+      :ok = File.rename(src, dst)
+      # the diff-state follows the file loosely: drop the old hash (a future save
+      # under the new name re-baselines)
+      File.rm(Path.join(state_dir(), Base.url_encode64(from, padding: false)))
+      Autopoet.Log.puts("vault: renamed #{from} → #{to}")
+      :ok
+    else
+      {:error, :bad_rename}
+    end
+  end
+
+  def delete(rel) do
+    p = safe!(rel)
+
+    if File.exists?(p) or File.dir?(p) do
+      File.rm_rf!(p)
+      File.rm(Path.join(state_dir(), Base.url_encode64(rel, padding: false)))
+      Autopoet.Log.puts("vault: deleted #{rel}")
+      :ok
+    else
+      {:error, :not_found}
+    end
   end
 
   def read(rel), do: File.read(safe!(rel))

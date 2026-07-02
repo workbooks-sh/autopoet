@@ -47,4 +47,31 @@ defmodule Autopoet.NotesTest do
     assert_receive {:event, %{kind: "proposal.recorded", proposal: id}}, 3_000
     assert Autopoet.Proposals.status(id) == "pending"
   end
+
+  test "rename keeps kind sticky (content sniff), delete works, set-list order persists" do
+    n = System.unique_integer([:positive])
+    sk = "sticky-#{n}.sketch.svg"
+    assert :ok = Autopoet.Notes.create(sk, "sketch")
+
+    # rename away the extension — still a sketch (content sniff)
+    assert :ok = Autopoet.Notes.rename(sk, "sticky-#{n}")
+    tree = Autopoet.Notes.tree()
+    assert Enum.find(tree, &(&1.name == "sticky-#{n}")).type == "sketch"
+
+    # no extension on a text file = document
+    assert :ok = Autopoet.Notes.create("plain-#{n}", "note")
+    assert Enum.find(Autopoet.Notes.tree(), &(&1.name == "plain-#{n}")).type == "note"
+
+    # set-list order: reversed order persists over alphabetical
+    Autopoet.Notes.reorder("", ["plain-#{n}", "sticky-#{n}"])
+    names = Autopoet.Notes.tree() |> Enum.map(& &1.name)
+    assert Enum.find_index(names, &(&1 == "plain-#{n}")) < Enum.find_index(names, &(&1 == "sticky-#{n}"))
+
+    # move into a folder via rename (the drag-drop path), then delete
+    assert :ok = Autopoet.Notes.create("box-#{n}", "folder")
+    assert :ok = Autopoet.Notes.rename("plain-#{n}", "box-#{n}/plain-#{n}")
+    assert {:ok, _} = Autopoet.Notes.read("box-#{n}/plain-#{n}")
+    assert :ok = Autopoet.Notes.delete("box-#{n}")
+    assert {:error, _} = Autopoet.Notes.read("box-#{n}/plain-#{n}")
+  end
 end

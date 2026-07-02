@@ -76,6 +76,32 @@ defmodule Autopoet.Control do
     end)
   end
 
+  post "/notes/rename" do
+    authed!(conn, fn conn ->
+      case Autopoet.Notes.rename(conn.query_params["from"], conn.query_params["to"]) do
+        :ok -> text(conn, "renamed\n")
+        {:error, reason} -> text(conn, "refused: #{inspect(reason)}\n")
+      end
+    end)
+  end
+
+  post "/notes/delete" do
+    authed!(conn, fn conn ->
+      case Autopoet.Notes.delete(conn.query_params["path"]) do
+        :ok -> text(conn, "deleted\n")
+        {:error, reason} -> text(conn, "refused: #{inspect(reason)}\n")
+      end
+    end)
+  end
+
+  post "/notes/reorder" do
+    authed!(conn, fn conn ->
+      names = String.split(conn.query_params["names"] || "", "\n", trim: true)
+      Autopoet.Notes.reorder(conn.query_params["dir"] || "", names)
+      text(conn, "reordered\n")
+    end)
+  end
+
   get "/graph.json" do
     conn
     |> put_resp_content_type("application/json")
