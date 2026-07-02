@@ -1783,26 +1783,46 @@ function say(text) {
   cap.classList.add("on");
 }
 
-// mouth flap: poll the REAL speech state (the say queue) and animate while it plays
-let voicePoll = null, flapTimer = null;
-const FLAP = ["happy", "superHappy", "confused", "neutral"];
+// ── REAL lip sync: mouth openness follows the audio's amplitude envelope ────
+// The server parses the rendered AIFF into RMS-per-50ms; we sample it at the
+// playhead. Pauses sit flat; syllables open the mouth; silence closes it.
+let voicePoll = null, mouthTimer = null, voiceSync = null, syncAt = 0, mouthOpen = 0;
+
+function setMouthOpen(o) {
+  const g = document.getElementById("ap-mouth");
+  if (!g) return;
+  // parametric line-art mouth in the face's 80×80 space (centered like the moods)
+  const ry = 0.5 + o * 5.2;
+  g.innerHTML = `<ellipse cx="42" cy="47.2" rx="${(6.2 + o * 1.6).toFixed(2)}" ry="${ry.toFixed(2)}" fill="black"/>`;
+}
+
 function startVoicePoll() {
   if (voicePoll) return;
   voicePoll = setInterval(async () => {
-    const s = (await (await fetch("/voice/status")).text()).trim();
-    if (s === "speaking" && !flapTimer) {
-      flapTimer = setInterval(() =>
-        setMouth(FLAP[Math.floor(performance.now() / 130) % FLAP.length]), 120);
-    } else if (s !== "speaking" && flapTimer) {
-      clearInterval(flapTimer); flapTimer = null;
-      setMouth("neutral");
-      document.getElementById("callcaption").classList.remove("on");
-    }
+    try {
+      voiceSync = await (await fetch("/voice/sync.json")).json();
+      syncAt = performance.now();
+      if (voiceSync.status !== "speaking")
+        document.getElementById("callcaption").classList.remove("on");
+    } catch (_) {}
   }, 250);
+  mouthTimer = setInterval(() => {
+    if (!voiceSync || voiceSync.status !== "speaking" || !voiceSync.envelope.length) {
+      if (mouthOpen > 0.01) { mouthOpen *= 0.6; setMouthOpen(mouthOpen); }
+      else if (mouthOpen !== 0) { mouthOpen = 0; setMouth("neutral"); }
+      return;
+    }
+    const playhead = voiceSync.elapsed_ms + (performance.now() - syncAt);
+    const amp = voiceSync.envelope[Math.floor(playhead / voiceSync.window_ms)] ?? 0;
+    mouthOpen += (amp - mouthOpen) * 0.55;   // ease toward the target — no jitter
+    setMouthOpen(mouthOpen);
+  }, 40);
 }
 function stopVoicePoll() {
   clearInterval(voicePoll); voicePoll = null;
-  if (flapTimer) { clearInterval(flapTimer); flapTimer = null; setMouth("neutral"); }
+  clearInterval(mouthTimer); mouthTimer = null;
+  voiceSync = null; mouthOpen = 0;
+  setMouth("neutral");
   document.getElementById("callcaption").classList.remove("on");
 }
 

@@ -125,6 +125,10 @@ defmodule Autopoet.Control do
     text(conn, to_string(Autopoet.Voice.status()) <> "\n")
   end
 
+  get "/voice/sync.json" do
+    conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(Autopoet.Voice.sync()))
+  end
+
   post "/notes/save" do
     authed!(conn, fn conn ->
       {:ok, body, conn} = read_body(conn, length: 10_000_000)
