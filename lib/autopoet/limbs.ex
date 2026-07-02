@@ -29,7 +29,8 @@ defmodule Autopoet.Limbs do
   # prose, so self-designed limbs inherit it automatically.
   @protocol """
   LIMB PROTOCOL (house rules for every limb):
-  - Environment: your bash is the sandboxed WASIX shell (real bash + coreutils).
+  - Environment: your bash is washy — a WASM shell (sh.c + real coreutils) run on the
+    tiny-lasers WASM sandbox on the BEAM. It only has to BEHAVE like bash; nothing runs natively.
     The native toolchain is wasm-native: Rust, Go, C, C++, JavaScript, HTML/CSS.
     Do NOT assume python or system package managers.
   - Anything missing, broken, or limiting: FILE IT and continue —
