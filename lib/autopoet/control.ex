@@ -36,6 +36,10 @@ defmodule Autopoet.Control do
     conn |> put_resp_content_type("application/javascript") |> send_resp(200, js)
   end
 
+  get "/favicon.ico" do
+    conn |> put_resp_content_type("image/svg+xml") |> send_resp(200, Autopoet.Avatar.svg(Autopoet.Avatar.default_seed(), 32))
+  end
+
   get "/graph.json" do
     conn
     |> put_resp_content_type("application/json")

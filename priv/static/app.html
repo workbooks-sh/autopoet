@@ -52,11 +52,26 @@ const radius = n => n.type === "self" ? 46 : (n.type === "doc" ? 16 : 13);
 const svg = d3.select("#graph"), g = svg.append("g");
 svg.call(d3.zoom().scaleExtent([0.25, 3]).on("zoom", e => g.attr("transform", e.transform)));
 
+// any uncaught error becomes visible ON the page — no devtools in the webview
+function fatal(msg) {
+  let b = document.getElementById("err");
+  if (!b) { b = document.createElement("pre"); b.id = "err";
+    b.style = "position:fixed;top:8px;left:8px;z-index:9;background:#fdecea;color:#a00;padding:8px;border-radius:6px;max-width:80vw;white-space:pre-wrap";
+    document.body.appendChild(b); }
+  b.textContent = "render error: " + msg;
+}
+addEventListener("error", e => fatal(e.message + " @ " + e.filename + ":" + e.lineno));
+addEventListener("unhandledrejection", e => fatal(String(e.reason)));
+
 let sim;
 async function draw() {
-  const data = await (await fetch("/graph.json")).json();
-  g.selectAll("*").remove();
   const W = innerWidth, H = innerHeight;
+  svg.attr("width", W).attr("height", H);   // SVG must be explicitly sized (CSS-only collapses in WebKit)
+  let data;
+  try { data = await (await fetch("/graph.json")).json(); }
+  catch (err) { return fatal("graph.json fetch failed: " + err); }
+  if (!data.nodes || !data.nodes.length) return fatal("graph.json returned no nodes");
+  g.selectAll("*").remove();
 
   sim = d3.forceSimulation(data.nodes)
     .force("link", d3.forceLink(data.links).id(d => d.id)
