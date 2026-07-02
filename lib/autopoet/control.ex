@@ -42,6 +42,11 @@ defmodule Autopoet.Control do
     conn |> put_resp_content_type("application/javascript") |> send_resp(200, js)
   end
 
+  get "/static/gsap.min.js" do
+    js = [:code.priv_dir(:autopoet), "static", "gsap.min.js"] |> Path.join() |> File.read!()
+    conn |> put_resp_content_type("application/javascript") |> send_resp(200, js)
+  end
+
   get "/static/perfect-freehand.mjs" do
     js = [:code.priv_dir(:autopoet), "static", "perfect-freehand.mjs"] |> Path.join() |> File.read!()
     conn |> put_resp_content_type("text/javascript") |> send_resp(200, js)
@@ -145,7 +150,14 @@ defmodule Autopoet.Control do
   # ── auth / onboarding (stub provider now; a real one slots in behind Autopoet.Auth) ──
   get "/auth/state.json" do
     s = Autopoet.Auth.state()
-    body = %{authenticated: s.authenticated, onboarded: s.onboarded, user: s.user}
+
+    body = %{
+      authenticated: s.authenticated,
+      onboarded: s.onboarded,
+      user: s.user,
+      connections: Map.get(s, :connections, %{})
+    }
+
     conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(body))
   end
 
@@ -163,6 +175,37 @@ defmodule Autopoet.Control do
       case Autopoet.Auth.signup(conn.query_params) do
         {:error, reason} -> text(conn, "refused: #{inspect(reason)}\n")
         _ -> text(conn, "onboarding\n")
+      end
+    end)
+  end
+
+  # the splash's one door — GitHub/Google, stubbed behind the provider seam.
+  # Replies "app" (returning, onboarded) or "onboarding" (fresh) so the client routes.
+  post "/auth/oauth/:provider" do
+    authed!(conn, fn conn ->
+      case Autopoet.Auth.oauth(provider, conn.query_params) do
+        {:error, reason} -> text(conn, "refused: #{inspect(reason)}\n")
+        %{onboarded: true} -> text(conn, "app\n")
+        _ -> text(conn, "onboarding\n")
+      end
+    end)
+  end
+
+  # connect / disconnect a provider from onboarding's connect cards (stub)
+  post "/auth/connect/:provider" do
+    authed!(conn, fn conn ->
+      case Autopoet.Auth.connect(provider) do
+        {:error, reason} -> text(conn, "refused: #{inspect(reason)}\n")
+        _ -> text(conn, "ok\n")
+      end
+    end)
+  end
+
+  post "/auth/disconnect/:provider" do
+    authed!(conn, fn conn ->
+      case Autopoet.Auth.disconnect(provider) do
+        {:error, reason} -> text(conn, "refused: #{inspect(reason)}\n")
+        _ -> text(conn, "ok\n")
       end
     end)
   end

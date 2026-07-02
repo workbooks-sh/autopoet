@@ -31,7 +31,7 @@ defmodule Autopoet.Avatar do
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" width="#{size}" height="#{size}" fill="none" shape-rendering="auto" preserveAspectRatio="xMidYMid meet">
     <g id="ap-face" style="transition:transform .12s ease-out">
       <g id="ap-eyes-px" style="transition:transform .12s ease-out">
-        <g id="ap-eyes" style="transform-box:fill-box;transform-origin:center;transition:transform .09s ease">#{File.read!(base_path("eyes"))}</g>
+        <g id="ap-eyes"><g id="ap-eyes-open">#{File.read!(base_path("eyes"))}</g><g id="ap-eyes-closed" display="none">#{File.read!(base_path("eyes-closed"))}</g></g>
       </g>
       <g id="ap-mouth" transform="translate(0 2)">#{part("mood", "neutral")}</g>
     </g>

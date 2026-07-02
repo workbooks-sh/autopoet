@@ -26,6 +26,8 @@ defmodule Autopoet.Auth do
   def authenticated?, do: state().authenticated
   def onboarded?, do: state().onboarded
   def current_user, do: state().user
+  @doc "Connected providers (%{\"github\" => true, ...}) — sign in with ONE, connect BOTH."
+  def connections, do: Map.get(state(), :connections, %{})
 
   @doc "Returning user → straight to the app."
   def signin(params \\ %{}) do
@@ -43,8 +45,44 @@ defmodule Autopoet.Auth do
     end
   end
 
+  @doc """
+  OAuth entry (GitHub / Google) — the ONE door on the splash. Stubbed today: the
+  provider resolves the demo user; a real OAuth provider slots in behind the same
+  seam. A session that already finished onboarding lands straight in the app;
+  anything else flows through the onboarding steps.
+  """
+  def oauth(provider_name, params \\ %{}) when provider_name in ["github", "google"] do
+    case provider().authenticate(params) do
+      {:ok, user} ->
+        put(%{
+          authenticated: true,
+          user: current_user() || user,
+          onboarded: onboarded?(),
+          connections: Map.put(connections(), provider_name, true)
+        })
+
+      {:error, _} = e ->
+        e
+    end
+  end
+
+  # sign-in doors are github/google; cloudflare is connect-only (publishing)
+  @connectable ~w(github google cloudflare)
+
+  @doc "Connect an ADDITIONAL provider from onboarding (stub: always succeeds)."
+  def connect(provider_name) when provider_name in @connectable,
+    do: put(Map.put(state(), :connections, Map.put(connections(), provider_name, true)))
+
+  def connect(_), do: {:error, :unknown_provider}
+
+  @doc "Disconnect a provider — the cards toggle both ways."
+  def disconnect(provider_name) when provider_name in @connectable,
+    do: put(Map.put(state(), :connections, Map.delete(connections(), provider_name)))
+
+  def disconnect(_), do: {:error, :unknown_provider}
+
   def complete_onboarding, do: put(Map.merge(state(), %{onboarded: true}))
-  def signout, do: put(%{authenticated: false, user: nil, onboarded: false})
+  def signout, do: put(%{authenticated: false, user: nil, onboarded: false, connections: %{}})
 
   # ── state persistence ──────────────────────────────────────────────────────
   defp put(s) do
@@ -55,17 +93,41 @@ defmodule Autopoet.Auth do
 
   defp default do
     if System.get_env("AUTOPOET_SKIP_ONBOARDING") in ["1", "true"],
-      do: %{authenticated: true, user: @demo, onboarded: true},
-      else: %{authenticated: false, user: nil, onboarded: false}
+      do: %{authenticated: true, user: @demo, onboarded: true, connections: %{}},
+      else: %{authenticated: false, user: nil, onboarded: false, connections: %{}}
   end
 
   defp file, do: Path.join([Autopoet.Discovery.home(), "data", "session"])
 
+  # session file is line-based: state tag, then name / connected lines
   defp load do
     case File.read(file()) do
-      {:ok, "in" <> _} -> %{authenticated: true, user: @demo, onboarded: true}
-      {:ok, "onboarding" <> _} -> %{authenticated: true, user: @demo, onboarded: false}
-      _ -> default()
+      {:ok, body} ->
+        [tag | rest] = String.split(body, "\n", trim: true)
+
+        user =
+          Enum.find_value(rest, @demo, fn
+            "name: " <> n -> Map.put(@demo, "name", n)
+            _ -> nil
+          end)
+
+        conns =
+          Enum.find_value(rest, %{}, fn
+            "connected: " <> list ->
+              list |> String.split(",", trim: true) |> Map.new(&{String.trim(&1), true})
+
+            _ ->
+              nil
+          end)
+
+        case tag do
+          "in" -> %{authenticated: true, user: user, onboarded: true, connections: conns}
+          "onboarding" -> %{authenticated: true, user: user, onboarded: false, connections: conns}
+          _ -> default()
+        end
+
+      _ ->
+        default()
     end
   end
 
@@ -79,7 +141,13 @@ defmodule Autopoet.Auth do
         true -> "out"
       end
 
-    File.write!(file(), tag <> "\n")
+    name = s.user && s.user["name"]
+    name_line = if name && name != "demo", do: "name: #{name}\n", else: ""
+
+    conns = s |> Map.get(:connections, %{}) |> Map.keys() |> Enum.sort() |> Enum.join(",")
+    conn_line = if conns == "", do: "", else: "connected: #{conns}\n"
+
+    File.write!(file(), tag <> "\n" <> name_line <> conn_line)
   end
 
   @doc "The demo user (stub)."
@@ -99,6 +167,12 @@ defmodule Autopoet.Auth.Stub do
   @impl true
   def authenticate(_params), do: {:ok, Autopoet.Auth.demo()}
 
+  # sign-up carries the name chosen in onboarding — the one real field so far
   @impl true
-  def register(_params), do: {:ok, Autopoet.Auth.demo()}
+  def register(params) do
+    case String.trim(params["name"] || "") do
+      "" -> {:ok, Autopoet.Auth.demo()}
+      name -> {:ok, Map.put(Autopoet.Auth.demo(), "name", name)}
+    end
+  end
 end

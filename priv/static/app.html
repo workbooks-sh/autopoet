@@ -754,34 +754,102 @@
   #onboard button, #onboard .signbtn { -webkit-app-region:no-drag; }
   .obinner { display:flex; flex-direction:column; gap:34px; max-width:560px; padding:40px; }
   .obrow { display:flex; align-items:stretch; gap:28px; }
-  /* the avatar is the REAL graph face (cursor-tracking), sized as tall as the definition */
-  #obavatar { align-self:stretch; aspect-ratio:1; flex:none; border-radius:24px;
-    border:1px solid rgba(0,0,0,.12); background:#fff; overflow:hidden; }
-  #obavatar svg { width:100%; height:100%; display:block; }
+  /* the face rides SMALL, above the wordmark (the big side-by-side avatar ghosted
+     in the desktop WebKit shell; this compact layout renders clean) */
   .obdef { text-align:left; align-self:center; }
-  /* serif for the definition; monospace for the code-y accents */
-  .obword { font-family:Georgia,"Times New Roman",serif; font-size:36px; font-weight:600;
-    color:#1c2230; letter-spacing:-.01em; line-height:1; }
-  .obph { font:12px ui-monospace,monospace; color:#98a0ac; margin-top:6px; }
+  /* one voice: the app's monospace — the serif experiment is retired */
+  #onboard { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .obword { font:600 32px ui-monospace,SFMono-Regular,Menlo,monospace;
+    color:#1c2230; letter-spacing:-.02em; line-height:1; }
+  .obph { font:12px ui-monospace,monospace; color:#98a0ac; margin-top:7px; }
   .obph .obpo { color:#8e7cc3; }
-  .obtext { font-family:Georgia,"Times New Roman",serif; font-size:15.5px; line-height:1.55;
+  .obtext { font:13px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace;
     color:#3a4250; margin:14px 0 0; }
   .obcode { font:12px ui-monospace,monospace; color:#b3bac4; margin-top:13px; }
-  /* sign · a centered segmented [in|up] badge (no arrows) */
-  .obsignrow { justify-content:center; }
-  .obsign { display:flex; align-items:center; gap:14px; }
-  .obsign .signword { font-family:Georgia,serif; font-size:28px; color:#1c2230; }
-  .signbadge { display:flex; align-items:center; gap:2px; padding:4px; border-radius:13px;
-    background:#f2f4f7; box-shadow:inset 0 1px 2px rgba(25,35,55,.07); }
-  .signopt { font:600 18px Georgia,serif; color:#67707c; border:none; background:none;
-    cursor:pointer; padding:6px 18px; border-radius:10px;
-    transition:background .16s ease, color .16s ease, box-shadow .16s ease; }
-  .signopt:hover { background:#fff; color:#1c2230; box-shadow:0 1px 3px rgba(25,35,55,.12); }
-  /* onboarding steps (stub) */
-  #obsteps { display:none; flex-direction:column; align-items:flex-start; gap:14px; max-width:460px; padding:40px; text-align:left; }
-  #obsteps .obstepgo { font:inherit; font-size:14px; padding:9px 18px; border-radius:10px;
+  /* OAuth entry — GitHub / Google (stubbed providers behind Autopoet.Auth).
+     Buttons hug the LEFT edge, aligned with the definition text above. */
+  .obsignrow { justify-content:flex-start; }
+  .oblogins { display:flex; flex-direction:column; gap:10px; align-items:flex-start; }
+  .oauthbtn { display:flex; align-items:center; justify-content:center; gap:10px; width:280px;
+    font:600 12.5px ui-monospace,SFMono-Regular,Menlo,monospace; color:#1c2230;
+    padding:10px 20px; border-radius:12px; border:1px solid #d6dbe2; background:#fff;
+    cursor:pointer; -webkit-app-region:no-drag;
+    transition:border-color .16s ease, box-shadow .16s ease; }
+  .oauthbtn:hover { border-color:#b9c2cd; box-shadow:0 1px 4px rgba(25,35,55,.1); }
+  .oauthbtn svg { flex:none; }
+  /* onboarding steps (the cold-start flow after sign UP) */
+  #obsteps { display:none; flex-direction:column; align-items:flex-start; gap:16px; max-width:460px; padding:40px; text-align:left; }
+  #obsteps .obstepgo { font:12.5px ui-monospace,monospace; padding:9px 18px; border-radius:10px;
     border:1px solid #2f6fdd; background:#2f6fdd; color:#fff; cursor:pointer; -webkit-app-region:no-drag; }
   #obsteps .obstepgo:hover { background:#245cc0; }
+  .obsface { width:72px; height:72px; border-radius:16px; border:1px solid rgba(0,0,0,.12);
+    background:#fff; overflow:hidden; }
+  .obinput { font:13px ui-monospace,SFMono-Regular,Menlo,monospace; color:#1c2230;
+    padding:9px 12px; border-radius:10px; border:1px solid #d6dbe2; background:#fff;
+    outline:none; width:280px; -webkit-app-region:no-drag; }
+  .obinput:focus { border-color:#8e7cc3; box-shadow:0 0 0 3px rgba(142,124,195,.14); }
+  .obhow { display:flex; flex-direction:column; gap:10px; margin:2px 0 6px; }
+  .obhowrow { display:flex; gap:12px; font:12.5px/1.55 ui-monospace,monospace; color:#3a4250; }
+  .obhowk { flex:none; width:86px; text-align:right; color:#8e7cc3; font-weight:600; }
+  /* connect cards — square, one per provider; connected = quiet green ring + check */
+  /* cards flex-fill the row so the abilities card below lines up EXACTLY */
+  .obcards { display:flex; gap:12px; margin:4px 0 2px; width:100%; }
+  .obabil { display:flex; flex-direction:column; gap:7px; width:100%; box-sizing:border-box;
+    padding:13px 15px; border:1px solid #e4e8ee; border-radius:14px; background:#fafbfc; }
+  .abrow { display:flex; align-items:center; gap:9px; font:11.5px ui-monospace,monospace; color:#9aa2ad; }
+  .abrow.on { color:#2c3442; }
+  .abck { flex:none; width:15px; height:15px; color:#c5ccd6; }
+  .abrow.on .abck { color:#6aa84f; }
+  .abck svg { width:15px; height:15px; }
+  .absrc { margin-left:auto; font-size:10px; color:#c0c7d0; }
+  .obcard { position:relative; flex:1; min-width:0; aspect-ratio:1; display:flex; flex-direction:column;
+    align-items:flex-start; justify-content:flex-end; gap:6px; padding:14px;
+    border:1px solid #d6dbe2; border-radius:14px; background:#fff; cursor:pointer;
+    -webkit-app-region:no-drag; transition:border-color .16s ease, box-shadow .16s ease; }
+  .obcard svg { margin-bottom:auto; }
+  .obcard:hover { border-color:#b9c2cd; box-shadow:0 1px 4px rgba(25,35,55,.1); }
+  .obcard.on { border-color:#6aa84f; box-shadow:0 0 0 3px rgba(106,168,79,.12); }
+  .obcardname { font:600 13px ui-monospace,monospace; color:#1c2230; }
+  .obcardline { font:10.5px/1.45 ui-monospace,monospace; color:#67707c; }
+  .obck { position:absolute; top:10px; right:10px; display:none; color:#6aa84f; }
+  .obck svg { width:16px; height:16px; }
+  .obcard.on .obck { display:block; }
+  /* ── the animated slide deck (GSAP) — face card centerpiece, scenes around it ── */
+  #obslides { display:none; flex-direction:column; align-items:center; gap:22px;
+    width:560px; padding:40px; position:relative; }
+  .obskip { position:absolute; top:6px; right:10px; font:11px ui-monospace,monospace;
+    color:#98a0ac; background:none; border:none; cursor:pointer; -webkit-app-region:no-drag; }
+  .obskip:hover { color:#3a4250; }
+  .slidestage { position:relative; width:480px; height:230px; }
+  .slideface { position:absolute; left:50%; top:50%; margin:-57px 0 0 -57px; width:114px; height:114px;
+    border-radius:26px; border:1px solid rgba(0,0,0,.12); background:#fff; overflow:hidden;
+    box-shadow:0 8px 28px rgba(25,35,55,.09); }
+  .slidefx { position:absolute; inset:0; pointer-events:none; }
+  .slidetext { text-align:center; min-height:78px; max-width:420px; }
+  .slidetitle { font:600 20px ui-monospace,SFMono-Regular,Menlo,monospace; color:#1c2230; }
+  .slidesub { font:12px/1.6 ui-monospace,monospace; color:#67707c; margin:8px 0 0; }
+  .slidenav { display:flex; align-items:center; gap:16px; }
+  .slidenav button { width:34px; height:34px; border-radius:11px; border:1px solid #d6dbe2;
+    background:#fff; color:#3a4250; cursor:pointer; display:flex; align-items:center;
+    justify-content:center; -webkit-app-region:no-drag; transition:border-color .15s ease; }
+  .slidenav button:hover { border-color:#b9c2cd; }
+  .slidenav button svg { width:15px; height:15px; }
+  .sldots { display:flex; gap:6px; }
+  .sldot { width:6px; height:6px; border-radius:50%; background:#d9dee5; transition:background .2s ease; }
+  .sldot.on { background:#8e7cc3; }
+  /* scene furniture */
+  .fxcard { position:absolute; background:#fff; border:1px solid #e0e4ea; border-radius:12px;
+    padding:10px 12px; font:10.5px/1.5 ui-monospace,monospace; color:#3a4250;
+    box-shadow:0 3px 12px rgba(25,35,55,.06); white-space:pre; text-align:left; }
+  .fxchip { position:absolute; background:#fff; border:1px solid #e0e4ea; border-radius:9px;
+    padding:5px 10px; font:10px ui-monospace,monospace; color:#3a4250;
+    box-shadow:0 2px 8px rgba(25,35,55,.05); }
+  .fxnode { position:absolute; width:14px; height:14px; border-radius:50%; }
+  .fxcaret { display:inline-block; width:6px; height:11px; background:#8e7cc3;
+    vertical-align:-1px; animation:fxblink 1s steps(1) infinite; }
+  .fxfile { display:flex; align-items:center; gap:6px; }
+  .fxfile img { display:block; }
+  @keyframes fxblink { 50% { opacity:0; } }
 </style>
 
 <div id="chrome">
@@ -935,8 +1003,8 @@
 
 <div id="onboard">
   <div class="obinner">
+    <div class="obsface" id="obface"></div>
     <div class="obrow">
-      <div id="obavatar"></div>
       <div class="obdef">
         <div class="obword">autopoet</div>
         <div class="obph">/ˌɔː·toʊ·ˈpoʊ·ɪt/ · noun · <span class="obpo">poiesis</span></div>
@@ -947,16 +1015,36 @@
       </div>
     </div>
     <div class="obrow obsignrow">
-      <div class="obsign">
-        <span class="signword">sign</span>
-        <div class="signbadge">
-          <button class="signopt" id="ob-in">in</button>
-          <button class="signopt" id="ob-up">up</button>
-        </div>
+      <div class="oblogins">
+        <button class="oauthbtn" id="ob-github">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="#1c2230" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8"/></svg>
+          continue with GitHub
+        </button>
+        <button class="oauthbtn" id="ob-google">
+          <svg viewBox="0 0 18 18" width="16" height="16" aria-hidden="true"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.97 10.72a5.41 5.41 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.9 11.42 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/></svg>
+          continue with Google
+        </button>
       </div>
     </div>
   </div>
   <div id="obsteps"></div>
+  <div id="obslides">
+    <button class="obskip" id="obskip">skip →</button>
+    <div class="slidestage">
+      <div class="slidefx" id="slidefx"></div>
+      <div class="slideface" id="slideface"></div>
+    </div>
+    <div class="slidetext">
+      <div class="slidetitle" id="slidetitle"></div>
+      <p class="slidesub" id="slidesub"></p>
+    </div>
+    <div class="slidenav">
+      <button id="slprev" title="back"><i data-lucide="arrow-left"></i></button>
+      <div class="sldots" id="sldots"></div>
+      <button id="slnext" title="next"><i data-lucide="arrow-right"></i></button>
+    </div>
+    <button class="obstepgo" id="slenter" style="display:none">enter autopoet</button>
+  </div>
 </div>
 
 <div id="shade"></div>
@@ -981,6 +1069,7 @@
 
 <script src="/static/d3.v7.min.js"></script>
 <script src="/static/lucide.min.js"></script>
+<script src="/static/gsap.min.js"></script>
 <script type="module">
   import { getStroke } from "/static/perfect-freehand.mjs";
   window.getStroke = getStroke;   // the Excalidraw-grade ink engine (pen falls back until loaded)
@@ -1925,10 +2014,17 @@ async function createFace(mount, opts = {}) {
   const el = s => document.getElementById(p + "ap-" + s);
   const setM = mood => { const m = el("mouth"); if (m && MOUTHS[mood]) m.innerHTML = MOUTHS[mood]; };
   let squint = false;
+  // eyes are a SHAPE SWAP, nothing else — two baked groups (open / closed-dash),
+  // toggled by the display attribute. No transforms, no scaling, no animation:
+  // WebKit (the desktop shell) ghosts transformed SVG internals; a swap can't.
+  function setEyes(open) {
+    const o = el("eyes-open"), c = el("eyes-closed");
+    if (o) o.setAttribute("display", open ? "inline" : "none");
+    if (c) c.setAttribute("display", open ? "none" : "inline");
+  }
   // blink
   (function blink() {
-    const e = el("eyes");
-    if (e) { e.style.transform = "scaleY(0.08)"; setTimeout(() => { if (e) e.style.transform = squint ? "scaleY(0.42)" : "scaleY(1)"; }, 95); }
+    if (el("eyes")) { setEyes(false); setTimeout(() => setEyes(!squint), 110); }
     setTimeout(blink, 3000 + Math.random() * 3000);
   })();
   // cursor parallax
@@ -1956,10 +2052,10 @@ async function createFace(mount, opts = {}) {
   const clk = opts.clickTarget || svg;
   clk.addEventListener("click", () => {
     squint = true;
-    const e = el("eyes"); if (e) e.style.transform = "scaleY(0.42)";
+    setEyes(false);   // the squint IS the closed-dash shape — swap, no scaling
     setM("confused");
     clearTimeout(svg._react);
-    svg._react = setTimeout(() => { squint = false; const e2 = el("eyes"); if (e2) e2.style.transform = "scaleY(1)"; setM("neutral"); }, 160);
+    svg._react = setTimeout(() => { squint = false; setEyes(true); setM("neutral"); }, 160);
   });
   return { svg, setMouth: setM, el };
 }
@@ -1996,8 +2092,10 @@ async function draw() {
 
   sim = d3.forceSimulation(data.nodes)
     .force("link", d3.forceLink(data.links).id(d => d.id)
-      .distance(l => l.kind === "ref" ? 90 : 150).strength(l => l.kind === "ref" ? 0.5 : 0.06))
-    .force("charge", d3.forceManyBody().strength(-320))
+      .distance(l => l.kind === "ref" ? 90 : 150).strength(l => l.kind === "ref" ? 0.5 : 0.08))
+    // repulsion is LOCAL (distanceMax) — gravity that shoves neighbors apart must
+    // not keep flinging distant strays to the edge of the world
+    .force("charge", d3.forceManyBody().strength(-320).distanceMax(420))
     .force("center", d3.forceCenter(W / 2, H / 2))
     // the autopoet holds the strongest field on the canvas — nothing crowds it
     .force("collide", d3.forceCollide(d => d.id === "self" ? 110 : radius(d) + (clustered.has(d.id) ? 36 : 14)))
@@ -2077,50 +2175,43 @@ async function draw() {
       const mpts = clusterMembers(c, data.nodes).map(id => byId.get(id))
         .filter(n => n && n.x != null).map(n => [n.x, n.y]);
       if (!mpts.length) continue;
+      ensurePort(c, mpts);   // every cluster carries at least ONE shape pin — its port
       const pts = withPins(c, mpts);
       const gp = hullLayer.append("g").style("cursor", "pointer")
         .on("click", e => hullClick(e, c, pts))
         .on("contextmenu", e => { e.preventDefault(); clusterCtx(e, c); })
-        // hovering the membrane edge previews the pin you'd plant there
+        // hovering the membrane edge previews the pin you'd plant there. The band is
+        // SCREEN-space (÷ zoom) so it feels identical at every zoom level, and the
+        // previewed spot is recorded — the click plants exactly what the ghost shows.
         .on("mousemove", e => {
           const p = d3.pointer(e, g.node());
+          const k = d3.zoomTransform(svg.node()).k || 1;
           const near = nearestOnPoly(p, hullOffsetPts(pts, 44));
-          if (near.d < 16 && pinPreview)
+          if (near.d < 20 / k && pinPreview) {
+            pinSpot = { cid: c.id, pt: near.pt };
             pinPreview.attr("cx", near.pt[0]).attr("cy", near.pt[1]).attr("stroke", c.color).style("display", null);
-          else if (pinPreview) pinPreview.style("display", "none");
+          } else { if (pinSpot && pinSpot.cid === c.id) pinSpot = null; if (pinPreview) pinPreview.style("display", "none"); }
         })
-        .on("mouseleave", () => pinPreview && pinPreview.style("display", "none"));
+        .on("mouseleave", () => { pinSpot = null; pinPreview && pinPreview.style("display", "none"); });
       gp.append("path").attr("d", hullPath(pts, 44))
         .attr("fill", c.color).attr("fill-opacity", .065)
         .attr("stroke", c.color).attr("stroke-opacity", .3)
         .attr("stroke-width", 1.4).attr("stroke-linejoin", "round");
-      // shape pins: handles sitting ON the membrane — drag to sculpt, right-click for options
+      // shape pins: handles sitting ON the membrane — drag to sculpt, right-click for
+      // options. Pin 0 is THE PORT (badge home + edge trunk); drawn slightly larger.
       pinPoints(c, mpts).forEach((pp, i) => {
-        gp.append("circle").attr("cx", pp[0]).attr("cy", pp[1]).attr("r", 4.5)
+        gp.append("circle").attr("cx", pp[0]).attr("cy", pp[1]).attr("r", i === 0 ? 5.5 : 4.5)
           .attr("class", "cl-pin" + (c.pins[i].world ? " cl-pin-world" : "")).attr("stroke", c.color)
           .on("mousedown", e => beginPinDrag(e, c, i))
+          .on("click", e => e.stopPropagation())   // a pin click never falls through to hullClick
           .on("contextmenu", e => { e.preventDefault(); e.stopPropagation(); pinCtx(e, c, i); });
       });
-      // the badge rides the INSIDE TRACK — hovering at the cluster's PORT (the pin
-      // where bundled edges land, nearest the autopoet), else at the membrane point
-      // facing the autopoet; anchored badges stay at their world spot
+      // badge and port are ONE unit: the badge rides directly above pin 0, always.
+      // Drag the port to move where the label sits; anchored badges keep their spot.
       let bp;
       if (c.badge && c.badge.world) bp = [c.badge.x, c.badge.y];
       else {
-        const self = byId.get("self");
-        const pinsV = pinPoints(c, mpts);
-        let port;
-        if (self && pinsV.length)
-          port = pinsV.reduce((a, p) =>
-            Math.hypot(p[0] - self.x, p[1] - self.y) < Math.hypot(a[0] - self.x, a[1] - self.y) ? p : a);
-        else if (self)
-          port = nearestOnPoly([self.x, self.y], hullOffsetPts(pts, 44)).pt;
-        else {
-          const top = pts.reduce((a, p) => p[1] < a[1] ? p : a, pts[0]);
-          port = [top[0], top[1] - 44];
-        }
-        // directly ABOVE the port (clear of the pin handle) — stable while dragging;
-        // edge overlap doesn't matter because badges render above the edges
+        const port = pinPoints(c, mpts)[0];
         bp = [port[0], port[1] - 32];
       }
       drawClusterBadge(badgeLayer || gp, c, bp[0], bp[1]);
@@ -2980,6 +3071,19 @@ function pinPoints(c, mpts) {
   const [cx, cy] = memberCentroid(mpts);
   return (c.pins || []).map(p => pinVisual(p, cx, cy));
 }
+// INVARIANT: a cluster always has ≥1 shape pin — pin 0 is its PORT: the badge rides
+// above it and bundled edges trunk through it. Born facing the autopoet.
+function ensurePort(c, mpts) {
+  if ((c.pins || []).length || !mpts.length) return;
+  const [cx, cy] = memberCentroid(mpts);
+  const poly = hullOffsetPts(mpts, 44);
+  const self = worldData && worldData.nodes.find(n => n.id === "self");
+  const at = self && self.x != null
+    ? nearestOnPoly([self.x, self.y], poly).pt
+    : poly.reduce((a, p) => p[1] < a[1] ? p : a, poly[0]);
+  c.pins = [{ dx: +(at[0] - cx).toFixed(1), dy: +(at[1] - cy).toFixed(1) }];
+  saveClusters();
+}
 function togglePinWorld(c, idx) {
   const mpts = clusterMembers(c, worldData.nodes)
     .map(id => worldData.nodes.find(n => n.id === id)).filter(n => n && n.x != null).map(n => [n.x, n.y]);
@@ -2993,13 +3097,15 @@ function togglePinWorld(c, idx) {
 }
 function pinCtx(e, c, idx) {
   const p = c.pins[idx];
-  showCtx(e.clientX, e.clientY, [
+  const items = [
     { icon: "map-pin", label: p.world ? "release — ride the cluster" : "pin to world space",
-      fn: () => togglePinWorld(c, idx) },
-    "-",
-    { icon: "trash-2", label: "remove pin", danger: true,
-      fn: () => { c.pins.splice(idx, 1); clusterChanged(); } }
-  ]);
+      fn: () => togglePinWorld(c, idx) }
+  ];
+  // the last pin is the cluster's port — it can move, never vanish
+  if (c.pins.length > 1)
+    items.push("-", { icon: "trash-2", label: "remove pin", danger: true,
+      fn: () => { c.pins.splice(idx, 1); clusterChanged(); } });
+  showCtx(e.clientX, e.clientY, items);
 }
 // pinning the badge ANCHORS THE WHOLE CLUSTER in world space — as if you held it
 // there by the handle. The badge freezes at its spot, an anchor spring holds the
@@ -3070,16 +3176,23 @@ function hullPath(pts, pad) {
   return d + "Z";
 }
 // click near the membrane's EDGE plants a shape pin exactly ON the stroke (pure
-// sculpting, no meaning); click the interior opens the cluster panel
+// sculpting, no meaning); click the interior opens the cluster panel.
+// The hover GHOST is the contract: if it's showing for this cluster, the click
+// plants at ITS spot — re-deriving the threshold here could disagree with what
+// the human was just shown (the old "preview shows, click doesn't take" bug).
+let pinSpot = null;   // { cid, pt } while the preview ghost is visible
 function hullClick(e, c, pts) {
   const p = d3.pointer(e, g.node());
+  const k = d3.zoomTransform(svg.node()).k || 1;
   const near = nearestOnPoly(p, hullOffsetPts(pts, 44));
-  if (near.d < 16) {
+  const spot = pinSpot && pinSpot.cid === c.id ? pinSpot.pt
+             : near.d < 20 / k ? near.pt : null;
+  if (spot) {
     const mpts = clusterMembers(c, worldData.nodes)
       .map(id => worldData.nodes.find(n => n.id === id)).filter(n => n && n.x != null).map(n => [n.x, n.y]);
     if (!mpts.length) return;
     const [cx, cy] = memberCentroid(mpts);
-    (c.pins = c.pins || []).push({ dx: +(near.pt[0] - cx).toFixed(1), dy: +(near.pt[1] - cy).toFixed(1) });
+    (c.pins = c.pins || []).push({ dx: +(spot[0] - cx).toFixed(1), dy: +(spot[1] - cy).toFixed(1) });
     clusterChanged();
     toast("shape pin added — drag to sculpt, right-click to remove");
   } else showClusterPanel(c);
@@ -3832,24 +3945,274 @@ function showSignIn() {
   mountOnboardFace();
   refreshIcons();
 }
-// the onboarding avatar is the SAME face component, scoped so it runs independently
+// the splash avatar is the SAME face component, scoped so it runs independently
 let _obFaceMounted = false;
 function mountOnboardFace() {
-  const box = document.getElementById("obavatar");
+  const box = document.getElementById("obface");
   if (!box || _obFaceMounted) return;
   _obFaceMounted = true;
   createFace(box, { idPrefix: "ob" });
 }
+// the cold-start flow: sign UP lands here — (1) it asks your name, (2) it explains
+// the one-way loop (vault → translation → proposals), then drops you into the app.
 function showOnboardSteps() {
   const ob = document.getElementById("onboard");
   ob.classList.remove("hidden");
   document.querySelector("#onboard .obinner").style.display = "none";
+  document.getElementById("obsteps").style.display = "flex";
+  obStep(1);
+}
+function obStep(n) {
   const s = document.getElementById("obsteps");
-  s.style.display = "flex";
-  s.innerHTML = `<div class="obword" style="font-size:28px">welcome</div>
-    <p class="obtext">Onboarding is stubbed for now — we'll shape these steps later.</p>
-    <button class="obstepgo" id="ob-done">enter autopoet</button>`;
-  document.getElementById("ob-done").onclick = () => authedPost("/auth/onboarding/done").then(() => location.reload());
+  if (n === 1) {
+    s.innerHTML = `<div class="obsface" id="obsface"></div>
+      <div class="obword" style="font-size:24px">hello.</div>
+      <p class="obtext" style="margin:0">I keep a living body of structure grown from your
+        notes — your plain words become real, running form. Before we begin: what
+        should I call you?</p>
+      <input id="ob-name" class="obinput" placeholder="your name" maxlength="40" spellcheck="false">
+      <button class="obstepgo" id="ob-next">continue</button>`;
+    createFace(document.getElementById("obsface"), { idPrefix: "obs" });
+    const input = document.getElementById("ob-name");
+    if (currentUser && currentUser.name && currentUser.name !== "demo") input.value = currentUser.name;
+    const go = () => {
+      const name = input.value.trim();
+      if (!name) { input.focus(); return; }
+      authedPost("/auth/signup?name=" + encodeURIComponent(name)).then(() => obStep(2));
+    };
+    document.getElementById("ob-next").onclick = go;
+    input.addEventListener("keydown", e => { if (e.key === "Enter") go(); });
+    setTimeout(() => input.focus(), 50);
+  } else if (n === 2) {
+    obConnectStep();
+  } else {
+    showSlides();
+  }
+}
+// step 2 — CONNECTIONS: you signed in with one; connect both if you want. What's
+// connected decides where the work lives (GitHub monorepo vs local git + Drive).
+const OB_GH_SVG = `<svg viewBox="0 0 16 16" width="22" height="22" aria-hidden="true"><path fill="#1c2230" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8"/></svg>`;
+const OB_GOO_SVG = `<svg viewBox="0 0 18 18" width="22" height="22" aria-hidden="true"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.97 10.72a5.41 5.41 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.9 11.42 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/></svg>`;
+const OB_CF_SVG = `<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="#F6821F" d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>`;
+async function obConnectStep() {
+  const s = document.getElementById("obsteps");
+  let conns = {};
+  try { conns = (await (await fetch("/auth/state.json")).json()).connections || {}; } catch (_) {}
+  s.innerHTML = `<div class="obword" style="font-size:24px">connect</div>
+    <p class="obtext" style="margin:0">You signed in with one — connect any of these.
+      Together they decide what the autopoet can do for you.</p>
+    <div class="obcards">
+      <div class="obcard" data-prov="github">
+        ${OB_GH_SVG}<span class="obcardname">GitHub</span>
+        <span class="obcardline">a monorepo it keeps and syncs for you</span>
+        <span class="obck"><i data-lucide="check"></i></span>
+      </div>
+      <div class="obcard" data-prov="google">
+        ${OB_GOO_SVG}<span class="obcardname">Google</span>
+        <span class="obcardline">Workspace as context; Drive as backup</span>
+        <span class="obck"><i data-lucide="check"></i></span>
+      </div>
+      <div class="obcard" data-prov="cloudflare">
+        ${OB_CF_SVG}<span class="obcardname">Cloudflare</span>
+        <span class="obcardline">publish your weaved sites to the web</span>
+        <span class="obck"><i data-lucide="check"></i></span>
+      </div>
+    </div>
+    <div class="obabil" id="obplan"></div>
+    <button class="obstepgo" id="ob-next2">continue</button>`;
+  // the ABILITIES card: a compact comparison — every ability listed, checked or
+  // not by the exact combination connected
+  const plan = () => {
+    const abilities = [
+      ["local git history", true, "built in"],
+      ["synced GitHub monorepo", !!conns.github, "github"],
+      ["Workspace as context — Docs, Sheets, Gmail", !!conns.google, "google"],
+      ["vault backed up to Drive", !!conns.google, "google"],
+      ["publish sites to the web", !!conns.cloudflare, "cloudflare"]
+    ];
+    document.getElementById("obplan").innerHTML = abilities.map(([label, on, src]) =>
+      `<div class="abrow${on ? " on" : ""}">
+         <span class="abck"><i data-lucide="${on ? "check" : "x"}"></i></span>
+         <span class="ablabel">${label}</span>
+         <span class="absrc">${src}</span>
+       </div>`).join("");
+    refreshIcons();
+  };
+  const paint = () => {
+    for (const card of s.querySelectorAll(".obcard"))
+      card.classList.toggle("on", !!conns[card.dataset.prov]);
+    plan();
+  };
+  // the cards TOGGLE — connect on click, disconnect on click again
+  for (const card of s.querySelectorAll(".obcard"))
+    card.onclick = async () => {
+      const prov = card.dataset.prov;
+      await authedPost("/auth/" + (conns[prov] ? "disconnect" : "connect") + "/" + prov);
+      conns[prov] = !conns[prov];
+      paint();
+    };
+  paint();
+  refreshIcons();
+  document.getElementById("ob-next2").onclick = () => obStep(3);
+}
+
+// ── the slide deck: a GSAP-animated walkthrough, the face card as centerpiece.
+// Skippable; arrows (buttons + keyboard) navigate; the deck tweens BETWEEN slide
+// states and each slide runs its own little scene animation. ──
+const fxEl = html => { const d = document.createElement("div"); d.innerHTML = html; return d.firstElementChild; };
+const fxIn = (els, d = 0) =>
+  gsap.from(els, { autoAlpha: 0, y: 14, duration: .5, delay: d, stagger: .12, ease: "power2.out" });
+const SLIDES = [
+  { title: "meet the autopoet", mood: "happy",
+    sub: "a self-authoring system. it reads what you mean — and makes what it means.",
+    fx(fx) {
+      const a = fxEl(`<div class="fxchip" style="left:17%;top:24%">/ˌɔː·toʊ·ˈpoʊ·ɪt/</div>`);
+      const b = fxEl(`<div class="fxchip" style="right:15%;bottom:22%">// autopoiesis</div>`);
+      fx.append(a, b);
+      fxIn([a, b], .2);
+      gsap.to([a, b], { y: "-=7", duration: 2.2, ease: "sine.inOut", yoyo: true, repeat: -1, stagger: .4, delay: .8 });
+    } },
+  { title: "write plain words", mood: "neutral",
+    sub: "your vault holds documents — thoughts, plans, rules. it is the source of truth, and it is yours: the autopoet never edits it.",
+    fx(fx) {
+      // left: the note being written; right: what comes OUT — real code files
+      const card = fxEl(`<div class="fxcard" style="left:2%;top:25%;width:138px;height:76px"><span id="fxtype"></span><span class="fxcaret"></span></div>`);
+      fx.append(card);
+      fxIn(card);
+      const files = [
+        ["svelte", "launch/page.svelte"],
+        ["typescript", "hero.ts"],
+        ["rust", "engine.rs"]
+      ].map(([icon, name], k) => fxEl(
+        `<div class="fxchip fxfile" style="right:5%;top:${26 + k * 21}%">` +
+        `<img src="/static/micons/${icon}.svg" width="13" height="13" alt="">${name}</div>`));
+      files.forEach(f => fx.append(f));
+      const text = "plan: launch page\ntodo: hero copy\ntone: quiet, warm";
+      const span = card.querySelector("#fxtype");
+      let i = 0;
+      const t = setInterval(() => { span.textContent = text.slice(0, ++i); if (i >= text.length) clearInterval(t); }, 42);
+      // files land as the words land — output trailing the source
+      gsap.from(files, { x: -26, autoAlpha: 0, scale: .7, duration: .55, delay: 1.1, stagger: .5, ease: "back.out(2)" });
+      gsap.to(files, { y: "-=4", duration: 2.2, yoyo: true, repeat: -1, ease: "sine.inOut", stagger: .35, delay: 2.8 });
+      return () => clearInterval(t);
+    } },
+  { title: "sketches count too", mood: "hopeful",
+    sub: "or draw it instead — strokes are read like words.",
+    fx(fx) {
+      const holder = fxEl(`<div class="fxcard" style="right:3%;top:22%;width:120px;height:84px;padding:8px"></div>`);
+      holder.innerHTML = `<svg viewBox="0 0 104 68" width="104" height="68" fill="none">
+        <path id="fxstroke" d="M8 52 C20 18 38 14 50 30 S78 58 96 22" stroke="#8e7cc3" stroke-width="2.5" stroke-linecap="round"/>
+        <path id="fxarrow" d="M64 12 h22 m-7 -6 7 6 -7 6" stroke="#c9a04e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>`;
+      fx.append(holder);
+      fxIn(holder);
+      holder.querySelectorAll("path").forEach((p, k) => {
+        const L = p.getTotalLength();
+        p.style.strokeDasharray = L; p.style.strokeDashoffset = L;
+        gsap.to(p, { strokeDashoffset: 0, duration: 1.4, delay: .5 + k * .7, ease: "power2.inOut" });
+      });
+    } },
+  { title: "it becomes real", mood: "superHappy",
+    sub: "saved words translate into living structure — pages, todos, rules. programs run; context informs.",
+    fx(fx) {
+      const wires = fxEl(`<div style="position:absolute;inset:0"></div>`);
+      wires.innerHTML = `<svg viewBox="0 0 480 230" width="480" height="230" fill="none">
+        <path class="fxlink" d="M298 115 C332 115 332 60 366 60" stroke="#d9c9f0" stroke-width="1.6"/>
+        <path class="fxlink" d="M298 115 C338 115 338 118 374 118" stroke="#d9c9f0" stroke-width="1.6"/>
+        <path class="fxlink" d="M298 115 C332 115 332 172 362 172" stroke="#d9c9f0" stroke-width="1.6"/>
+      </svg>`;
+      fx.append(wires);
+      const mk = (top, left, bg) => fxEl(`<div class="fxnode" style="top:${top}px;left:${left}px;background:${bg}"></div>`);
+      const nodes = [mk(53, 366, "#8e7cc3"), mk(111, 374, "#6aa84f"), mk(165, 362, "#c9a04e")];
+      nodes.forEach(n => fx.append(n));
+      const note = fxEl(`<div class="fxchip" style="left:7%;top:44%">launch-page.md</div>`);
+      fx.append(note);
+      fxIn(note);
+      wires.querySelectorAll(".fxlink").forEach((p, k) => {
+        const L = p.getTotalLength();
+        p.style.strokeDasharray = L; p.style.strokeDashoffset = L;
+        gsap.to(p, { strokeDashoffset: 0, duration: .9, delay: .5 + k * .18, ease: "power2.out" });
+      });
+      gsap.from(nodes, { scale: 0, duration: .5, delay: .65, stagger: .18, ease: "back.out(3)" });
+      gsap.to(nodes, { y: "-=5", duration: 2, yoyo: true, repeat: -1, ease: "sine.inOut", stagger: .3, delay: 1.4 });
+      gsap.to(note, { x: 74, autoAlpha: 0, duration: 1.0, delay: 1.1, ease: "power2.in" });
+    } },
+  { title: "it improves itself", mood: "neutral",
+    sub: "the autopoet tends its own body — it writes structure, files its own issues, and keeps a full undo history.",
+    fx(fx) {
+      const chips = [
+        ["wrote: rules.work", "16%", "20%"],
+        ["filed: issue #12 — tighten hooks", "6%", "62%"],
+        ["undo: every edit reversible", "62%", "68%"]
+      ].map(([t, left, top]) => fxEl(`<div class="fxchip" style="left:${left};top:${top}">${t}</div>`));
+      chips.forEach(c => fx.append(c));
+      gsap.from(chips, { autoAlpha: 0, scale: .5, y: 10, duration: .6, delay: .25, stagger: .3, ease: "back.out(2)" });
+      gsap.to(chips, { y: "-=6", duration: 2.4, yoyo: true, repeat: -1, ease: "sine.inOut", stagger: .4, delay: 1.4 });
+    } },
+  { title: "you hold the gate", mood: "happy",
+    sub: "when it thinks YOUR notes should change, it asks. approve or reject — every single time.",
+    fx(fx) {
+      const prop = fxEl(`<div class="fxcard" style="left:135px;bottom:4%;width:210px;white-space:normal;text-align:center">proposal → edit welcome.md<div style="margin-top:7px"><span id="fxok" style="color:#6aa84f;display:inline-block">✓ accept</span>&nbsp;&nbsp;&nbsp;<span style="color:#c0392b">✗ reject</span></div></div>`);
+      fx.append(prop);
+      fxIn(prop, .2);
+      gsap.to(prop.querySelector("#fxok"), { scale: 1.18, duration: .55, yoyo: true, repeat: -1, repeatDelay: 1.1, ease: "sine.inOut", delay: 1 });
+    } }
+];
+let _slideFaceApi = null, _slideIdx = -1, _slideCleanup = null, _slidesKeyed = false;
+function obDone() { authedPost("/auth/onboarding/done").then(() => location.reload()); }
+function showSlides() {
+  document.querySelector("#onboard .obinner").style.display = "none";
+  document.getElementById("obsteps").style.display = "none";
+  const deck = document.getElementById("obslides");
+  deck.style.display = "flex";
+  if (!_slideFaceApi)
+    createFace(document.getElementById("slideface"), { idPrefix: "sl" }).then(api => {
+      _slideFaceApi = api; api.setMouth(SLIDES[Math.max(0, _slideIdx)].mood);
+    });
+  document.getElementById("sldots").innerHTML = SLIDES.map(() => `<div class="sldot"></div>`).join("");
+  document.getElementById("slprev").onclick = () => slideGo(_slideIdx - 1);
+  document.getElementById("slnext").onclick = () => slideGo(_slideIdx + 1);
+  document.getElementById("obskip").onclick = obDone;
+  document.getElementById("slenter").onclick = obDone;
+  if (!_slidesKeyed) {
+    _slidesKeyed = true;
+    addEventListener("keydown", e => {
+      if (deck.style.display !== "flex") return;
+      if (e.key === "ArrowRight") slideGo(_slideIdx + 1);
+      if (e.key === "ArrowLeft") slideGo(_slideIdx - 1);
+    });
+  }
+  _slideIdx = -1;
+  slideGo(0, true);
+  refreshIcons();
+}
+function slideGo(i, instant) {
+  if (i < 0 || i >= SLIDES.length || i === _slideIdx) return;
+  const dir = i > _slideIdx ? 1 : -1;
+  _slideIdx = i;
+  const s = SLIDES[i];
+  const fx = document.getElementById("slidefx");
+  const text = document.querySelector("#obslides .slidetext");
+  const face = document.getElementById("slideface");
+  if (_slideCleanup) { _slideCleanup(); _slideCleanup = null; }
+  [...document.getElementById("sldots").children].forEach((d, k) => d.classList.toggle("on", k === i));
+  document.getElementById("slprev").style.visibility = i === 0 ? "hidden" : "visible";
+  document.getElementById("slnext").style.visibility = i === SLIDES.length - 1 ? "hidden" : "visible";
+  document.getElementById("slenter").style.display = i === SLIDES.length - 1 ? "block" : "none";
+  const build = () => {
+    gsap.killTweensOf(fx.querySelectorAll("*"));
+    fx.innerHTML = "";
+    document.getElementById("slidetitle").textContent = s.title;
+    document.getElementById("slidesub").textContent = s.sub;
+    if (_slideFaceApi) _slideFaceApi.setMouth(s.mood);
+    _slideCleanup = s.fx(fx) || null;
+    // the deck itself tweens INTO the new state (fx + text ride in together)…
+    gsap.fromTo([fx, text], { x: 30 * dir, autoAlpha: 0 }, { x: 0, autoAlpha: 1, duration: .45, ease: "power2.out" });
+    // …and the face card takes a little state bump between slides
+    gsap.fromTo(face, { scale: .92, rotation: 3 * dir }, { scale: 1, rotation: 0, duration: .6, ease: "back.out(2)" });
+  };
+  if (instant) return build();
+  gsap.to([fx, text], { x: -30 * dir, autoAlpha: 0, duration: .25, ease: "power1.in", onComplete: build });
 }
 let currentUser = null;
 async function initAuth() {
@@ -3866,8 +4229,13 @@ function setFooterUser() {
   const el = document.querySelector("#foot-profile .uinitial");
   if (el) el.textContent = ((currentUser && currentUser.name) || "·").slice(0, 1).toLowerCase();
 }
-document.getElementById("ob-in").onclick = () => authedPost("/auth/signin").then(() => location.reload());
-document.getElementById("ob-up").onclick = () => authedPost("/auth/signup").then(() => showOnboardSteps());
+// one door: OAuth (stubbed). A fresh session flows into onboarding; a returning
+// one lands straight in the app — the server decides which.
+const obOauth = prov => () =>
+  authedPost("/auth/oauth/" + prov).then(r => r.text())
+    .then(t => t.startsWith("app") ? location.reload() : showOnboardSteps());
+document.getElementById("ob-github").onclick = obOauth("github");
+document.getElementById("ob-google").onclick = obOauth("google");
 initAuth();
 
 // ── sidebar footer: account · settings · env ──────────────────────────────
