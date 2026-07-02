@@ -220,7 +220,9 @@
     border-radius:999px; padding:10px 0; cursor:pointer;
     transition:background .18s ease, color .18s ease; }
   #commbar button:hover { color:#223; background:#f2f4f7; }
-  #commbar button.sel { background:#223; color:#fff; }
+  #commbar button.sel { color:#fff; }
+  #comm-chat.sel { background:#9c36b5; }    /* chat = purple */
+  #comm-voice.sel { background:#f76707; }   /* voice = orange */
   #commbar svg.lucide { width:13px; height:13px; }
 
   /* ── chat panel: shares the column-2 slot with files (one or the other) ── */
@@ -255,18 +257,57 @@
     margin-bottom:7px; cursor:pointer; font-size:12px; }
   #chatsessions .sess:hover { background:#f7f7f4; }
   #chatsessions .sess .id { color:#98a0ac; font-size:10px; }
-  #composer { display:flex; gap:8px; padding:10px 12px; border-top:1px solid var(--line);
-    background:#fbfbf9; align-items:flex-end; }
-  #composer textarea { flex:1; resize:none; border:1px solid var(--line); border-radius:10px;
-    padding:8px 11px; font:13px -apple-system,BlinkMacSystemFont,sans-serif; outline:none;
-    max-height:120px; background:#fff; }
-  #composer textarea:focus { border-color:#5b8cc9; }
-  #composer button { border:none; background:#2f6fdd; color:#fff; border-radius:9px;
-    width:34px; height:34px; display:flex; align-items:center; justify-content:center;
-    cursor:pointer; flex:none; }
-  #composer button:hover { background:#245cc0; }
-  #composer button:disabled { background:#c6ccd4; cursor:default; }
+  /* the composer (ported from the cloud studio Composer): card = textarea over
+     an inline toolbar; floating @ / pickers; emoji popover; activating send */
+  #composer { display:block; padding:10px 12px; border-top:1px solid var(--line);
+    background:#fbfbf9; position:relative; }
+  #composer .card { border:1px solid var(--line); border-radius:16px; background:#fff;
+    transition:border-color .15s ease; }
+  #composer .card:focus-within { border-color:#5b8cc9; }
+  #composer textarea { width:100%; box-sizing:border-box; resize:none; border:none;
+    outline:none; background:none; padding:11px 13px 4px;
+    font:13.5px/1.55 -apple-system,BlinkMacSystemFont,sans-serif; max-height:190px; }
+  #composer .bar { display:flex; align-items:center; gap:2px; padding:0 8px 8px; }
+  #composer .bar .tb { width:30px; height:30px; display:grid; place-items:center;
+    border:none; background:none; border-radius:8px; color:#98a0ac; cursor:pointer;
+    transition:background .15s ease, color .15s ease; }
+  #composer .bar .tb:hover { color:#223; background:#f2f4f7; }
+  #composer .bar .hint { margin-left:auto; font:10px ui-monospace,monospace;
+    color:#b3bac4; margin-right:6px; }
+  #composer .bar .sendbt { width:34px; height:30px; border:none; border-radius:8px;
+    display:grid; place-items:center; cursor:pointer; background:#eceef1; color:#98a0ac;
+    transition:background .18s ease, color .18s ease; }
+  #composer .bar .sendbt.ready { background:#223; color:#fff; }
   #composer svg.lucide { width:15px; height:15px; }
+  #picker { position:absolute; bottom:100%; left:12px; right:12px; margin-bottom:8px;
+    background:#fff; border:1px solid var(--line); border-radius:14px; overflow:hidden;
+    box-shadow:0 16px 40px rgba(25,35,55,.18); z-index:20; display:none; }
+  #picker.on { display:block; animation:lnin .18s ease; }
+  #picker .ph { display:flex; gap:6px; align-items:center; padding:6px 12px;
+    font:9.5px ui-monospace,monospace; letter-spacing:.08em; text-transform:uppercase;
+    color:#98a0ac; border-bottom:1px solid var(--line); }
+  #picker .ph svg.lucide { width:11px; height:11px; }
+  #picker .rows { max-height:240px; overflow:auto; padding:4px 0; }
+  #picker .prow { display:flex; align-items:center; gap:10px; width:100%; text-align:left;
+    padding:7px 12px; border:none; background:none; cursor:pointer; font-size:13px; color:#2a3038;
+    font-family:-apple-system,BlinkMacSystemFont,sans-serif; }
+  #picker .prow.act { background:#f2f4f7; }
+  #picker .prow .pic { width:24px; height:24px; border-radius:7px; display:grid;
+    place-items:center; flex:none; }
+  #picker .prow .pic svg.lucide { width:13px; height:13px; }
+  #picker .prow .sig { color:#98a0ac; }
+  #picker .prow .phint { color:#a8b0bc; font:11px ui-monospace,monospace; flex:1;
+    text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #picker .prow .tag { font:9px ui-monospace,monospace; text-transform:uppercase;
+    padding:2px 6px; border-radius:5px; flex:none; }
+  #emojipop { position:absolute; bottom:100%; left:12px; margin-bottom:8px; display:none;
+    grid-template-columns:repeat(8,1fr); gap:2px; background:#fff;
+    border:1px solid var(--line); border-radius:12px; padding:6px; width:236px;
+    box-shadow:0 12px 32px rgba(25,35,55,.16); z-index:21; }
+  #emojipop.on { display:grid; animation:lnin .18s ease; }
+  #emojipop button { font-size:16px; height:28px; border:none; background:none;
+    border-radius:6px; cursor:pointer; transition:transform .12s ease; }
+  #emojipop button:hover { background:#f2f4f7; transform:scale(1.12); }
 
   /* ── voice: a Meet-style call bar floating over the canvas ─────────────── */
   #callbar { position:absolute; bottom:18px; left:50%; transform:translateX(-50%) translateY(16px);
@@ -449,8 +490,18 @@
     <div id="chatlog"></div>
     <div id="chatsessions"></div>
     <div id="composer">
-      <textarea id="chatin" rows="1" placeholder="talk with the autopoet…" spellcheck="false"></textarea>
-      <button id="chatsend" title="send"><i data-lucide="arrow-up"></i></button>
+      <div id="picker"><div class="ph" id="pickerhead"></div><div class="rows" id="pickerrows"></div></div>
+      <div id="emojipop"></div>
+      <div class="card">
+        <textarea id="chatin" rows="1" placeholder="talk with the autopoet…" spellcheck="false"></textarea>
+        <div class="bar">
+          <button class="tb" id="tb-at" title="mention (@)"><i data-lucide="at-sign"></i></button>
+          <button class="tb" id="tb-slash" title="run a command (/)"><i data-lucide="terminal"></i></button>
+          <button class="tb" id="tb-emoji" title="emoji"><i data-lucide="smile"></i></button>
+          <span class="hint">⏎ send · ⇧⏎ newline</span>
+          <button class="sendbt" id="chatsend" title="send"><i data-lucide="arrow-up"></i></button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1553,13 +1604,120 @@ async function sendChat() {
   send.disabled = false;
   inp.focus();
 }
-document.getElementById("chatsend").onclick = sendChat;
-document.getElementById("chatin").addEventListener("keydown", e => {
-  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); }
+// ── the composer (studio port): pickers, slash commands, emoji, live send ──
+const chatin = document.getElementById("chatin");
+let pickerRows = [], pickerType = null, pickerActive = 0;
+
+// slash commands are REAL actions on the running system
+const SLASH = [
+  { name: "cycle", icon: "heart-pulse", hint: "run a heartbeat now",
+    run: async () => { await authedPost("/cycle", ""); addMsg("ap", "cycle triggered — watch the console."); } },
+  { name: "research", icon: "globe", hint: "research <topic> — dispatch the limb",
+    run: async arg => {
+      if (!arg) return addMsg("ap", "give me a topic: /research <topic>");
+      await authedPost("/research", arg);
+      addMsg("ap", "research limb dispatched: " + arg);
+    } },
+  { name: "status", icon: "activity", hint: "runtime status",
+    run: async () => addMsg("ap", "```\n" + (await (await fetch("/status")).text()).trim() + "\n```") },
+  { name: "proposals", icon: "bell", hint: "open notifications",
+    run: () => { document.getElementById("cb-bell").click(); } }
+];
+const MENTION_KINDS = { limb: "#e07a5f", doc: "#4a90d9", guide: "#8e7cc3" };
+const mentionCandidates = () =>
+  worldData.nodes.filter(n => MENTION_KINDS[n.type])
+    .map(n => ({ name: n.label, kind: n.type, id: n.id }));
+
+function updatePicker() {
+  const v = chatin.value;
+  const pick = document.getElementById("picker");
+  const cmd = v.match(/^\/(\w*)$/);
+  const men = v.match(/(?:^|\s)@([\w-]*)$/);
+  if (cmd) {
+    pickerType = "command";
+    pickerRows = SLASH.filter(c => c.name.startsWith(cmd[1].toLowerCase()));
+  } else if (men) {
+    pickerType = "mention";
+    pickerRows = mentionCandidates().filter(r => r.name.toLowerCase().startsWith(men[1].toLowerCase())).slice(0, 10);
+  } else pickerRows = [];
+  pickerActive = Math.min(pickerActive, Math.max(0, pickerRows.length - 1));
+  pick.classList.toggle("on", pickerRows.length > 0);
+  if (!pickerRows.length) return;
+  document.getElementById("pickerhead").innerHTML = pickerType === "mention"
+    ? `<i data-lucide="at-sign"></i> mention a page or limb`
+    : `<i data-lucide="terminal"></i> run a command`;
+  document.getElementById("pickerrows").innerHTML = pickerRows.map((r, i) => {
+    const c = pickerType === "mention" ? MENTION_KINDS[r.kind] : "#67707c";
+    const icon = pickerType === "mention" ? (r.kind === "limb" ? "cpu" : "file-text") : r.icon;
+    return `<button class="prow ${i === pickerActive ? "act" : ""}" data-i="${i}">
+      <span class="pic" style="color:${c};background:${c}22"><i data-lucide="${icon}"></i></span>
+      <span><span class="sig">${pickerType === "command" ? "/" : "@"}</span>${esc(r.name)}</span>
+      ${r.hint ? `<span class="phint">${esc(r.hint)}</span>` : ""}
+      ${pickerType === "mention" ? `<span class="tag" style="color:${c};background:${c}22">${r.kind}</span>` : ""}
+    </button>`;
+  }).join("");
+  document.querySelectorAll("#picker .prow").forEach(el => {
+    el.onmouseenter = () => { pickerActive = +el.dataset.i; updatePicker(); };
+    el.onclick = () => choosePick(pickerRows[+el.dataset.i]);
+  });
+  refreshIcons();
+}
+function choosePick(row) {
+  if (pickerType === "mention")
+    chatin.value = chatin.value.replace(/(^|\s)@[\w-]*$/, (m, pre) => `${pre}@${row.name} `);
+  else chatin.value = `/${row.name} `;
+  pickerActive = 0;
+  updatePicker(); syncSend();
+  chatin.focus();
+}
+const EMOJI = ["👍","👎","🎉","👀","✅","❤️","🔥","😄","😂","🙏","👏","💯",
+  "🚀","⭐","💡","🤔","😅","😎","🙌","👌","💪","🎯","⚡","✨","🐛","🛠️","📌","🚨","😬","🥳"];
+document.getElementById("emojipop").innerHTML = EMOJI.map(e => `<button>${e}</button>`).join("");
+document.querySelectorAll("#emojipop button").forEach(b =>
+  b.onclick = () => {
+    chatin.value += b.textContent;
+    document.getElementById("emojipop").classList.remove("on");
+    syncSend(); chatin.focus();
+  });
+document.getElementById("tb-emoji").onclick = () =>
+  document.getElementById("emojipop").classList.toggle("on");
+document.getElementById("tb-at").onclick = () => {
+  chatin.value += (chatin.value && !chatin.value.endsWith(" ") ? " " : "") + "@";
+  updatePicker(); chatin.focus();
+};
+document.getElementById("tb-slash").onclick = () => {
+  if (!chatin.value.trim()) chatin.value = "/";
+  updatePicker(); chatin.focus();
+};
+
+function syncSend() {
+  document.getElementById("chatsend").classList.toggle("ready", !!chatin.value.trim());
+}
+async function submitComposer() {
+  const v = chatin.value.trim();
+  const m = v.match(/^\/(\w+)\s*(.*)$/);
+  const cmd = m && SLASH.find(c => c.name === m[1]);
+  if (cmd) {
+    chatin.value = ""; syncSend(); updatePicker();
+    addMsg("user", v);
+    return cmd.run(m[2].trim());
+  }
+  sendChat();
+}
+document.getElementById("chatsend").onclick = submitComposer;
+chatin.addEventListener("keydown", e => {
+  if (pickerRows.length) {
+    if (e.key === "ArrowDown") { e.preventDefault(); pickerActive = (pickerActive + 1) % pickerRows.length; return updatePicker(); }
+    if (e.key === "ArrowUp") { e.preventDefault(); pickerActive = (pickerActive - 1 + pickerRows.length) % pickerRows.length; return updatePicker(); }
+    if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); return choosePick(pickerRows[pickerActive]); }
+    if (e.key === "Escape") { chatin.value = chatin.value.replace(/(^|\s)@[\w-]*$/, "$1").replace(/^\/\w*$/, ""); return updatePicker(); }
+  }
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitComposer(); }
 });
-document.getElementById("chatin").addEventListener("input", e => {
+chatin.addEventListener("input", e => {
   e.target.style.height = "auto";
-  e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
+  e.target.style.height = Math.min(e.target.scrollHeight, 190) + "px";
+  updatePicker(); syncSend();
 });
 document.getElementById("chatclose").onclick = () => setComm(null);
 document.getElementById("chatnew").onclick = async () => {

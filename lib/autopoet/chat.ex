@@ -123,10 +123,18 @@ defmodule Autopoet.Chat do
   end
 
   defp complete(messages) do
-    cond do
-      fun = Application.get_env(:autopoet, :chat_llm) -> fun.(messages)
-      Autopoet.Providers.openrouter?() -> Autopoet.Providers.openrouter(messages)
-      true -> {:error, :no_provider}
+    result =
+      cond do
+        fun = Application.get_env(:autopoet, :chat_llm) -> fun.(messages)
+        Autopoet.Providers.openrouter?() -> Autopoet.Providers.openrouter(messages)
+        true -> {:error, :no_provider}
+      end
+
+    # Nexus.Llm returns the assistant MESSAGE (%{content: text}); seams return text
+    case result do
+      {:ok, %{content: text}} when is_binary(text) -> {:ok, text}
+      {:ok, text} when is_binary(text) -> {:ok, text}
+      other -> other
     end
   end
 
