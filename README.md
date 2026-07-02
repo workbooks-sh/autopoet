@@ -52,3 +52,17 @@ part library (Notionists by Zoish, CC0 1.0). `vendor/extract.mjs` extracts the
 parts into categorized fragments under `priv/avatar/<group>/`; composition is
 seeded (`AUTOPOET_SEED`, default `autopoet-1` — same face every boot), glasses
 excluded, no API calls. Rasterized for the native window via macOS QuickLook.
+
+## Working convention: BOOTSTRAP vs AUTONOMOUS
+
+Every status report on this project labels which mode produced each result:
+
+- **[BOOTSTRAP]** — a human/Claude did it by hand to seed the baseline (manual
+  orchestration, hand-written structure, founding examples). We are knowingly
+  role-playing the conductor to generate the training signal.
+- **[AUTONOMOUS]** — the system did it itself (limbs, brain proposals, gates).
+
+Rule that goes with it: content-level structure (new limbs, flows, pipeline
+stages) enters ONLY via request → autopoet proposes → human gates. Hand-building
+is reserved for substrate/mechanism. The goal each week is to move lines from
+the first label to the second.
