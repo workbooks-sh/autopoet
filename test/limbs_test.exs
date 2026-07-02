@@ -17,10 +17,27 @@ defmodule Autopoet.LimbsTest do
     assert d[:limit] in [nil, []]
   end
 
-  test "oota is host-side and degrades cleanly when unavailable" do
-    case Autopoet.Oota.available?() do
-      true -> assert {:ok, out} = Autopoet.Oota.run(["help"]) |> then(fn r -> r end)
-      false -> assert {:error, :oota_unavailable} = Autopoet.Oota.run(["help"])
-    end
+  test "oota is a LIBRARY the sandbox reads — never a host process" do
+    # canon: no native execution — the old host-exec verb must not exist
+    refute function_exported?(Autopoet.Oota, :run, 1)
+
+    # point at a tiny FIXTURE project (not the real 2GB one) so the test is isolated + fast
+    fixture = Path.join(System.tmp_dir!(), "oota-fix-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(Path.join(fixture, "tools/steps"))
+    File.mkdir_p!(Path.join(fixture, "cli/node_modules/junk"))
+    File.write!(Path.join(fixture, "tools/steps/diagrams-mermaid.sh"), "#recipe: mermaid\n")
+    File.write!(Path.join(fixture, "cli/node_modules/junk/big.bin"), "should NOT be mirrored")
+    System.put_env("AUTOPOET_OOTA_DIR", fixture)
+    on_exit(fn -> System.delete_env("AUTOPOET_OOTA_DIR"); File.rm_rf(fixture) end)
+
+    assert :ok = Autopoet.Oota.seed_reference()
+    # the recipe lands in the world; the 2GB cli/node_modules never rides along
+    assert File.exists?(Path.join(Autopoet.Oota.dest(), "tools/steps/diagrams-mermaid.sh"))
+    refute File.dir?(Path.join(Autopoet.Oota.dest(), "cli"))
+
+    # and it's readable through the SANDBOXED shell at /work/oota (the real access path)
+    {out, ok} = Autopoet.VoiceTools.shell("grep -rli mermaid /work/oota/tools")
+    assert ok
+    assert out =~ "diagrams-mermaid.sh"
   end
 end
