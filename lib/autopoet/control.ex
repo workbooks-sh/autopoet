@@ -403,16 +403,9 @@ defmodule Autopoet.Control do
     end)
   end
 
-  post "/oota" do
-    authed!(conn, fn conn ->
-      args = String.split(conn.query_params["args"] || "", " ", trim: true)
-
-      case Autopoet.Oota.run(args) do
-        {:ok, out} -> text(conn, out)
-        {:error, reason} -> text(conn, "oota error: #{inspect(reason)}\n")
-      end
-    end)
-  end
+  # NOTE: the /oota host verb is gone — canon forbids native processes. OOTA is now a
+  # reference LIBRARY seeded into the world at /work/oota (Autopoet.Oota.seed_reference/0);
+  # agents read recipes there and re-express them in the wasm-native lanes.
 
   post "/win/:action" do
     authed!(conn, fn conn ->

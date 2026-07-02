@@ -39,6 +39,9 @@ defmodule Autopoet.Application do
     seed_workbook()
     Autopoet.Guide.seed()
     Autopoet.Notes.seed()
+    # the OOTA recipe library, mirrored read-only into the world (/work/oota) — a
+    # LIBRARY agents read, never a host process (canon: no native execution)
+    Autopoet.Oota.seed_reference()
     seed_limbs()
     Autopoet.Limbs.register_from_body()
     wire_brain()

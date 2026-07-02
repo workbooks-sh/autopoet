@@ -160,7 +160,8 @@ defmodule Autopoet.GeminiLive do
       name: "shell",
       description: """
       Read-only shell over your whole world, mounted at /work: your body pages
-      (/work/nexus), the human's notes (/work/notes), chats, proposals, traces.
+      (/work/nexus), the human's notes (/work/notes), the OOTA recipe library
+      (/work/oota — ~130 media/document tool recipes), chats, proposals, traces.
       Allowed: #{Enum.join(Autopoet.VoiceTools.allowlist(), ", ")} — pipes ok, no
       redirects. Paths MUST be absolute under /work (there is no cwd). Use
       grep -ri to search. ALWAYS look before saying you don't know something.

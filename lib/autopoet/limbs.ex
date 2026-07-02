@@ -32,6 +32,10 @@ defmodule Autopoet.Limbs do
   - Environment: your bash is washy — a WASM shell (sh.c + real coreutils) run on the
     tiny-lasers WASM sandbox on the BEAM. It only has to BEHAVE like bash; nothing runs natively.
     The native toolchain is wasm-native: Rust, Go, C, C++, JavaScript, HTML/CSS.
+  - Library: /work/oota is the OOTA recipe library (~130 media/document tool recipes —
+    tools/steps, docs, examples, components). READ recipes for the approach, then re-express
+    them in your wasm-native toolchain. Python recipes are reference-only (no python in the
+    sandbox) — port the idea to JS/C/Go/Rust instead.
     Do NOT assume python or system package managers.
   - Anything missing, broken, or limiting: FILE IT and continue —
     `request self '<typed change>'` (fire-and-forget; never wait, never retry more

@@ -52,12 +52,8 @@ case "${1:-status}" in
     [ -n "$NAME" ] && [ -n "$*" ] || { echo "usage: autopoetctl limb <name> <task...>"; exit 2; }
     curl -s -H "authorization: Bearer $TOKEN" --data-urlencode "name=$NAME" --data-urlencode "task=$*" -G "$BASE/limb" -X POST
     ;;
-  oota)
-    shift
-    curl -s -H "authorization: Bearer $TOKEN" --data-urlencode "args=$*" -G "$BASE/oota" -X POST
-    ;;
   *)
-    echo "usage: autopoetctl status|log|tail|proposals|arm [every]|disarm|request <target> <change>|cycle|research <question>|oota <args>|accept <id>|reject <id>|close|kill"
+    echo "usage: autopoetctl status|log|tail|proposals|arm [every]|disarm|request <target> <change>|cycle|research <question>|accept <id>|reject <id>|close|kill"
     exit 2
     ;;
 esac

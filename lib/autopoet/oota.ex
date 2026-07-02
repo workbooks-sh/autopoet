@@ -1,42 +1,83 @@
 defmodule Autopoet.Oota do
   @moduledoc """
-  OOTA ("Out Of Thin Air", ~130 media/document tools) as a HOST-side capability of
-  the autopoet app. Deliberately NOT reachable from the sandboxed limbs: OOTA's
-  localhost API is SSRF-blocked in the browse lane by design, so rendering
-  deliverables is something the autopoet's host shell does — the mind delegates
-  research to limbs, but production of artifacts runs here, visible in the log.
+  OOTA ("Out Of Thin Air", ~130 media/document tool recipes) as a LIBRARY the
+  sandboxed agent READS — not a host process. Canon: absolutely no native
+  processes; the former bun-CLI passthrough is gone.
 
-  v1 is a passthrough to the `oota` CLI (Bun) in the out-of-thin-air project:
-  `Autopoet.Oota.run(["route", "a one-pager about X"])` etc. Output is captured to
-  the log, bounded.
+  At boot, the reference subset of the OOTA project (tools/, docs/, examples/,
+  skill/, components/, wrappers/, oota/ + the root README/index) is seeded into
+  the world at `data/oota`, so limbs and the voice agent see it at `/work/oota`
+  and can ls/cat/grep the recipes like any other world content.
+
+  USING a recipe means re-expressing it inside the tiny-lasers sandbox with the
+  wasm-native toolchain — JS (Porffor lane), C, C++, Go, Rust (WASIX recompile
+  lane). Python does NOT exist in the sandbox: python-based recipes are readable
+  reference only, until re-expressed in a supported lane.
   """
 
   @default_project "~/Apps/shinyobjectz/projects/out-of-thin-air"
 
+  # reference subdirs to mirror (cli/ is 2GB of node_modules — never)
+  @subdirs ~w(tools docs examples skill components wrappers oota)
+  @root_files ~w(README.md index.work Justfile)
+  # text/reference extensions only; .py rides as READABLE reference (not runnable in-sandbox)
+  @exts ~w(.sh .md .work .ts .js .mjs .cjs .css .html .svg .json .txt .py .yaml .yml .toml)
+  @skip_segments ~w(node_modules .venv-tts .git out dist build)
+  @max_file 128 * 1024
+  @max_total 8 * 1024 * 1024
+
   def project,
     do: Path.expand(System.get_env("AUTOPOET_OOTA_DIR") || @default_project)
 
-  def cli, do: Path.join(project(), "oota/bin/oota.ts")
+  def available?, do: File.dir?(project())
 
-  def available?, do: File.exists?(cli()) and match?({_, 0}, System.cmd("which", ["bun"]))
+  def dest, do: Path.join([Autopoet.Discovery.home(), "data", "oota"])
 
-  @doc "Run an oota CLI verb host-side. Returns {:ok, output} | {:error, reason}. Output bounded to 8KB."
-  def run(args) when is_list(args) do
+  @doc """
+  Mirror the OOTA reference library into the world (idempotent, refreshed each
+  boot; bounded per-file and in total). Never raises — a missing project just
+  means the library isn't seeded.
+  """
+  def seed_reference do
     if available?() do
-      Autopoet.Log.puts("oota: #{Enum.join(args, " ")}")
+      {count, bytes} =
+        (root_sources() ++ subdir_sources())
+        |> Enum.reduce({0, 0}, fn {src, rel}, {n, total} ->
+          case File.stat(src) do
+            {:ok, %{size: size}} when size <= @max_file and total + size <= @max_total ->
+              target = Path.join(dest(), rel)
+              File.mkdir_p!(Path.dirname(target))
+              File.cp!(src, target)
+              {n + 1, total + size}
 
-      {out, code} =
-        System.cmd("bun", [cli() | args],
-          cd: project(),
-          stderr_to_stdout: true,
-          env: [{"OOTA_BASE", ""}]
-        )
+            _ ->
+              {n, total}
+          end
+        end)
 
-      out = String.slice(out, 0, 8192)
-      Autopoet.Log.puts("oota exit #{code}: #{String.slice(out, 0, 300)}")
-      if code == 0, do: {:ok, out}, else: {:error, {code, out}}
-    else
-      {:error, :oota_unavailable}
+      Autopoet.Log.puts("oota: reference library seeded — #{count} files (#{div(bytes, 1024)}KB) at /work/oota")
+    end
+
+    :ok
+  rescue
+    e ->
+      Autopoet.Log.puts("oota: reference seed failed (#{Exception.message(e)}) — continuing without")
+      :ok
+  end
+
+  defp root_sources do
+    for f <- @root_files, src = Path.join(project(), f), File.regular?(src), do: {src, f}
+  end
+
+  defp subdir_sources do
+    for sub <- @subdirs,
+        src <- Path.wildcard(Path.join([project(), sub, "**"])),
+        File.regular?(src),
+        Path.extname(src) in @exts,
+        not skip?(src) do
+      {src, Path.relative_to(src, project())}
     end
   end
+
+  defp skip?(path), do: Enum.any?(@skip_segments, &String.contains?(path, "/#{&1}/"))
 end
