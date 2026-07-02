@@ -21,7 +21,7 @@ case "${1:-status}" in
   disarm | close | kill)
     curl -s -X POST -H "authorization: Bearer $TOKEN" "$BASE/$1"
     ;;
-  accept | reject)
+  accept | reject | revert)
     [ -n "$2" ] || { echo "usage: autopoetctl $1 <proposal-id>"; exit 2; }
     curl -s -X POST -H "authorization: Bearer $TOKEN" "$BASE/proposal/$2/$1"
     ;;

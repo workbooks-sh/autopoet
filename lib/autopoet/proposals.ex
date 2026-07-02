@@ -46,13 +46,29 @@ defmodule Autopoet.Proposals do
     end
   end
 
-  @doc "Apply a pending proposal to `root` — through the real Eval gate. Human-only path."
+  @doc """
+  Apply a pending proposal to `root` — through the real Eval gate. Human-only path.
+  Every file about to be replaced is snapshotted into `<id>/replaced/` (new files
+  recorded in `<id>/absent.list`), so an accidental accept is undoable via revert/2.
+  """
   def accept(id, root) do
     with "pending" <- status(id),
          changes = changes(id),
          %{verdict: :pass} = verdict <- Nexus.Autopoet.Eval.validate(root, changes) do
+      base = Path.join(dir(), sanitize!(id))
+
       for {rel, src} <- changes do
-        target = Path.join(root, sanitize!(rel))
+        rel = sanitize!(rel)
+        target = Path.join(root, rel)
+
+        if File.exists?(target) do
+          backup = Path.join([base, "replaced", rel])
+          File.mkdir_p!(Path.dirname(backup))
+          File.cp!(target, backup)
+        else
+          File.write!(Path.join(base, "absent.list"), rel <> "\n", [:append])
+        end
+
         File.mkdir_p!(Path.dirname(target))
         File.write!(target, src)
       end
@@ -69,6 +85,39 @@ defmodule Autopoet.Proposals do
 
       other ->
         {:error, other}
+    end
+  end
+
+  @doc "Undo an accepted proposal: restore replaced files, remove files it created. The gate's human safety net for misclicks."
+  def revert(id, root) do
+    with "accepted" <- status(id) do
+      base = Path.join(dir(), sanitize!(id))
+
+      created =
+        case File.read(Path.join(base, "absent.list")) do
+          {:ok, body} -> String.split(body, "\n", trim: true)
+          _ -> []
+        end
+
+      for rel <- created, do: File.rm(Path.join(root, sanitize!(rel)))
+
+      replaced = Path.join(base, "replaced")
+
+      restored =
+        for f <- Path.wildcard(Path.join(replaced, "**/*")), File.regular?(f) do
+          rel = Path.relative_to(f, replaced)
+          target = Path.join(root, rel)
+          File.mkdir_p!(Path.dirname(target))
+          File.cp!(f, target)
+          rel
+        end
+
+      set_status(id, "reverted")
+      Nexus.Events.emit(%{kind: "proposal.reverted", proposal: id, tags: []})
+      Autopoet.Log.puts("PROPOSAL #{id} REVERTED (#{length(restored)} restored, #{length(created)} removed)")
+      :ok
+    else
+      other -> {:error, other}
     end
   end
 

@@ -85,6 +85,15 @@ defmodule Autopoet.Control do
     end)
   end
 
+  post "/proposal/:id/revert" do
+    authed!(conn, fn conn ->
+      case Autopoet.Proposals.revert(id, Nexus.Paths.data_dir()) do
+        :ok -> text(conn, "reverted #{id}\n")
+        {:error, reason} -> text(conn, "refused: #{inspect(reason)}\n")
+      end
+    end)
+  end
+
   get "/sse" do
     conn =
       conn
