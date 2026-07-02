@@ -883,6 +883,22 @@
   .fxrow.rowadd .fxg { color:#4d7a3a; }
   .fxrow.rowadd .fxg::before { content:"+"; }
   .fxrow.rowadd .fxt { color:#3c6b2f; }
+  /* language islands — each language lands as its own little island */
+  .fxisle { position:absolute; display:flex; flex-direction:column; align-items:center; gap:2px;
+    background:#fff; border:1px solid #e0e4ea; border-radius:12px; padding:9px 12px;
+    box-shadow:0 4px 12px rgba(25,35,55,.07); }
+  .fxisle .finame { font:600 9.5px ui-monospace,monospace; color:#1c2230; }
+  .fxisle .fitag { font:8px ui-monospace,monospace; color:#b3bac4; }
+  /* the bloom: one of you becomes n of you, same build */
+  .fxbloom { position:absolute; display:grid; grid-template-columns:repeat(6, 14px); gap:8px;
+    align-items:center; justify-items:center; }
+  .fxbloom .bdot { width:8px; height:8px; border-radius:50%; background:#8e7cc3; display:block; }
+  .fxbloom .bdot.you { width:11px; height:11px; background:#1c2230; }
+  /* ephemeral sandboxes: sealed (dashed) while running, a green blink when done */
+  .fxsbx { position:absolute; width:30px; height:30px; border-radius:9px; background:#fff;
+    border:1.5px dashed #c3b8dd; display:flex; align-items:center; justify-content:center;
+    box-shadow:0 3px 9px rgba(25,35,55,.07); }
+  .fxsbx.done { border-style:solid; border-color:#6aa84f; }
   /* the derived machinery diffing: old value strikes red, new lands green */
   .difold { color:#c0392b !important; text-decoration:line-through; }
   .difnew { color:#4d7a3a; background:#f2f8ee; border-radius:3px; padding:0 2px; }
@@ -4506,24 +4522,86 @@ const SLIDES = [
         .call(() => { ver.textContent = "shouts boldly"; });
       return () => tl.kill();
     } },
-  { title: "you hold the gate", mood: "happy",
-    sub: "when it thinks YOUR notes should change, it asks. approve or reject — every single time.",
+  { title: "nothing escapes", mood: "neutral",
+    sub: "everything it runs, it runs in sealed little worlds — born, executed, gone in a blink. each one convincingly real to the code inside. yours never feels a thing.",
     fx(fx) {
-      // LEFT: the proposal, shaped like the chat panels; RIGHT: the vault file it targets
-      const prop = fxEl(`<div class="fxchat" style="left:1%;top:22%;width:148px">
-        <div class="fxtool"><i data-lucide="git-pull-request"></i>proposal #7</div>
-        <div class="fxmsg bot">edit welcome.md — “tighten the intro”</div>
-        <div class="fxgate"><span class="fxok">✓ accept</span><span class="fxno">✗ reject</span></div>
+      // a swarm of tiny sandboxes: sealed boxes blink into being around the machine,
+      // run their thing (shell, python, rust, sql…), flash done, and vanish
+      const ICONS = ["console", "python", "rust", "javascript", "typescript", "go", "ruby",
+        "zig", "c", "cpp", "database", "powershell", "webassembly", "elixir", "svelte", "html"];
+      const SLOTS = [
+        [20, 22], [84, 10], [134, 50], [28, 78], [96, 106], [22, 146], [118, 164], [66, 192],
+        [352, 16], [420, 38], [336, 70], [398, 100], [446, 130], [342, 148], [406, 176], [452, 66]
+      ];
+      const busy = new Array(SLOTS.length).fill(false);
+      let alive = true;
+      const calls = [];
+      const later = (t, f) => calls.push(gsap.delayedCall(t, f));
+      function spawn() {
+        if (!alive) return;
+        const free = SLOTS.map((_, i) => i).filter(i => !busy[i]);
+        if (free.length) {
+          const i = free[Math.floor(Math.random() * free.length)];
+          busy[i] = true;
+          const icon = ICONS[Math.floor(Math.random() * ICONS.length)];
+          const b = fxEl(`<div class="fxsbx" style="left:${SLOTS[i][0]}px;top:${SLOTS[i][1]}px">` +
+            `<img src="/static/micons/${icon}.svg" width="14" height="14" alt=""></div>`);
+          fx.append(b);
+          gsap.from(b, { scale: 0, duration: .4, ease: "back.out(2.5)" });
+          later(1.3 + Math.random() * 1.7, () => {
+            if (!alive) return;
+            b.classList.add("done");   // executed clean — a green blink, then gone
+            gsap.to(b, { scale: 0, autoAlpha: 0, duration: .35, delay: .3, ease: "back.in(2)",
+              onComplete: () => { b.remove(); busy[i] = false; } });
+          });
+        }
+        later(.38 + Math.random() * .34, spawn);
+      }
+      spawn();
+      return () => { alive = false; calls.forEach(c => c.kill()); };
+    } },
+  { title: "polyglot by default", mood: "happy",
+    sub: "raising a polymath takes a lifetime. this ships as a polyglot — every language compiled to its own little island, server-side or client-side.",
+    fx(fx) {
+      // an archipelago: server islands port-side, client islands starboard
+      const isle = (icon, name, tag) => fxEl(
+        `<div class="fxisle"><img src="/static/micons/${icon}.svg" width="16" height="16" alt="">` +
+        `<span class="finame">${name}</span><span class="fitag">${tag}</span></div>`);
+      const server = [["rust", "rust"], ["python", "python"], ["elixir", "elixir"]]
+        .map(([i, n]) => isle(i, n, "server island"));
+      const client = [["svelte", "svelte"], ["typescript", "typescript"], ["javascript", "javascript"]]
+        .map(([i, n]) => isle(i, n, "client island"));
+      const spots = [[4, 12], [16, 44], [6, 74]];
+      server.forEach((el, k) => { el.style.left = spots[k][0] + "%"; el.style.top = spots[k][1] + "%"; fx.append(el); });
+      client.forEach((el, k) => { el.style.right = spots[k][0] + "%"; el.style.top = spots[k][1] + "%"; fx.append(el); });
+      const all = [...server, ...client];
+      gsap.from(all, { scale: 0, autoAlpha: 0, duration: .5, delay: .3, stagger: .14, ease: "back.out(2.2)" });
+      // islands bob — it's an archipelago, after all
+      gsap.to(all, { y: "-=6", duration: 2.4, yoyo: true, repeat: -1, ease: "sine.inOut", stagger: .35, delay: 1.4 });
+    } },
+  { title: "dense by design", mood: "superHappy",
+    sub: "one engine underneath hosts the sites, runs the agents, seals the worlds — and it's already cloud-shaped: what you build for yourself runs, unchanged, for n of you.",
+    fx(fx) {
+      // LEFT: the engine and its three duties, one panel. RIGHT: the bloom — 1 → n.
+      const eng = fxEl(`<div class="fxchat" style="left:0;top:22%;width:152px">
+        <div class="fxtool" style="border-style:solid;justify-content:center"><i data-lucide="cpu"></i>one engine</div>
+        <div class="fxmsg bot" style="align-self:stretch">hosts your sites</div>
+        <div class="fxmsg bot" style="align-self:stretch">runs your agents</div>
+        <div class="fxmsg bot" style="align-self:stretch">seals the worlds</div>
       </div>`);
-      const target = fxEl(`<div class="fxchip fxfile" style="right:7%;top:44%">` +
-        `<img src="/static/micons/markdown.svg" width="13" height="13" alt="">welcome.md</div>`);
-      fx.append(prop, target);
+      const bloom = fxEl(`<div class="fxbloom" style="right:1%;top:20%"></div>`);
+      for (let i = 0; i < 24; i++) bloom.append(fxEl(`<span class="bdot${i === 0 ? " you" : ""}"></span>`));
+      const blab = fxEl(`<div class="fxlab" style="right:2%;top:72%">one of you → n of you. same build.</div>`);
+      fx.append(eng, bloom, blab);
       refreshIcons();
-      fxIn(prop, .2);
-      fxIn(target, .55);
-      gsap.to(prop.querySelector(".fxok"), { scale: 1.15, duration: .5, yoyo: true, repeat: -1, repeatDelay: 1.2, ease: "sine.inOut", delay: 1 });
-      // acceptance is the ONLY door into the vault — the target glows with it
-      gsap.to(target, { boxShadow: "0 0 0 3px rgba(106,168,79,.28)", duration: .5, yoyo: true, repeat: -1, repeatDelay: 1.7, ease: "sine.inOut", delay: 1.35 });
+      fxIn(eng, .2);
+      gsap.from(eng.querySelectorAll(".fxmsg"), { autoAlpha: 0, x: -12, duration: .4, delay: .6, stagger: .22, ease: "power2.out" });
+      const dots = bloom.querySelectorAll(".bdot");
+      gsap.set(dots, { autoAlpha: 0 });
+      gsap.to(dots[0], { autoAlpha: 1, duration: .3, delay: 1.5 });   // you
+      gsap.to([...dots].slice(1), { autoAlpha: 1, duration: .25, delay: 2.0, stagger: .05, ease: "power1.in" });
+      gsap.from(blab, { autoAlpha: 0, duration: .5, delay: 3.3 });
+      gsap.to(dots, { scale: 1.25, duration: 1.6, yoyo: true, repeat: -1, ease: "sine.inOut", stagger: { each: .05, from: "start" }, delay: 3.9 });
     } }
 ];
 let _slideFaceApi = null, _slideIdx = -1, _slideCleanup = null, _slidesKeyed = false;
