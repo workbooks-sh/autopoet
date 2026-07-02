@@ -2,7 +2,29 @@
 <meta charset="utf-8">
 <title>autopoet</title>
 <style>
-  :root { --ink:#223; --paper:#fbfbf9; --grid:#e6e8ea; --line:#e3e5e8; }
+  :root { --ink:#223; --paper:#fbfbf9; --grid:#e6e8ea; --line:#e3e5e8;
+    /* history-manager tokens — THEME-AWARE: light values here; a dark theme
+       overrides just these (the timeline reads only var(--hist-*)) */
+    --hist-bg:#f7f7f4; --hist-strip:#efefe9; --hist-strip-line:#e3e5e8;
+    --hist-row-hover:#efefe9; --hist-row-sel:#e4e8f5;
+    --hist-id:#5b8cc9; --hist-id-head:#c98a1e; --hist-text:#5a6472; --hist-dim:#98a0ac;
+    --hist-time:#b3bac4; --hist-vault:#c2569b; --hist-body:#2f6fdd;
+    --hist-move:#d78d1e; --hist-merge:#4d8b3a; --hist-now:#f2a33c;
+    --hist-btn:#fff; --hist-btn-line:#e3e5e8; --hist-btn-ink:#67707c;
+    /* lane palette — vault magenta vs body blue read apart at a glance */
+    --hist-lane-0:#2f6fdd; --hist-lane-1:#c2569b; --hist-lane-2:#4d8b3a;
+    --hist-lane-3:#d78d1e; --hist-lane-4:#c94f4f; --hist-lane-5:#2a9d94;
+    --hist-lane-6:#7a5cc0; }
+  @media (prefers-color-scheme: dark) { :root.themed-dark {
+    --hist-bg:#14171c; --hist-strip:#1b1f26; --hist-strip-line:#262c35;
+    --hist-row-hover:#1a1e25; --hist-row-sel:#20262f;
+    --hist-id:#5b8cc9; --hist-id-head:#e8cb7a; --hist-text:#aab6c2; --hist-dim:#5f6a76;
+    --hist-time:#4d5763; --hist-vault:#d98ac2; --hist-body:#7fa8d8;
+    --hist-move:#f2a33c; --hist-merge:#7cb861; --hist-now:#e8cb7a;
+    --hist-btn:#20252d; --hist-btn-line:#313947; --hist-btn-ink:#aab6c2;
+    --hist-lane-0:#5b8cc9; --hist-lane-1:#c88bc0; --hist-lane-2:#7cb861;
+    --hist-lane-3:#f2a33c; --hist-lane-4:#d96a6a; --hist-lane-5:#3aa8a0;
+    --hist-lane-6:#8e7cc3; } }
   html,body { margin:0; height:100%; overflow:hidden;
     font:13px/1.5 ui-monospace,SFMono-Regular,monospace; color:var(--ink);
     background:var(--paper); }
@@ -28,16 +50,28 @@
     background:#f7f7f4; overflow:hidden; padding:52px 0 0; position:relative;
     display:flex; flex-direction:column; }
   #tree > #treeroot { flex:1 1 auto; overflow:auto; min-height:0; }
-  /* undo/redo + the cmd/live toggle share one floating top strip */
-  #toprow { position:absolute; top:7px; right:8px; z-index:11;
-    display:flex; align-items:center; gap:7px; -webkit-app-region:no-drag; }
-  #histbtns { display:flex; gap:3px; }
+  /* the floating top strip: [save prompt when dirty] [chat|voice], packed to the
+     RIGHT edge; left:66px reserves the macOS stoplight zone so nothing ever
+     overlaps the traffic lights in frameless mode */
+  #toprow { position:absolute; top:7px; left:66px; right:8px; z-index:11;
+    display:flex; align-items:center; justify-content:flex-end; gap:7px;
+    -webkit-app-region:no-drag; }
+  /* while the save prompt is up, the comm buttons drop their labels so the
+     strip always fits the narrowest sidebar */
+  #modetoggle.saving ~ #commtop .lbl { display:none; }
+  /* undo/redo/merge — they live in the HISTORY console header now (the timeline
+     is the thing they navigate) */
+  #histbtns { display:flex; gap:3px; margin-left:6px; }
   #histbtns button { border:1px solid var(--line); background:#fff; color:#7a8290;
-    border-radius:9px; padding:6px 8px; cursor:pointer; display:flex; align-items:center;
+    border-radius:7px; padding:3px 7px; cursor:pointer; display:flex; align-items:center;
+    gap:5px; font:10px ui-monospace,monospace;
     transition:background .15s ease, color .15s ease; -webkit-app-region:no-drag; }
   #histbtns button:hover:not(:disabled) { background:#eef1f8; color:#223; }
   #histbtns button:disabled { opacity:.35; cursor:default; }
-  #histbtns svg.lucide { width:15px; height:15px; }
+  #histbtns svg.lucide { width:13px; height:13px; }
+  /* the combine-branches prompt only exists while the timeline is actually split */
+  #domerge { color:#4d8b3a; border-color:#cfe0c8; }
+  #domerge:hover { background:#eef5ea !important; color:#3a6b2c !important; }
   /* the vault action toolbar — one row of VS Code Material icons, each carrying a
      + badge so every button clearly reads as "add" (file / sketch / folder / workspace) */
   #vaultbar { flex:none; display:flex; justify-content:center; gap:6px; padding:9px 10px;
@@ -178,15 +212,44 @@
     color:#98a0ac; transition:color .3s ease; }
   #conshead .last.fresh { color:#3a4250; }
   #conshead .count { color:#b3bac4; font-size:10px; }
-  #console { flex:1; overflow:auto; margin:0; padding:4px 14px 10px;
-    font-size:11px; line-height:1.7; color:#556;
+  /* the console IS the history manager: a jj commit DAG rendered like a
+     git-graph in a terminal — mono pane, colored lanes, clickable nodes.
+     Every color is a --hist-* token, so it follows the app theme. */
+  #console { flex:1; overflow:auto; margin:0; padding:0;
+    font-size:11px; line-height:1.7; color:var(--hist-text); background:var(--hist-bg);
     opacity:0; transition:opacity .25s ease .08s; pointer-events:none; }
   #app.console-open #console { opacity:1; pointer-events:auto; }
-  #console .ln { white-space:pre-wrap; word-break:break-all;
-    animation:lnin .25s ease; border-left:2px solid transparent; padding-left:8px; }
-  #console .ln.ok { border-left-color:#9ec99a; }
-  #console .ln.warn { border-left-color:#e8cb7a; }
-  #console .ln.bad { border-left-color:#dfa09a; }
+  #histsel { position:sticky; top:0; z-index:2; display:none; align-items:center; gap:8px;
+    padding:4px 12px; background:var(--hist-strip); border-bottom:1px solid var(--hist-strip-line);
+    color:var(--hist-text); font-size:10.5px; white-space:nowrap; overflow:hidden; }
+  #histsel.on { display:flex; }
+  #histsel .rid { color:var(--hist-move); font-weight:700; }
+  #histsel .rdesc { overflow:hidden; text-overflow:ellipsis; color:var(--hist-text); }
+  #histsel .rfiles { flex:1; overflow:hidden; text-overflow:ellipsis; color:var(--hist-dim); }
+  #histsel button { border:1px solid var(--hist-btn-line); background:var(--hist-btn);
+    color:var(--hist-btn-ink); border-radius:6px; padding:2px 8px; cursor:pointer;
+    font:10px ui-monospace,monospace; display:flex; align-items:center; gap:4px; }
+  #histsel button:hover { background:var(--hist-row-sel); color:var(--ink); }
+  #histsel svg.lucide { width:11px; height:11px; }
+  #histwrap { position:relative; padding:6px 0 12px; min-height:100%; box-sizing:border-box; }
+  /* the graph paints ABOVE the row hover/selection washes (the node color +
+     shape carry meaning — never mask them), but never eats their clicks */
+  #histsvg { position:absolute; top:6px; left:0; display:block; z-index:1; pointer-events:none; }
+  #histrows { position:relative; }
+  .hrow { display:flex; align-items:center; gap:9px; height:22px; padding-right:12px;
+    white-space:nowrap; cursor:pointer; animation:lnin .25s ease; }
+  .hrow:hover { background:var(--hist-row-hover); }
+  .hrow.sel { background:var(--hist-row-sel); }
+  .hrow .hid { color:var(--hist-id); flex:none; font-weight:600; }
+  .hrow .hdesc { overflow:hidden; text-overflow:ellipsis; color:var(--hist-text); }
+  .hrow .hdesc.k-vault { color:var(--hist-vault); }   /* vault = guide purple */
+  .hrow .hdesc.k-body { color:var(--hist-body); }     /* body  = note blue    */
+  .hrow .hdesc.k-move { color:var(--hist-move); }     /* undo/redo jumps      */
+  .hrow .hdesc.k-merge { color:var(--hist-merge); }   /* merges = link green  */
+  .hrow .hdesc.k-now { color:var(--hist-dim); font-style:italic; }
+  .hrow .htime { margin-left:auto; color:var(--hist-time); flex:none; font-size:10px; }
+  .hrow.head .hid { color:var(--hist-id-head); }
+  #histempty { padding:14px; color:var(--hist-dim); font-style:italic; }
   @keyframes lnin { from { opacity:0; transform:translateY(3px); } }
 
   /* node details panel */
@@ -305,13 +368,10 @@
   #tree .rtags { display:inline-flex; gap:3px; margin-left:6px; }
   #tree .rtag { font-size:9px; color:#8e7cc3; background:#f0edf7; border-radius:4px; padding:0 4px; line-height:15px; }
 
-  /* ── command / live mode: lives IN the stoplight row of column 1 only ─── */
+  /* ── the save prompt: command-only now (live is gone) — the revert/✓ pair
+     pops into the top strip while anything is dirty, vanishes when clean ─── */
   #modetoggle { position:relative; display:grid; align-items:center; -webkit-app-region:no-drag; }
-  /* the two faces of the slot share one cell and crossfade-flip between:
-     cmd/live toggle  ⇄  revert/save prompt (while a command-mode save is due —
-     you CAN'T switch to live mid-save because the toggle isn't there) */
   #modetoggle > * { grid-area:1 / 1; transition:opacity .22s ease, transform .25s cubic-bezier(.22,.9,.24,1); }
-  #modetoggle.saving .seg { opacity:0; transform:scale(.92) translateY(-3px); pointer-events:none; }
   #modetoggle:not(.saving) .saveseg { opacity:0; transform:scale(.92) translateY(3px); pointer-events:none; }
   #modetoggle .saveseg { display:flex; gap:4px; justify-self:end; }
   #modetoggle .saveseg button { border:1px solid var(--line);
@@ -322,33 +382,15 @@
   #modetoggle .saveseg .save { background:#2f6fdd; border-color:#2f6fdd; color:#fff; }
   #modetoggle .saveseg .save:hover { background:#245cc0; color:#fff; }
   #modetoggle .saveseg kbd { background:rgba(255,255,255,.22); border-radius:4px; padding:0 4px; font:inherit; }
-  #modetoggle .seg { display:flex; position:relative; border:1px solid var(--line);
-    border-radius:10px; overflow:hidden; background:#fff; padding:2px; }   /* squircle, not pill */
-  /* the sliding thumb — animates between the two halves */
-  #modetoggle .thumb { position:absolute; top:2px; bottom:2px; left:2px; width:calc(50% - 2px);
-    background:#223; border-radius:8px;
-    transition:transform .22s cubic-bezier(.3,.9,.3,1.15); }
-  #modetoggle .seg.live .thumb { transform:translateX(100%); }
-  #modetoggle .seg button { position:relative; z-index:1; flex:1; justify-content:center;
-    border:none; background:none; padding:7px 13px; cursor:pointer; color:#98a0ac;
-    display:flex; align-items:center; transition:color .2s ease; }
-  #modetoggle .seg button.sel { color:#fff; }
-  #modetoggle .seg svg.lucide { width:14px; height:14px; }
-  /* command = blue, live = yellow */
-  #modetoggle .thumb { background:#2f6fdd; }
-  #modetoggle .seg.live .thumb { background:#f2a33c; }
-  #modetoggle .seg.live button.sel { color:#223; }
 
-  /* ── comm bar: persistent chat/voice switcher, pinned to the sidebar bottom ──
-     lives INSIDE #tree (in-flow, flex:none) so an expanding console never overlays it */
-  #commbar { flex:none; margin:8px 12px 12px; box-sizing:border-box; display:flex; gap:6px;
-    background:#fff; border:1px solid var(--line); border-radius:999px;
-    padding:6px; box-shadow:0 2px 8px rgba(25,35,55,.06); }
-  #commbar button { flex:1; display:flex; align-items:center; justify-content:center; gap:7px;
+  /* ── comm switcher: chat/voice moved UP into the top strip (next to cmd/live) ── */
+  #commtop { display:flex; gap:3px; background:#fff; border:1px solid var(--line);
+    border-radius:10px; padding:2px; }
+  #commtop button { display:flex; align-items:center; justify-content:center; gap:5px;
     font:11px ui-monospace,monospace; border:none; background:none; color:#7a8290;
-    border-radius:999px; padding:10px 0; cursor:pointer;
+    border-radius:8px; padding:5px 9px; cursor:pointer;
     transition:background .18s ease, color .18s ease; }
-  #commbar button:hover { color:#223; background:#f2f4f7; }
+  #commtop button:hover { color:#223; background:#f2f4f7; }
   /* selected keeps its color on hover — just a shade lighter (never white-on-white) */
   #comm-chat.sel, #comm-chat.sel:hover { color:#fff; }
   #comm-voice.sel, #comm-voice.sel:hover { color:#fff; }
@@ -356,7 +398,7 @@
   #comm-chat.sel:hover { background:#9e8dd1; }
   #comm-voice.sel { background:#6aa84f; }         /* voice = link green */
   #comm-voice.sel:hover { background:#7cb861; }
-  #commbar svg.lucide { width:13px; height:13px; }
+  #commtop svg.lucide { width:13px; height:13px; }
 
   /* ── chat panel: shares the column-2 slot with files (one or the other) ── */
   #app.chatting { grid-template-columns:var(--tree-w,280px) var(--ed-w,480px) 1fr; }
@@ -681,20 +723,15 @@
   <div id="tree">
     <div class="rs" id="treers"></div>
     <div id="toprow">
-      <div id="histbtns">
-        <button id="doundo" title="undo last change" disabled><i data-lucide="undo-2"></i></button>
-        <button id="doredo" title="redo" disabled><i data-lucide="redo-2"></i></button>
-      </div>
       <div id="modetoggle">
-        <div class="seg" id="modeseg">
-          <div class="thumb"></div>
-          <button id="mode-command" title="command — changes wait for ⌘S"><i data-lucide="command"></i></button>
-          <button id="mode-live" title="live — changes translate as you type"><i data-lucide="zap"></i></button>
-        </div>
         <div class="saveseg">
           <button id="dorevert" title="revert changes"><i data-lucide="rotate-ccw"></i></button>
           <button class="save" id="dosave" title="save (⌘S)"><i data-lucide="check"></i></button>
         </div>
+      </div>
+      <div id="commtop">
+        <button id="comm-chat" title="chat"><i data-lucide="message-square"></i><span class="lbl">chat</span></button>
+        <button id="comm-voice" title="voice"><i data-lucide="audio-lines"></i><span class="lbl">voice</span></button>
       </div>
     </div>
     <div id="vaultbar">
@@ -704,10 +741,6 @@
       <button class="add" id="newworkspace" title="new workspace"><span class="wshash">#</span><span class="pl">+</span></button>
     </div>
     <ul id="treeroot"></ul>
-    <div id="commbar">
-      <button id="comm-chat"><i data-lucide="message-square"></i>chat</button>
-      <button id="comm-voice"><i data-lucide="audio-lines"></i>voice</button>
-    </div>
     <div id="sidebarfoot">
       <button id="foot-profile" class="footprofile" title="account"><span class="uinitial">·</span></button>
       <div class="footgap"></div>
@@ -800,13 +833,25 @@
     <div id="consgrip"></div>
     <div id="conshead">
       <span class="chev"><i data-lucide="chevron-right"></i></span>
-      <i data-lucide="terminal"></i>
-      <span class="ttl">console</span>
+      <i data-lucide="git-branch"></i>
+      <span class="ttl">history</span>
       <span class="pulse" id="conspulse"></span>
       <span class="last" id="conslast"></span>
       <span class="count" id="conscount"></span>
+      <div id="histbtns">
+        <button id="domerge" style="display:none"
+          title="the timeline split when you rewound and kept going — combine the branches back into one"><i data-lucide="git-merge"></i><span id="domergelbl">combine branches</span></button>
+        <button id="doundo" title="undo last change" disabled><i data-lucide="undo-2"></i></button>
+        <button id="doredo" title="redo" disabled><i data-lucide="redo-2"></i></button>
+      </div>
     </div>
-    <div id="console"></div>
+    <div id="console">
+      <div id="histsel"></div>
+      <div id="histwrap">
+        <svg id="histsvg" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div id="histrows"></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1106,20 +1151,10 @@ async function openBody(path) {
   relayout();
 }
 
-// ── command / live save modes ─────────────────────────────────────────────
-// command (default): edits wait; the toggle transforms into revert/save; ⌘S saves & translates.
-// live: edits autosave (debounced) straight into the translation lane.
-let mode = localStorage.getItem("ap-mode") || "command";
-function setMode(m) {
-  mode = m; localStorage.setItem("ap-mode", m);
-  document.getElementById("mode-command").classList.toggle("sel", m === "command");
-  document.getElementById("mode-live").classList.toggle("sel", m === "live");
-  document.getElementById("modeseg").classList.toggle("live", m === "live");
-  if (m === "live") saveAll();   // entering live flushes the backlog by definition
-  updatePill();
-}
-document.getElementById("mode-command").onclick = () => setMode("command");
-document.getElementById("mode-live").onclick = () => setMode("live");
+// ── save mode: COMMAND ONLY (live is gone) ─────────────────────────────────
+// edits wait in buffers; the save prompt (revert/✓) appears while anything is
+// dirty; ⌘S saves & translates.
+const mode = "command";
 document.getElementById("dosave").onclick = () => saveAll();
 document.getElementById("dorevert").onclick = () => revertAll();
 
@@ -1145,17 +1180,11 @@ addEventListener("keydown", e => {
 
 let saveTimer = null;
 function setDot(cls) { document.getElementById("savedot").className = "dot " + cls; }
-// an edit only updates the registry; LIVE mode additionally debounces a save of
-// that one file. Nothing else ever writes.
+// an edit only updates the registry — nothing writes until the human saves
 function onEdit() {
   if (!open.path) return;
   const content = open.kind === "sketch" ? serializeSketch() : document.getElementById("prose").value;
   markDirty(openKey(), open.kind, content);
-  if (mode === "live") {
-    clearTimeout(saveTimer);
-    const k = openKey();
-    saveTimer = setTimeout(() => saveOne(k), 900);
-  }
 }
 document.getElementById("prose").addEventListener("input", onEdit);
 
@@ -1464,6 +1493,7 @@ async function bodyHistory(dir) {
     const s = await (await fetch("/body/" + dir, { method: "POST", ...authed })).json();
     applyUndoState(s);
     draw();                                   // the organism changed — refresh the world
+    histRefresh();                            // …and the timeline moved (undo/redo = graph jumps)
     if (open.src === "body") openBody(open.path);   // a body page is open — reflect the change
   } catch (_) {}
 }
@@ -2005,45 +2035,201 @@ dragVar(document.getElementById("edrs"), "--ed-w",
 dragVar(document.getElementById("consgrip"), "--cons-h",
   ev => Math.max(26, Math.min(innerHeight * 0.5, innerHeight - ev.clientY)));
 
-// ── console (SSE): collapsed by default; designed states, severity tints ────
-const cons = document.getElementById("console");
+// ── console: the HISTORY MANAGER (collapsed by default; SSE drives the ticker) ──
 const conslast = document.getElementById("conslast");
 const conspulse = document.getElementById("conspulse");
 const conscount = document.getElementById("conscount");
-let consOpen = false, consLines = 0, pulseTimer = null, freshTimer = null;
+let consOpen = false, pulseTimer = null, freshTimer = null;
 
 function setConsole(open) {
   consOpen = open;
   document.getElementById("app").classList.toggle("console-open", open);
-  document.documentElement.style.setProperty("--cons-h", open ? "170px" : "30px");
+  document.documentElement.style.setProperty("--cons-h", open ? "260px" : "30px");
+  if (open) loadHistory();
   // re-center the face to the final pane size once the track animation settles
   setTimeout(relayout, 320);
 }
 document.getElementById("conshead").onclick = e => {
-  if (e.target.closest("#consgrip")) return;
+  if (e.target.closest("#consgrip") || e.target.closest("#histbtns")) return;
   setConsole(!consOpen);
 };
 
-const severity = t =>
-  /ACCEPTED|returned|registered|ok\b/.test(t) ? "ok" :
-  /failed|rejected|WATCHDOG|error/i.test(t) ? "bad" :
-  /PROPOSAL|queued|ATTENTION|REVERTED/.test(t) ? "warn" : "";
+// ══ THE HISTORY MANAGER ════════════════════════════════════════════════════
+// The console renders the REAL commit DAG of the jj repo at data/history —
+// every vault + body edit is a commit; undo/redo are graph moves; merges are
+// true multi-parent commits. GitKraken bones, terminal skin. All colors come
+// from the --hist-* theme tokens so the graph follows light/dark.
+const histTok = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const laneColors = () => [0, 1, 2, 3, 4, 5, 6].map(i => histTok("--hist-lane-" + i));
+let histNodes = [], histSel = null, histTimer = null;
+
+const histKind = (d, at) =>
+  (!d && at) ? "k-now" :
+  d.startsWith("vault:") ? "k-vault" :
+  d.startsWith("merge:") ? "k-merge" :
+  /^body: (undo|redo)/.test(d) ? "k-move" :
+  d.startsWith("body:") ? "k-body" : "";
+
+async function loadHistory() {
+  try { histNodes = await (await fetch("/history/log.json")).json(); } catch (_) { histNodes = []; }
+  renderHistory();
+}
+const histRefresh = () => { clearTimeout(histTimer); histTimer = setTimeout(loadHistory, 300); };
+
+function renderHistory() {
+  const rowsEl = document.getElementById("histrows");
+  const svg = document.getElementById("histsvg");
+
+  if (!histNodes.length) {
+    rowsEl.innerHTML = `<div id="histempty">no history yet — every vault + body edit lands here as a real commit</div>`;
+    svg.innerHTML = ""; svg.setAttribute("width", 0); svg.setAttribute("height", 0);
+    conscount.textContent = "";
+    return;
+  }
+
+  // heads = described nodes nobody described points to as a parent (the open tips)
+  const described = histNodes.filter(n => n.desc);
+  const referenced = new Set(described.flatMap(n => n.parents));
+  const heads = new Set(described.filter(n => !referenced.has(n.change)).map(n => n.change));
+
+  // lane assignment over newest-first topological rows (children precede parents)
+  const R = 22, COL = 13, PADX = 14;
+  const lane = {}, row = {}, active = [];
+  const free = () => { const i = active.indexOf(null); return i === -1 ? active.length : i; };
+  histNodes.forEach((c, i) => {
+    row[c.change] = i;
+    let l = active.indexOf(c.change);
+    if (l === -1) l = free();
+    active[l] = null;
+    lane[c.change] = l;
+    c.parents.forEach((p, k) => {
+      if (active.indexOf(p) === -1) active[k === 0 && active[l] === null ? l : free()] = p;
+    });
+  });
+
+  const maxLane = Math.max(...histNodes.map(c => lane[c.change]));
+  const gutter = PADX * 2 + maxLane * COL;
+  const X = l => PADX + l * COL, Y = i => i * R + R / 2;
+  svg.setAttribute("width", gutter + 6);
+  svg.setAttribute("height", histNodes.length * R);
+
+  const LC = laneColors();
+  let edges = "", dots = "";
+  histNodes.forEach(c => c.parents.forEach(p => {
+    if (!(p in row)) return;   // parent beyond the log window
+    const x1 = X(lane[c.change]), y1 = Y(row[c.change]);
+    const x2 = X(lane[p]), y2 = Y(row[p]);
+    const cl = LC[(x1 === x2 ? lane[c.change] : Math.max(lane[c.change], lane[p])) % LC.length];
+    edges += x1 === x2
+      ? `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${cl}" stroke-width="2"/>`
+      : `<path d="M${x1},${y1} C${x1},${y1 + R * .85} ${x2},${y2 - R * .85} ${x2},${y2}" stroke="${cl}" stroke-width="2" fill="none"/>`;
+  }));
+  const [cMerge, cMove, cNow, cHole] = [histTok("--hist-merge"), histTok("--hist-move"), histTok("--hist-now"), histTok("--hist-bg")];
+  histNodes.forEach(c => {
+    const x = X(lane[c.change]), y = Y(row[c.change]);
+    const cl = LC[lane[c.change] % LC.length];
+    const d = c.desc || "";
+    if (c.parents.length > 1)                            // a true merge commit
+      dots += `<circle cx="${x}" cy="${y}" r="5.5" fill="none" stroke="${cMerge}" stroke-width="2"/><circle cx="${x}" cy="${y}" r="2" fill="${cMerge}"/>`;
+    else if (/^body: (undo|redo)/.test(d))               // a timeline jump marker
+      dots += `<circle cx="${x}" cy="${y}" r="4" fill="${cHole}" stroke="${cMove}" stroke-width="2"/>`;
+    else if (!d && c.at)                                 // @ — the live working copy
+      dots += `<circle cx="${x}" cy="${y}" r="6.5" fill="${cNow}" opacity=".22"/><circle cx="${x}" cy="${y}" r="3" fill="${cNow}"/>`;
+    else
+      dots += `<circle cx="${x}" cy="${y}" r="4" fill="${cl}"/>`;
+    if (c.change === histSel)                            // inspecting = a ring, never a mask
+      dots += `<circle cx="${x}" cy="${y}" r="8.5" fill="none" stroke="${cl}" stroke-width="1.5" opacity=".55"/>`;
+  });
+  svg.innerHTML = edges + dots;
+
+  // the combine prompt only exists while the timeline is actually split
+  const mergeBtn = document.getElementById("domerge");
+  mergeBtn.style.display = heads.size > 1 ? "flex" : "none";
+  document.getElementById("domergelbl").textContent =
+    heads.size > 1 ? `combine ${heads.size} branches` : "";
+
+  rowsEl.innerHTML = histNodes.map(c => {
+    const d = c.desc || (c.at ? "· working copy (uncommitted)" : "");
+    return `<div class="hrow ${histSel === c.change ? "sel" : ""} ${heads.has(c.change) ? "head" : ""}"
+      data-c="${c.change}" style="padding-left:${gutter + 8}px">
+      <span class="hid">${esc(c.change)}</span>
+      <span class="hdesc ${histKind(c.desc, c.at)}">${esc(d)}</span>
+      <span class="htime">${esc(c.time)}</span></div>`;
+  }).join("");
+  rowsEl.querySelectorAll(".hrow").forEach(el => el.onclick = () => selectHist(el.dataset.c));
+
+  conscount.textContent = histNodes.length + " nodes" + (heads.size > 1 ? ` · ${heads.size} heads` : "");
+}
+
+// ── inspecting a moment ──────────────────────────────────────────────────────
+// Clicking a row NEVER changes anything — it opens the inspect strip: what
+// happened here in plain words, which files it touched, and one clearly-labeled
+// action ("rewind notes to here") for actual time travel.
+function histHuman(n) {
+  const d = n.desc || "";
+  let m;
+  if (!d && n.at) return "now — this is where your next change will land";
+  if ((m = d.match(/^vault: wrote (.+)$/))) return `you edited ${m[1]}`;
+  if ((m = d.match(/^vault: created (.+)$/))) return `you created ${m[1]}`;
+  if ((m = d.match(/^vault: renamed (.+)$/))) return `you renamed ${m[1]}`;
+  if ((m = d.match(/^vault: deleted (.+)$/))) return `you deleted ${m[1]}`;
+  if ((m = d.match(/^vault: restored (.+?) @/))) return `your notes were rewound to an earlier moment (${m[1]})`;
+  if ((m = d.match(/^body: wrote (.+) \(h[\d-]+\)$/))) return `the agent wrote ${m[1]}`;
+  if (/^body: undo/.test(d)) return "the agent's last change was undone — the timeline branched here";
+  if (/^body: redo/.test(d)) return "an undone change was brought back";
+  if ((m = d.match(/^merge: reconciled (\d+) heads$/))) return `${m[1]} branches were combined back into one`;
+  return d;
+}
+function selectHist(c) {
+  histSel = histSel === c ? null : c;
+  const el = document.getElementById("histsel");
+  const n = histNodes.find(x => x.change === histSel);
+  if (!n) {
+    histSel = null; el.classList.remove("on"); el.innerHTML = "";
+    renderHistory();
+    return;
+  }
+  el.classList.add("on");
+  el.innerHTML = `<span class="rid">${esc(n.change)}</span>
+    <span class="rdesc">${esc(histHuman(n))}</span>
+    <span class="rfiles" id="rfiles">…</span>
+    <button id="dorestore" title="copies your notes back to how they were at this moment — nothing is deleted; the rewind itself becomes a new step on the timeline">
+      <i data-lucide="archive-restore"></i>rewind notes to here</button>`;
+  document.getElementById("dorestore").onclick = async () => {
+    const r = await (await fetch("/history/restore?rev=" + encodeURIComponent(n.change), { method: "POST", ...authed })).text();
+    conslast.textContent = "rewind: " + r.trim();
+    loadTree(); loadHistory();
+    if (open.path && open.src !== "body") openFile(open.path, open.kind);   // reflect rewound content
+  };
+  refreshIcons();
+  renderHistory();
+  // what this moment touched (async — fills in when jj answers)
+  fetch("/history/diff.json?rev=" + encodeURIComponent(n.change))
+    .then(r => r.json())
+    .then(d => {
+      const f = document.getElementById("rfiles");
+      if (!f || histSel !== n.change) return;
+      const nice = (d.files || []).map(l => l.replace(/^[MAD] /, s =>
+        ({ "M ": "· ", "A ": "+ ", "D ": "− " })[s]).replace("vault/", "").replace("body/", "⚙"));
+      f.textContent = nice.length ? "touched: " + nice.join("  ") : "no file changes (a timeline marker)";
+    }).catch(() => {});
+}
+
+document.getElementById("domerge").onclick = async () => {
+  const r = await (await fetch("/history/merge", { method: "POST", ...authed })).text();
+  conslast.textContent = "merge: " + r.trim();
+  loadHistory();
+};
 
 new EventSource("/sse").onmessage = e => {
-  const div = document.createElement("div");
-  div.className = "ln " + severity(e.data);
-  div.textContent = e.data;
-  cons.appendChild(div);
-  while (cons.childNodes.length > 400) cons.removeChild(cons.firstChild);
-  cons.scrollTop = cons.scrollHeight;
-
-  consLines++;
-  conscount.textContent = consLines + " lines";
   conslast.textContent = e.data;
   conslast.classList.add("fresh");
   clearTimeout(freshTimer); freshTimer = setTimeout(() => conslast.classList.remove("fresh"), 2000);
   conspulse.classList.add("live");
   clearTimeout(pulseTimer); pulseTimer = setTimeout(() => conspulse.classList.remove("live"), 1200);
+
+  // any edit anywhere → the timeline re-reads the real jj DAG (debounced)
+  if (/history:|body: |vault: /.test(e.data)) histRefresh();
 
   if (/PROPOSAL|ACCEPTED|REVERTED|rejected|limb|ATTENTION|request queued/.test(e.data)) {
     recentEvents.unshift(e.data);
@@ -2057,6 +2243,7 @@ new EventSource("/sse").onmessage = e => {
   // the agent authored/undid its body — refresh the world + the undo/redo buttons
   if (/body: (wrote|undone|redone)/.test(e.data)) { draw(); refreshUndoState(); }
 };
+loadHistory();
 
 // after the editor slide animation settles, land the face on final center
 document.getElementById("app").addEventListener("transitionend", ev => {
@@ -2842,7 +3029,6 @@ document.getElementById("callin").addEventListener("keydown", async e => {
   inp.focus();
 });
 
-setMode(mode);
 loadTree();
 draw();
 refreshIcons();

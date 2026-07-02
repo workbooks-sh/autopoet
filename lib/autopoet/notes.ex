@@ -138,6 +138,7 @@ defmodule Autopoet.Notes do
         {:ok, body} -> File.write!(meta_path(to), body); File.rm(meta_path(from))
         _ -> :ok
       end
+      Autopoet.History.record_vault_rename(from, to)
       Autopoet.Log.puts("vault: renamed #{from} → #{to}")
       :ok
     else
@@ -152,6 +153,7 @@ defmodule Autopoet.Notes do
       File.rm_rf!(p)
       File.rm(Path.join(state_dir(), Base.url_encode64(rel, padding: false)))
       File.rm(meta_path(rel))
+      Autopoet.History.record_vault_delete(rel)
       Autopoet.Log.puts("vault: deleted #{rel}")
       :ok
     else
@@ -166,6 +168,7 @@ defmodule Autopoet.Notes do
     p = safe!(rel)
     File.mkdir_p!(Path.dirname(p))
     File.write!(p, content)
+    Autopoet.History.record_vault(:wrote, rel)
     # a "context" item is pure read-only reference — it never instantiates .work;
     # everything else (default "literate") translates on change, the typeaway lane
     if meta(rel)["type"] != "context", do: maybe_translate(rel, content)
@@ -185,6 +188,7 @@ defmodule Autopoet.Notes do
     else
       with :ok <- do_create(p, kind) do
         if meta != %{}, do: set_meta(rel, meta)
+        Autopoet.History.record_vault(:created, rel)
         :ok
       end
     end

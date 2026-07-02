@@ -23,6 +23,7 @@ defmodule Autopoet.Application do
     children =
       [
         Autopoet.Log,
+        Autopoet.History,
         Autopoet.Auth,
         Autopoet.Watchdog,
         Autopoet.Requests,

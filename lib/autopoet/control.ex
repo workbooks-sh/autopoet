@@ -175,6 +175,37 @@ defmodule Autopoet.Control do
     authed!(conn, fn conn -> Autopoet.Auth.signout(); text(conn, "out\n") end)
   end
 
+  # ── the version-control timeline (jj repo at data/history) — the console's
+  # history manager reads the REAL commit DAG from here ───────────────────────
+  get "/history/log.json" do
+    conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(Autopoet.History.log()))
+  end
+
+  # what one commit changed — the inspect panel's "what happened here" file list
+  get "/history/diff.json" do
+    conn = fetch_query_params(conn)
+    files = Autopoet.History.diff(conn.query_params["rev"] || "@")
+    conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(%{files: files}))
+  end
+
+  post "/history/merge" do
+    authed!(conn, fn conn ->
+      case Autopoet.History.merge_heads() do
+        {:ok, n} -> text(conn, "merged #{n} heads\n")
+        {:error, reason} -> text(conn, "refused: #{inspect(reason)}\n")
+      end
+    end)
+  end
+
+  post "/history/restore" do
+    authed!(conn, fn conn ->
+      case Autopoet.History.restore(conn.query_params["rev"] || "") do
+        {:ok, n} -> text(conn, "restored #{n} vault file(s)\n")
+        {:error, reason} -> text(conn, "refused: #{inspect(reason)}\n")
+      end
+    end)
+  end
+
   defp body_path!(rel) do
     rel = to_string(rel)
 
