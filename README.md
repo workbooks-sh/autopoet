@@ -74,3 +74,15 @@ load-bearing, not optional extras. They appear at the HEAD of every prompt,
 stated declaratively as what the format *is* ("project memory is part of the
 format"), never as abrasive imperatives. Succinct beats emphatic: one exact line
 per facet, depth in the guide behind `NEED:`.
+
+## The vault — notes are the source of truth
+
+`data/notes/` is the human's Obsidian-style vault: exactly two file kinds —
+`.md` natural-language documents and `.sketch.svg` freehand drawings (drawn in
+the app). The vault never contains `.work`; on save, a changed note files a
+diff-triggered translation request (one pending per note — latest wins), and the
+heartbeat's two-model brain (the audited typeaway pattern: planner structures,
+Mercury drafts) proposes the minimal `.work` the note implies, through the human
+gate. The world graph shows the translated structures; the vault shows only your
+notes. First live run: a plain-English reading-list note became a reading.work
+page + a weekly reminder hook in 27s, gated, accepted.
