@@ -78,7 +78,7 @@ defmodule Autopoet.Control do
 
   post "/proposal/:id/reject" do
     authed!(conn, fn conn ->
-      case Autopoet.Proposals.reject(id) do
+      case Autopoet.Proposals.reject(id, conn.query_params["reason"]) do
         :ok -> text(conn, "rejected #{id}\n")
         {:error, reason} -> text(conn, "refused: #{inspect(reason)}\n")
       end

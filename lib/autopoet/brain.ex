@@ -195,7 +195,16 @@ defmodule Autopoet.Brain do
   # models have no clock). Depth lives in the guide, disclosed on request.
   defp format_primer do
     """
-    .work format — complete reference (examples are EXACT syntax, one statement per line):
+    .work format — complete reference (examples are EXACT syntax):
+
+    Project memory is part of the format — work that isn't written into it is lost:
+    - [[todos]]: dated entries, appended; completions appended too; history never rewritten.
+    - Hash notes: `+# text` pins a note at its anchor; `-# text` is a drawer note —
+      swept into git as a memory, a `≡hash` handle remains. Working thoughts live in `-#`.
+    - Issues: `request self '<typed change>'` files anything broken or missing.
+    - Multi-step work is a `flow` block; reactions are `hook` blocks.
+
+    The lanes:
     - Plain markdown prose. A runnable block is `<kind> :name do ... end` (first word
       is the kind: data|def|server|client|sandbox|agent|flow|hook|record|resource|check).
     - A reactive hook, exactly:
@@ -214,12 +223,41 @@ defmodule Autopoet.Brain do
 
   defp dow, do: Enum.at(~w(Mon Tue Wed Thu Fri Sat Sun), Date.day_of_week(Date.utc_today()) - 1)
 
+  # The brain's own history: its knowledge lessons + the human gate's recent
+  # verdicts (with reasons when given). Repeating a rejected shape wastes a round.
+  defp history do
+    lessons =
+      Nexus.Autopoet.Knowledge.recall()
+      |> Enum.take(-8)
+      |> Enum.map_join("\n", fn l -> "- (#{l.topic}) #{l.lesson}" end)
+
+    verdicts =
+      Autopoet.Proposals.list()
+      |> Enum.sort_by(&elem(&1, 0), :desc)
+      |> Enum.take(6)
+      |> Enum.map_join("\n", fn {id, status} ->
+        reason =
+          case File.read(Path.join([Autopoet.Proposals.dir(), id, "reason"])) do
+            {:ok, r} -> " — #{String.trim(r)}"
+            _ -> ""
+          end
+
+        "- #{id}: #{status}#{reason}"
+      end)
+
+    case {lessons, verdicts} do
+      {"", ""} -> ""
+      _ -> "Your history (lessons are yours; verdicts are the human gate's):\n#{lessons}\n#{verdicts}\n"
+    end
+  end
+
   defp plan_prompt(item, ctx, guide_section) do
     """
     You plan changes to a workbook of `.work` files.
 
     #{format_primer()}
     #{guide_section}
+    #{history()}
     Current tree:
 
     #{ctx}

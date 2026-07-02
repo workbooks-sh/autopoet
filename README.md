@@ -66,3 +66,11 @@ Rule that goes with it: content-level structure (new limbs, flows, pipeline
 stages) enters ONLY via request → autopoet proposes → human gates. Hand-building
 is reserved for substrate/mechanism. The goal each week is to move lines from
 the first label to the second.
+
+## Prompt-engineering law for facets
+
+The project-management facets — todos, hash notes, flows, the request lane — are
+load-bearing, not optional extras. They appear at the HEAD of every prompt,
+stated declaratively as what the format *is* ("project memory is part of the
+format"), never as abrasive imperatives. Succinct beats emphatic: one exact line
+per facet, depth in the guide behind `NEED:`.

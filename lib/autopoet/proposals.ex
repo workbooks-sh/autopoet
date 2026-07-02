@@ -137,11 +137,15 @@ defmodule Autopoet.Proposals do
     end
   end
 
-  def reject(id) do
+  def reject(id, reason \\ nil) do
     with "pending" <- status(id) do
+      if is_binary(reason) and reason != "" do
+        File.write!(Path.join([dir(), sanitize!(id), "reason"]), reason <> "\n")
+      end
+
       set_status(id, "rejected")
-      Nexus.Events.emit(%{kind: "proposal.rejected", proposal: id, tags: []})
-      Autopoet.Log.puts("PROPOSAL #{id} rejected")
+      Nexus.Events.emit(%{kind: "proposal.rejected", proposal: id, reason: reason, tags: []})
+      Autopoet.Log.puts("PROPOSAL #{id} rejected#{if reason, do: " — #{reason}", else: ""}")
       :ok
     else
       other -> {:error, other}

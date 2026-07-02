@@ -13,7 +13,8 @@ defmodule Autopoet.LimbsTest do
     assert Enum.map(List.wrap(d[:grant]), &to_string/1) == ["net"]
     # frozen: the autopoet can never autonomously edit its own limb's structure
     assert to_string(Nexus.Agent.management(node)) == "frozen"
-    assert d[:limit][:turns] == 12
+    # non-negotiable #3: limits do not exist — limbs declare none (fail-mode ceiling only)
+    assert d[:limit] in [nil, []]
   end
 
   test "oota is host-side and degrades cleanly when unavailable" do
