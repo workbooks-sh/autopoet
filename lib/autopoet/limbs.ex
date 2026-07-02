@@ -81,9 +81,11 @@ defmodule Autopoet.Limbs do
   Returns the output path it will write.
   """
   def dispatch(name, task) when is_binary(task) and task != "" do
+    # second-resolution alone collides when several limbs dispatch in one second
+    # (four parallel fact-checkers proved it) — unique_integer disambiguates
     out =
       Path.join([Autopoet.Discovery.home(), "data", "limb-runs",
-                 "#{System.os_time(:second)}-#{name}.txt"])
+                 "#{System.os_time(:second)}-#{System.unique_integer([:positive])}-#{name}.txt"])
 
     Task.Supervisor.start_child(Nexus.Events.TaskSup, fn ->
       case Nexus.Agent.run_named(name, task <> "\n\n" <> @protocol, emit: progress(name)) do
