@@ -1979,6 +1979,7 @@ async function draw() {
   g.selectAll("*").remove();
   paper(g);
   const hullLayer = g.append("g");   // cluster hulls sit under links + nodes
+  let badgeLayer = null;             // …but their badges ride ABOVE everything (assigned after nodes)
   const byId = new Map(data.nodes.map(n => [n.id, n]));
   // clustered nodes get extra elbow room so their labels never collide inside the hull
   const clustered = new Set();
@@ -1998,7 +1999,8 @@ async function draw() {
       .distance(l => l.kind === "ref" ? 90 : 150).strength(l => l.kind === "ref" ? 0.5 : 0.06))
     .force("charge", d3.forceManyBody().strength(-320))
     .force("center", d3.forceCenter(W / 2, H / 2))
-    .force("collide", d3.forceCollide(d => radius(d) + (clustered.has(d.id) ? 36 : 14)))
+    // the autopoet holds the strongest field on the canvas — nothing crowds it
+    .force("collide", d3.forceCollide(d => d.id === "self" ? 110 : radius(d) + (clustered.has(d.id) ? 36 : 14)))
     // the membrane is a HARD WALL for outsiders: any non-member that drifts inside a
     // hull is shoved back out (actively-dragged nodes — fx pinned — pass through)
     .force("membrane", alpha => {
@@ -2015,6 +2017,23 @@ async function draw() {
           const dx = n.x - cx, dy = n.y - cy, L = Math.hypot(dx, dy) || 1;
           n.vx += dx / L * (12 * alpha + 0.5);   // strong outward shove…
           n.x += dx / L * 2.4; n.y += dy / L * 2.4;   // …plus direct correction: a wall, not a spring
+        }
+        // the autopoet's field outranks membranes: a hull encroaching on it shifts
+        // the WHOLE cluster away (uniform — shape preserved), overriding the anchor
+        const selfN = byId.get("self");
+        if (selfN && selfN.x != null) {
+          const FIELD = 130;
+          const near = nearestOnPoly([selfN.x, selfN.y], poly);
+          const d0 = inPoly([selfN.x, selfN.y], poly) ? -near.d : near.d;
+          if (d0 < FIELD) {
+            let ax = cx - selfN.x, ay = cy - selfN.y;
+            const L = Math.hypot(ax, ay) || 1;
+            const push = (FIELD - d0) * 0.12 * (alpha + 0.05);
+            for (const id of mset) {
+              const n = byId.get(id);
+              if (n && n.fx == null) { n.vx += ax / L * push; n.vy += ay / L * push; }
+            }
+          }
         }
       }
     })
@@ -2052,6 +2071,7 @@ async function draw() {
 
   function drawHulls() {
     hullLayer.selectAll("*").remove();
+    if (badgeLayer) badgeLayer.selectAll("*").remove();
     for (const c of clusters) {
       if (c.collapsed) continue;
       const mpts = clusterMembers(c, data.nodes).map(id => byId.get(id))
@@ -2099,11 +2119,11 @@ async function draw() {
           const top = pts.reduce((a, p) => p[1] < a[1] ? p : a, pts[0]);
           port = [top[0], top[1] - 44];
         }
-        const [mx, my] = memberCentroid(mpts);
-        const dx = port[0] - mx, dy = port[1] - my, L = Math.hypot(dx, dy) || 1;
-        bp = [port[0] + dx / L * 34, port[1] + dy / L * 34 - 11];   // hover just outside the port
+        // directly ABOVE the port (clear of the pin handle) — stable while dragging;
+        // edge overlap doesn't matter because badges render above the edges
+        bp = [port[0], port[1] - 32];
       }
-      drawClusterBadge(gp, c, bp[0], bp[1]);
+      drawClusterBadge(badgeLayer || gp, c, bp[0], bp[1]);
     }
   }
 
@@ -2185,6 +2205,7 @@ async function draw() {
 
   node.append("text").attr("class", "lbl").attr("text-anchor", "middle")
     .attr("dy", d => radius(d) + 14).text(d => d.label.length > 22 ? d.label.slice(0, 21) + "…" : d.label);
+  badgeLayer = g.append("g");   // cluster badges: topmost — edges pass BEHIND them
 
   // edge bundling: sibling links from ONE external node into a cluster share a pin —
   // they merge into a single trunk to the membrane, then disperse to their members.
