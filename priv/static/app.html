@@ -2081,8 +2081,28 @@ async function draw() {
           .on("mousedown", e => beginPinDrag(e, c, i))
           .on("contextmenu", e => { e.preventDefault(); e.stopPropagation(); pinCtx(e, c, i); });
       });
-      const top = pts.reduce((a, p) => p[1] < a[1] ? p : a, pts[0]);
-      const bp = (c.badge && c.badge.world) ? [c.badge.x, c.badge.y] : [top[0], top[1] - 78];
+      // the badge rides the INSIDE TRACK — hovering at the cluster's PORT (the pin
+      // where bundled edges land, nearest the autopoet), else at the membrane point
+      // facing the autopoet; anchored badges stay at their world spot
+      let bp;
+      if (c.badge && c.badge.world) bp = [c.badge.x, c.badge.y];
+      else {
+        const self = byId.get("self");
+        const pinsV = pinPoints(c, mpts);
+        let port;
+        if (self && pinsV.length)
+          port = pinsV.reduce((a, p) =>
+            Math.hypot(p[0] - self.x, p[1] - self.y) < Math.hypot(a[0] - self.x, a[1] - self.y) ? p : a);
+        else if (self)
+          port = nearestOnPoly([self.x, self.y], hullOffsetPts(pts, 44)).pt;
+        else {
+          const top = pts.reduce((a, p) => p[1] < a[1] ? p : a, pts[0]);
+          port = [top[0], top[1] - 44];
+        }
+        const [mx, my] = memberCentroid(mpts);
+        const dx = port[0] - mx, dy = port[1] - my, L = Math.hypot(dx, dy) || 1;
+        bp = [port[0] + dx / L * 34, port[1] + dy / L * 34 - 11];   // hover just outside the port
+      }
       drawClusterBadge(gp, c, bp[0], bp[1]);
     }
   }
