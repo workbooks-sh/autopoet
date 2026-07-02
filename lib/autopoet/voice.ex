@@ -107,7 +107,9 @@ defmodule Autopoet.Voice do
   # ── AIFF → amplitude envelope (RMS per window, normalized 0..1) ───────────
 
   defp envelope(aiff) do
-    with {:ok, <<"FORM", _size::32, "AIFF", chunks::binary>>} <- File.read(aiff),
+    # `say` emits AIFF-C ("AIFC", compression "twos" = plain s16be) — same PCM
+    with {:ok, <<"FORM", _size::32, form::binary-4, chunks::binary>>} when form in ["AIFF", "AIFC"] <-
+           File.read(aiff),
          %{rate: rate, channels: ch, samples: samples} <- walk(chunks, %{}) do
       per_window = max(1, trunc(rate * @window_ms / 1000) * ch)
 
