@@ -142,6 +142,39 @@ defmodule Autopoet.Control do
     end)
   end
 
+  # ── auth / onboarding (stub provider now; a real one slots in behind Autopoet.Auth) ──
+  get "/auth/state.json" do
+    s = Autopoet.Auth.state()
+    body = %{authenticated: s.authenticated, onboarded: s.onboarded, user: s.user}
+    conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(body))
+  end
+
+  post "/auth/signin" do
+    authed!(conn, fn conn ->
+      case Autopoet.Auth.signin(conn.query_params) do
+        {:error, reason} -> text(conn, "refused: #{inspect(reason)}\n")
+        _ -> text(conn, "app\n")
+      end
+    end)
+  end
+
+  post "/auth/signup" do
+    authed!(conn, fn conn ->
+      case Autopoet.Auth.signup(conn.query_params) do
+        {:error, reason} -> text(conn, "refused: #{inspect(reason)}\n")
+        _ -> text(conn, "onboarding\n")
+      end
+    end)
+  end
+
+  post "/auth/onboarding/done" do
+    authed!(conn, fn conn -> Autopoet.Auth.complete_onboarding(); text(conn, "app\n") end)
+  end
+
+  post "/auth/signout" do
+    authed!(conn, fn conn -> Autopoet.Auth.signout(); text(conn, "out\n") end)
+  end
+
   defp body_path!(rel) do
     rel = to_string(rel)
 

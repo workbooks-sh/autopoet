@@ -564,6 +564,42 @@
     -webkit-app-region:drag; }
   .tl { width:12px; height:12px; border-radius:50%; cursor:pointer; -webkit-app-region:no-drag; }
   .tl.close { background:#ff5f57; } .tl.min { background:#febc2e; } .tl.max { background:#28c840; }
+
+  /* ── onboarding / sign-in (a pre-app screen; plain white, centered) ── */
+  #onboard { position:fixed; inset:0; z-index:60; background:#fff; display:flex;
+    align-items:center; justify-content:center; -webkit-app-region:drag; }
+  #onboard.hidden { display:none; }
+  #onboard button, #onboard .signbtn { -webkit-app-region:no-drag; }
+  .obinner { display:flex; flex-direction:column; gap:34px; max-width:560px; padding:40px; }
+  .obrow { display:flex; align-items:stretch; gap:28px; }
+  /* the avatar is the REAL graph face (cursor-tracking), sized as tall as the definition */
+  #obavatar { align-self:stretch; aspect-ratio:1; flex:none; border-radius:24px;
+    border:1px solid rgba(0,0,0,.12); background:#fff; overflow:hidden; }
+  #obavatar svg { width:100%; height:100%; display:block; }
+  .obdef { text-align:left; align-self:center; }
+  /* serif for the definition; monospace for the code-y accents */
+  .obword { font-family:Georgia,"Times New Roman",serif; font-size:36px; font-weight:600;
+    color:#1c2230; letter-spacing:-.01em; line-height:1; }
+  .obph { font:12px ui-monospace,monospace; color:#98a0ac; margin-top:6px; }
+  .obph .obpo { color:#8e7cc3; }
+  .obtext { font-family:Georgia,"Times New Roman",serif; font-size:15.5px; line-height:1.55;
+    color:#3a4250; margin:14px 0 0; }
+  .obcode { font:12px ui-monospace,monospace; color:#b3bac4; margin-top:13px; }
+  /* sign · a centered segmented [in|up] badge (no arrows) */
+  .obsignrow { justify-content:center; }
+  .obsign { display:flex; align-items:center; gap:14px; }
+  .obsign .signword { font-family:Georgia,serif; font-size:28px; color:#1c2230; }
+  .signbadge { display:flex; align-items:center; gap:2px; padding:4px; border-radius:13px;
+    background:#f2f4f7; box-shadow:inset 0 1px 2px rgba(25,35,55,.07); }
+  .signopt { font:600 18px Georgia,serif; color:#67707c; border:none; background:none;
+    cursor:pointer; padding:6px 18px; border-radius:10px;
+    transition:background .16s ease, color .16s ease, box-shadow .16s ease; }
+  .signopt:hover { background:#fff; color:#1c2230; box-shadow:0 1px 3px rgba(25,35,55,.12); }
+  /* onboarding steps (stub) */
+  #obsteps { display:none; flex-direction:column; align-items:flex-start; gap:14px; max-width:460px; padding:40px; text-align:left; }
+  #obsteps .obstepgo { font:inherit; font-size:14px; padding:9px 18px; border-radius:10px;
+    border:1px solid #2f6fdd; background:#2f6fdd; color:#fff; cursor:pointer; -webkit-app-region:no-drag; }
+  #obsteps .obstepgo:hover { background:#245cc0; }
 </style>
 
 <div id="chrome">
@@ -698,6 +734,32 @@
 
 <div id="panel"></div>
 <div id="ctx"></div>
+
+<div id="onboard">
+  <div class="obinner">
+    <div class="obrow">
+      <div id="obavatar"></div>
+      <div class="obdef">
+        <div class="obword">autopoet</div>
+        <div class="obph">/ˌɔː·toʊ·ˈpoʊ·ɪt/ · noun · <span class="obpo">poiesis</span></div>
+        <p class="obtext">A self-authoring system — it keeps a living body of structure
+          it writes and rewrites from your notes, so your plain words become real, running
+          form. It reads what you mean, and makes what it means.</p>
+        <div class="obcode">// autopoiesis — the making that makes itself</div>
+      </div>
+    </div>
+    <div class="obrow obsignrow">
+      <div class="obsign">
+        <span class="signword">sign</span>
+        <div class="signbadge">
+          <button class="signopt" id="ob-in">in</button>
+          <button class="signopt" id="ob-up">up</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="obsteps"></div>
+</div>
 
 <div id="shade"></div>
 <div id="modal"></div>
@@ -1541,54 +1603,70 @@ function paper(sel) {
        .attr("fill", `url(#${id})`).attr("pointer-events", "none");
 }
 
-// ── the face ──────────────────────────────────────────────────────────────
-let MOUTHS = {};
+// ══ THE FACE — one reusable component (graph self-node, onboarding, anywhere) ══
+// createFace(mount, opts) mounts the /avatar SVG and wires blink + cursor-parallax +
+// hover (hopeful↔neutral) + a playful click reaction (squint + zigzag/confused mouth).
+// opts: idPrefix ("" = primary, keeps #ap-* for voice's setMouth; scoped otherwise),
+// svgAttrs (x/y/width/height for an SVG-<g> mount; defaults to 100% for an HTML mount),
+// hoverTarget / clickTarget (default the svg itself).
+let MOUTHS = {}, _faceSvgText = null;
 fetch("/avatar/mouths.json").then(r => r.json()).then(m => MOUTHS = m);
-function setMouth(mood) {
+function setMouth(mood) {   // drives the PRIMARY (graph) face — voice mouth-sync uses this
   const g = document.getElementById("ap-mouth");
   if (g && MOUTHS[mood]) g.innerHTML = MOUTHS[mood];
 }
-function blinkOnce() {
-  const eyes = document.getElementById("ap-eyes");
-  if (!eyes) return;
-  eyes.style.transform = "scaleY(0.08)";
-  setTimeout(() => { eyes.style.transform = "scaleY(1)"; }, 95);
+async function ensureFaceAssets() {
+  if (!_faceSvgText) _faceSvgText = await (await fetch("/avatar")).text();
+  if (!Object.keys(MOUTHS).length) MOUTHS = await (await fetch("/avatar/mouths.json")).json();
 }
-let faceStarted = false;
-function startFace() {
-  if (faceStarted) return; faceStarted = true;
-  (function loop() {
-    blinkOnce();
-    if (Math.random() < 0.25) setTimeout(blinkOnce, 220);
-    setTimeout(loop, 3000 + Math.random() * 3000);
+async function createFace(mount, opts = {}) {
+  await ensureFaceAssets();
+  const p = opts.idPrefix || "";
+  const doc = new DOMParser().parseFromString(_faceSvgText.replace(/ap-/g, p + "ap-"), "image/svg+xml");
+  const svg = document.importNode(doc.documentElement, true);
+  if (opts.svgAttrs) for (const [k, v] of Object.entries(opts.svgAttrs)) svg.setAttribute(k, v);
+  else { svg.setAttribute("width", "100%"); svg.setAttribute("height", "100%"); }
+  svg.id = p + "ap-svg";
+  mount.appendChild(svg);
+  const el = s => document.getElementById(p + "ap-" + s);
+  const setM = mood => { const m = el("mouth"); if (m && MOUTHS[mood]) m.innerHTML = MOUTHS[mood]; };
+  let squint = false;
+  // blink
+  (function blink() {
+    const e = el("eyes");
+    if (e) { e.style.transform = "scaleY(0.08)"; setTimeout(() => { if (e) e.style.transform = squint ? "scaleY(0.42)" : "scaleY(1)"; }, 95); }
+    setTimeout(blink, 3000 + Math.random() * 3000);
   })();
-}
-let parallaxOn = false;
-function startParallax() {
-  if (parallaxOn) return; parallaxOn = true;
+  // cursor parallax
   let tx = 0, ty = 0, want = { x: 0, y: 0 }, raf = null;
-  function onMove(e) {
-    const av = document.getElementById("ap-svg");
-    if (!av) return;
-    const r = av.getBoundingClientRect();
-    if (!r.width) return;
-    want = {
-      x: Math.max(-1, Math.min(1, (e.clientX - (r.left + r.width / 2)) / (r.width * 0.9))),
-      y: Math.max(-1, Math.min(1, (e.clientY - (r.top + r.height / 2)) / (r.height * 0.9)))
-    };
+  const clamp = v => Math.max(-1, Math.min(1, v));
+  addEventListener("mousemove", e => {
+    const r = svg.getBoundingClientRect(); if (!r.width) return;
+    want = { x: clamp((e.clientX - (r.left + r.width / 2)) / (r.width * 0.9)),
+             y: clamp((e.clientY - (r.top + r.height / 2)) / (r.height * 0.9)) };
     if (!raf) raf = requestAnimationFrame(apply);
-  }
+  }, { passive: true });
   function apply() {
-    raf = null;
-    const face = document.getElementById("ap-face"), eyesPx = document.getElementById("ap-eyes-px");
-    if (!face || !eyesPx) return;
+    raf = null; const face = el("face"), eyesPx = el("eyes-px"); if (!face || !eyesPx) return;
     tx += (want.x - tx) * 0.35; ty += (want.y - ty) * 0.35;
-    face.setAttribute("transform",
-      `translate(${(tx * 2.2).toFixed(2)} ${(ty * 2.2).toFixed(2)}) skewX(${(-tx * 1.8).toFixed(2)}) skewY(${(ty * 1.0).toFixed(2)})`);
-    eyesPx.setAttribute("transform", `translate(${(tx * 0.8).toFixed(2)} ${(ty * 0.8).toFixed(2)})`);
+    face.setAttribute("transform", `translate(${(tx*2.2).toFixed(2)} ${(ty*2.2).toFixed(2)}) skewX(${(-tx*1.8).toFixed(2)}) skewY(${(ty*1.0).toFixed(2)})`);
+    eyesPx.setAttribute("transform", `translate(${(tx*0.8).toFixed(2)} ${(ty*0.8).toFixed(2)})`);
     if (Math.abs(want.x - tx) > 0.005 || Math.abs(want.y - ty) > 0.005) raf = requestAnimationFrame(apply);
   }
-  addEventListener("mousemove", onMove, { passive: true });
+  // hover: hopeful ↔ neutral (as in the original)
+  const hov = opts.hoverTarget || svg;
+  hov.addEventListener("mouseenter", () => setM("hopeful"));
+  hov.addEventListener("mouseleave", () => { if (!squint) setM("neutral"); });
+  // click: a playful squint + zigzag (confused) mouth, then relax
+  const clk = opts.clickTarget || svg;
+  clk.addEventListener("click", () => {
+    squint = true;
+    const e = el("eyes"); if (e) e.style.transform = "scaleY(0.42)";
+    setM("confused");
+    clearTimeout(svg._react);
+    svg._react = setTimeout(() => { squint = false; const e2 = el("eyes"); if (e2) e2.style.transform = "scaleY(1)"; setM("neutral"); }, 1200);
+  });
+  return { svg, setMouth: setM, el };
 }
 
 let sim;
@@ -1651,23 +1729,16 @@ async function draw() {
 
   const selfG = node.filter(d => d.id === "self");
   const S = 96, R = 30;
-  selfG.on("mouseenter", () => setMouth("hopeful")).on("mouseleave", () => setMouth("neutral"));
   selfG.append("clipPath").attr("id", "sq")
     .append("rect").attr("x", -S/2).attr("y", -S/2).attr("width", S).attr("height", S).attr("rx", R);
   selfG.append("rect").attr("x", -S/2).attr("y", -S/2).attr("width", S).attr("height", S)
     .attr("rx", R).attr("fill", "#fff")
     .attr("stroke", "rgba(0,0,0,.12)").attr("stroke-width", 1);
 
-  fetch("/avatar").then(r => r.text()).then(txt => {
-    const doc = new DOMParser().parseFromString(txt, "image/svg+xml");
-    const av = document.importNode(doc.documentElement, true);
-    av.setAttribute("x", -S/2); av.setAttribute("y", -S/2);
-    av.setAttribute("width", S); av.setAttribute("height", S);
-    av.id = "ap-svg";
-    selfG.append("g").attr("clip-path", "url(#sq)").node().appendChild(av);
-    startFace();
-    startParallax();
-  });
+  // the primary face (idPrefix "" keeps #ap-* so voice mouth-sync still finds it)
+  const clipG = selfG.append("g").attr("clip-path", "url(#sq)").node();
+  createFace(clipG, { idPrefix: "", svgAttrs: { x: -S/2, y: -S/2, width: S, height: S },
+                      hoverTarget: selfG.node(), clickTarget: selfG.node() });
 
   node.append("text").attr("class", "lbl").attr("text-anchor", "middle")
     .attr("dy", d => radius(d) + 14).text(d => d.label.length > 22 ? d.label.slice(0, 21) + "…" : d.label);
@@ -2542,4 +2613,44 @@ loadTree();
 draw();
 refreshIcons();
 updateDirtyUI();   // hot exit: restored buffers resurface the save prompt + tree dots
+
+// ── onboarding / sign-in gate (stub auth; real provider slots in behind Autopoet.Auth) ──
+function hideOnboard() { document.getElementById("onboard").classList.add("hidden"); }
+function showSignIn() {
+  document.getElementById("onboard").classList.remove("hidden");
+  document.getElementById("obsteps").style.display = "none";
+  document.querySelector("#onboard .obinner").style.display = "flex";
+  mountOnboardFace();
+  refreshIcons();
+}
+// the onboarding avatar is the SAME face component, scoped so it runs independently
+let _obFaceMounted = false;
+function mountOnboardFace() {
+  const box = document.getElementById("obavatar");
+  if (!box || _obFaceMounted) return;
+  _obFaceMounted = true;
+  createFace(box, { idPrefix: "ob" });
+}
+function showOnboardSteps() {
+  const ob = document.getElementById("onboard");
+  ob.classList.remove("hidden");
+  document.querySelector("#onboard .obinner").style.display = "none";
+  const s = document.getElementById("obsteps");
+  s.style.display = "flex";
+  s.innerHTML = `<div class="obword" style="font-size:28px">welcome</div>
+    <p class="obtext">Onboarding is stubbed for now — we'll shape these steps later.</p>
+    <button class="obstepgo" id="ob-done">enter autopoet</button>`;
+  document.getElementById("ob-done").onclick = () => authedPost("/auth/onboarding/done").then(() => location.reload());
+}
+async function initAuth() {
+  let st;
+  try { st = await (await fetch("/auth/state.json")).json(); }
+  catch (_) { return hideOnboard(); }   // no auth backend ⇒ don't block the app
+  if (st.authenticated && st.onboarded) return hideOnboard();
+  if (st.authenticated) return showOnboardSteps();
+  showSignIn();
+}
+document.getElementById("ob-in").onclick = () => authedPost("/auth/signin").then(() => location.reload());
+document.getElementById("ob-up").onclick = () => authedPost("/auth/signup").then(() => showOnboardSteps());
+initAuth();
 </script>
