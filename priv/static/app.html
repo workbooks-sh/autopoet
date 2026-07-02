@@ -73,9 +73,9 @@
   #skwrap { flex:1; display:none; min-height:0; }
   #app.sketching #skwrap { display:flex; }
   #app.sketching #prose { display:none; }
-  #skpal { width:82px; flex:none; border-right:1px solid var(--line); background:#f7f7f4;
-    padding:10px 9px; display:flex; flex-direction:column; gap:12px; overflow:auto; }
-  #skpal .tools { display:grid; grid-template-columns:1fr 1fr; gap:5px; }
+  #skpal { width:46px; flex:none; border-right:1px solid var(--line); background:#f7f7f4;
+    padding:10px 8px; display:flex; flex-direction:column; gap:12px; overflow:auto; }
+  #skpal .tools { display:grid; grid-template-columns:1fr; gap:5px; }
   #skpal .tools button { aspect-ratio:1; display:flex; align-items:center; justify-content:center;
     border:1px solid #d8dade; border-radius:6px; background:#fdfdfc; cursor:pointer; color:#5a6472;
     box-shadow:inset 0 1px 0 rgba(255,255,255,.9), 0 1px 2px rgba(20,30,50,.06); }
@@ -89,7 +89,7 @@
   #skpal .sizes button span { display:block; width:60%; border-radius:99px; background:#5a6472; }
   #skpal .sizes button.sel { background:#e4e8f5; border-color:#b9c8e8; }
   #skpal .sizes button.sel span { background:#2f6fdd; }
-  #skpal .swatches { display:grid; grid-template-columns:1fr 1fr; gap:5px; }
+  #skpal .swatches { display:grid; grid-template-columns:1fr; gap:5px; }
   #skpal .swatches button { aspect-ratio:1; border-radius:6px; cursor:pointer;
     border:1px solid rgba(0,0,0,.15); }
   #skpal .swatches button.sel { outline:2px solid #2f6fdd; outline-offset:1px; }
