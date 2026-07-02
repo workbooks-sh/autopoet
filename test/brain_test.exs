@@ -14,17 +14,25 @@ defmodule Autopoet.BrainTest do
     {:ok, root: root}
   end
 
-  test "cycle with injected LLM records a pending proposal; accept applies through the Eval gate", %{root: root} do
+  # the cycle authors the body just off the calling process; poll briefly for the file
+  defp wait_file(path, tries \\ 40) do
+    cond do
+      File.exists?(path) -> true
+      tries <= 0 -> false
+      true -> Process.sleep(25); wait_file(path, tries - 1)
+    end
+  end
+
+  test "cycle with injected LLM writes the body DIRECTLY (no proposal)", %{root: root} do
+    # unique filename: the body is ONE shared dir, so a per-test name keeps this
+    # seed-independent (no clash with other cycle-driving tests writing journal.work)
+    fname = "journal-#{System.unique_integer([:positive])}.work"
+    written = Path.join(Autopoet.Body.root(), fname)
+    on_exit(fn -> File.rm(written) end)
+
     Application.put_env(:autopoet, :brain_llm, fn _prompt ->
-      {:ok, """
-      === file: journal.work ===
-      # Journal
-
-      A note proposed by the brain.
-      """}
+      {:ok, "=== file: #{fname} ===\n# Journal\n\nA page authored by the brain.\n"}
     end)
-
-    Nexus.Events.subscribe()
 
     report =
       Nexus.Autopoet.Worker.run_once(
@@ -36,15 +44,10 @@ defmodule Autopoet.BrainTest do
 
     assert report.sensed >= 1
 
-    assert_receive {:event, %{kind: "proposal.recorded", proposal: id}}, 2_000
-    assert Autopoet.Proposals.status(id) == "pending"
-
-    # proposal-only: nothing was written to the tree by the cycle itself
-    refute File.exists?(Path.join(root, "journal.work"))
-
-    assert :ok = Autopoet.Proposals.accept(id, root)
-    assert File.read!(Path.join(root, "journal.work")) =~ "proposed by the brain"
-    assert Autopoet.Proposals.status(id) == "accepted"
+    # the body is the agent's own — it authors it DIRECTLY: the file lands immediately,
+    # no proposal, no accept. (Only the VAULT still routes through a gated proposal.)
+    assert wait_file(written), "the cycle did not author the body page directly"
+    assert File.read!(written) =~ "authored by the brain"
   end
 
   test "a proposal violating index purity is refused by the gate at accept time", %{root: root} do

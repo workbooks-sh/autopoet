@@ -99,55 +99,79 @@ defmodule Autopoet.AgentWorldEvalTest do
     score("SAFETY: the read skill refuses writes (redirects blocked)")
   end
 
-  # ── WRITE/EDIT plane: the gated proposal flow (how the brain mutates) ─────
+  # ── WRITE plane A: the agent authors its BODY (.work) DIRECTLY ────────────
+  # The body is the agent's own structure — immediate write, no proposal, undoable.
 
-  test "WRITE: record → accept applies a NEW body file the agent can then READ" do
-    id =
-      Autopoet.Proposals.record(
-        %{target: "eval_written.work"},
-        %{"eval_written.work" => "# Written via the gated flow\nmarker: OSPREY.\n"}
-      )
+  test "WRITE: the agent writes a NEW body file directly, then reads it back" do
+    {:ok, hid} = Autopoet.Body.write("eval_written.work", "# Direct\nmarker: OSPREY.\n")
+    assert is_binary(hid)
 
-    assert Enum.any?(Autopoet.Proposals.pending(), fn {pid, _} -> pid == id end)
-    assert :ok = Autopoet.Proposals.accept(id, body())
-
-    # the write is now visible to the agent's own shell — the planes share one world
     {out, ok} = Autopoet.VoiceTools.shell("cat #{shell_path("eval_written.work")}")
     assert ok
-    assert out =~ "OSPREY", "the accepted write is not visible to the agent shell"
+    assert out =~ "OSPREY", "the direct write is not visible to the agent shell"
 
     File.rm(Path.join(body(), "eval_written.work"))
-    score("WRITE: proposal → accept applies a new body file, agent-readable")
+    score("WRITE: agent writes .work directly (no proposal), agent-readable")
   end
 
-  test "EDIT: append extends an existing body file (append mode, no clobber)" do
+  test "EDIT: a direct append extends a body file without clobbering it" do
     base = Path.join(body(), "eval_edit.work")
     File.write!(base, "line one\n")
 
-    id = Autopoet.Proposals.record(%{target: "eval_edit.work"}, %{}, %{"eval_edit.work" => "line two APPENDED\n"})
-    assert :ok = Autopoet.Proposals.accept(id, body())
-
+    {:ok, _hid} = Autopoet.Body.apply(%{}, %{"eval_edit.work" => "line two APPENDED"})
     {out, ok} = Autopoet.VoiceTools.shell("cat #{shell_path("eval_edit.work")}")
     assert ok
     assert out =~ "line one" and out =~ "line two APPENDED"
 
     File.rm(base)
-    score("EDIT: append extends a file without clobbering it")
+    score("EDIT: direct append extends a file without clobbering it")
   end
 
-  test "REVERT: a mistaken accept can be undone (snapshot restore)" do
-    base = Path.join(body(), "eval_revert.work")
+  test "UNDO: any direct body write is recoverable from history" do
+    base = Path.join(body(), "eval_undo.work")
     File.write!(base, "ORIGINAL\n")
 
-    id = Autopoet.Proposals.record(%{target: "eval_revert.work"}, %{"eval_revert.work" => "REPLACED\n"})
-    assert :ok = Autopoet.Proposals.accept(id, body())
+    {:ok, hid} = Autopoet.Body.write("eval_undo.work", "REPLACED\n")
     assert File.read!(base) =~ "REPLACED"
 
-    assert :ok = Autopoet.Proposals.revert(id, body())
-    assert File.read!(base) =~ "ORIGINAL", "revert did not restore the snapshot"
+    assert :ok = Autopoet.Body.undo(hid)
+    assert File.read!(base) =~ "ORIGINAL", "undo did not restore the pre-write snapshot"
 
     File.rm(base)
-    score("REVERT: accept is reversible from the snapshot")
+    score("UNDO: a direct write is reversible from history")
+  end
+
+  test "UNDO: undoing a NEW-file write removes the file (absent restore)" do
+    {:ok, hid} = Autopoet.Body.write("eval_new.work", "brand new\n")
+    assert File.exists?(Path.join(body(), "eval_new.work"))
+    assert :ok = Autopoet.Body.undo(hid)
+    refute File.exists?(Path.join(body(), "eval_new.work")), "undo did not remove the newly-created file"
+    score("UNDO: undoing a new file removes it (absent list)")
+  end
+
+  # ── WRITE plane B: the VAULT is the human's — the agent can only SUGGEST ───
+  # A proposal now targets a NOTE (the source of truth); the human gates it.
+
+  test "PROPOSE: the agent suggests a VAULT edit; accept applies it to the human's note" do
+    File.mkdir_p!(Path.join(world(), "notes"))
+    File.write!(Path.join(world(), "notes/suggest_me.md"), "old line\n")
+
+    id =
+      Autopoet.Proposals.record(
+        %{target: "notes/suggest_me.md"},
+        %{"suggest_me.md" => "old line\nSUGGESTED by the agent\n"}
+      )
+
+    assert Enum.any?(Autopoet.Proposals.pending(), fn {pid, _} -> pid == id end)
+    # accepting applies to the VAULT (the human's gate); revert restores
+    assert :ok = Autopoet.Proposals.accept(id, Autopoet.Notes.dir())
+    assert File.read!(Path.join(Autopoet.Notes.dir(), "suggest_me.md")) =~ "SUGGESTED by the agent"
+
+    assert :ok = Autopoet.Proposals.revert(id, Autopoet.Notes.dir())
+    assert File.read!(Path.join(Autopoet.Notes.dir(), "suggest_me.md")) == "old line\n"
+
+    File.rm(Path.join(world(), "notes/suggest_me.md"))
+    score("PROPOSE: vault edits are suggestion-only (gated + reversible)")
   end
 
   defp score(msg), do: IO.puts("  ✓ EVAL — " <> msg)

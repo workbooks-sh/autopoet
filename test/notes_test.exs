@@ -2,8 +2,17 @@ defmodule Autopoet.NotesTest do
   use ExUnit.Case
 
   # The vault lane, end to end: note saved -> diff detected -> translation request
-  # queued -> the real heartbeat cycle -> gated proposal. The typeaway model as
-  # the standard: notes are the source of truth, .work is the translation target.
+  # queued -> the real heartbeat cycle -> the body authored DIRECTLY. The typeaway
+  # model as the standard: notes are the source of truth, .work is the body the
+  # agent authors from them.
+
+  defp wait_file(path, tries \\ 40) do
+    cond do
+      File.exists?(path) -> true
+      tries <= 0 -> false
+      true -> Process.sleep(25); wait_file(path, tries - 1)
+    end
+  end
 
   test "vault basics: seed, tree, create both kinds, sketches are svg" do
     Autopoet.Notes.seed()
@@ -19,13 +28,20 @@ defmodule Autopoet.NotesTest do
     assert_raise ArgumentError, fn -> Autopoet.Notes.write("../escape.md", "no") end
   end
 
-  test "a changed note files ONE translation request (diff-triggered, latest wins) and becomes a proposal" do
+  test "a changed note files ONE translation request (diff-triggered, latest wins) and authors the body" do
+    fname = "journal-#{System.unique_integer([:positive])}.work"
+    written = Path.join(Autopoet.Body.root(), fname)
+
     Application.put_env(:autopoet, :brain_llm, fn prompt ->
       if prompt =~ "TRANSLATE A HUMAN NOTE" or prompt =~ "NOTE CONTENT" or true do
-        {:ok, "=== append: journal.work ===\n- <2026-07-02 Thu> vault said: hello\n"}
+        {:ok, "=== append: #{fname} ===\n- <2026-07-02 Thu> vault said: hello\n"}
       end
     end)
-    on_exit(fn -> Application.delete_env(:autopoet, :brain_llm) end)
+
+    on_exit(fn ->
+      Application.delete_env(:autopoet, :brain_llm)
+      File.rm(written)
+    end)
 
     Nexus.Events.subscribe()
     path = "vault-e2e-#{System.unique_integer([:positive])}.md"
@@ -42,10 +58,11 @@ defmodule Autopoet.NotesTest do
     assert length(matching) == 1
     assert hd(matching).change =~ "TWICE"
 
-    # the real heartbeat effect turns it into a gated proposal
+    # the real heartbeat effect translates the note into the body DIRECTLY (a human
+    # note is the source; the resulting page is the agent's body, so it's authored — not proposed)
     Nexus.Effects.run(%{name: "autopoet.cycle", args: %{}}, %{}, %{})
-    assert_receive {:event, %{kind: "proposal.recorded", proposal: id}}, 3_000
-    assert Autopoet.Proposals.status(id) == "pending"
+    assert wait_file(written), "the cycle did not author the body from the note"
+    assert File.read!(written) =~ "vault said: hello"
   end
 
   test "rename keeps kind sticky (content sniff), delete works, set-list order persists" do

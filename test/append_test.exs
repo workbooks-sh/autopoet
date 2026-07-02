@@ -22,15 +22,23 @@ defmodule Autopoet.AppendTest do
     assert File.read!(Path.join(root, "rules.work")) == "# rules\n\n- rule one\n"
   end
 
-  test "the brain parses mixed file/append blocks into a recorded proposal" do
+  test "the brain parses mixed file/append blocks and authors them into the body" do
     Application.put_env(:autopoet, :brain_llm, fn _prompt ->
       {:ok, "Plan or draft, same reply: === file: new.work ===\n# new\n=== append: journal.work ===\n- appended line\n" |> String.replace("Plan or draft, same reply: ", "")}
     end)
 
-    on_exit(fn -> Application.delete_env(:autopoet, :brain_llm) end)
+    on_exit(fn ->
+      Application.delete_env(:autopoet, :brain_llm)
+      File.rm(Path.join(Autopoet.Body.root(), "new.work"))
+      File.rm(Path.join(Autopoet.Body.root(), "journal.work"))
+    end)
 
     assert {:ok, changes} = Autopoet.Brain.propose(%{target: "journal", change: "append test"})
     assert Map.has_key?(changes, "new.work")
     assert Map.has_key?(changes, "journal.work")
+
+    # direct-write: both files are now in the body immediately
+    assert File.read!(Path.join(Autopoet.Body.root(), "new.work")) =~ "# new"
+    assert File.read!(Path.join(Autopoet.Body.root(), "journal.work")) =~ "appended line"
   end
 end

@@ -51,7 +51,10 @@ defmodule Autopoet.Brain do
         with {:ok, text} <- complete.(:draft, draft_prompt(item, ctx, plan, pages)),
              {writes, appends} <- parse_files(text),
              true <- map_size(writes) + map_size(appends) > 0 do
-          Autopoet.Proposals.record(item, writes, appends)
+          # The body is the agent's OWN structure — write it DIRECTLY (snapshotted +
+          # undoable). The vault is the human's; suggesting edits THERE is the only path
+          # that still goes through a gated proposal.
+          {:ok, _hid} = Autopoet.Body.apply(writes, appends)
           {:ok, Map.merge(writes, appends)}
         else
           other ->

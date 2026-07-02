@@ -89,11 +89,27 @@ defmodule Autopoet.Control do
   post "/body/save" do
     authed!(conn, fn conn ->
       {:ok, body, conn} = read_body(conn, length: 10_000_000)
-      p = body_path!(conn.query_params["path"])
-      File.mkdir_p!(Path.dirname(p))
-      File.write!(p, body)
+      # the human editing the body via the pencil is ALSO a direct write — snapshot it
+      # to the same history so it's undoable alongside the agent's writes.
+      Autopoet.Body.write(conn.query_params["path"], body)
       Autopoet.Log.puts("body: human edited #{conn.query_params["path"]} directly")
       text(conn, "saved\n")
+    end)
+  end
+
+  # the body's change history + undo (agent writes .work directly; nothing is unrecoverable)
+  get "/body/history.json" do
+    conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(Autopoet.Body.history()))
+  end
+
+  post "/body/undo" do
+    authed!(conn, fn conn ->
+      id = conn.query_params["id"] || :latest
+
+      case Autopoet.Body.undo(id) do
+        :ok -> text(conn, "undone\n")
+        {:error, reason} -> text(conn, "refused: #{inspect(reason)}\n")
+      end
     end)
   end
 
@@ -280,11 +296,24 @@ defmodule Autopoet.Control do
     text(conn, body)
   end
 
+  # Proposals now suggest edits to the VAULT (the human's notes / source of truth) —
+  # the ONE thing the agent can't write directly. Accepting applies to data/notes and
+  # re-fires translation, exactly as if the human had made the edit. (The body — .work —
+  # the agent writes directly via Autopoet.Body; no proposal.)
   post "/proposal/:id/accept" do
     authed!(conn, fn conn ->
-      case Autopoet.Proposals.accept(id, Nexus.Paths.data_dir()) do
-        :ok -> text(conn, "accepted #{id}\n")
-        {:error, reason} -> text(conn, "refused: #{inspect(reason)}\n")
+      case Autopoet.Proposals.accept(id, Autopoet.Notes.dir()) do
+        :ok ->
+          # a vault change the human accepted → let it translate like any note edit
+          for {rel, _} <- Autopoet.Proposals.changes(id) do
+            with {:ok, content} <- File.read(Path.join(Autopoet.Notes.dir(), rel)),
+                 do: Autopoet.Notes.write(rel, content)
+          end
+
+          text(conn, "accepted #{id}\n")
+
+        {:error, reason} ->
+          text(conn, "refused: #{inspect(reason)}\n")
       end
     end)
   end
@@ -300,7 +329,7 @@ defmodule Autopoet.Control do
 
   post "/proposal/:id/revert" do
     authed!(conn, fn conn ->
-      case Autopoet.Proposals.revert(id, Nexus.Paths.data_dir()) do
+      case Autopoet.Proposals.revert(id, Autopoet.Notes.dir()) do
         :ok -> text(conn, "reverted #{id}\n")
         {:error, reason} -> text(conn, "refused: #{inspect(reason)}\n")
       end
