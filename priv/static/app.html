@@ -1786,15 +1786,25 @@ function say(text) {
 // ── REAL lip sync: mouth openness follows the audio's amplitude envelope ────
 // The server parses the rendered AIFF into RMS-per-50ms; we sample it at the
 // playhead. Pauses sit flat; syllables open the mouth; silence closes it.
-let voicePoll = null, mouthTimer = null, voiceSync = null, syncAt = 0, mouthOpen = 0;
+let voicePoll = null, mouthTimer = null, voiceSync = null, syncAt = 0;
 
-function setMouthOpen(o) {
+// classic animation mouth chart: SEPARATE static shapes swapped whole by
+// loudness bucket — never a tweened/scaled ellipse (that ruins the vibe)
+const TALK_SHAPES = [
+  null,   // 0 = shut → the real neutral mood line
+  `<ellipse cx="42" cy="47.4" rx="4.4" ry="1.7" fill="black"/>`,
+  `<ellipse cx="42" cy="47.7" rx="5.8" ry="3.3" fill="black"/>`,
+  `<ellipse cx="42" cy="48.1" rx="6.6" ry="5.1" fill="black"/>`
+];
+let talkBucket = -1;
+function setMouthBucket(b) {
+  if (b === talkBucket) return;   // swap only when the shape actually changes
+  talkBucket = b;
+  if (b <= 0) return setMouth("neutral");
   const g = document.getElementById("ap-mouth");
-  if (!g) return;
-  // parametric line-art mouth in the face's 80×80 space (centered like the moods)
-  const ry = 0.5 + o * 5.2;
-  g.innerHTML = `<ellipse cx="42" cy="47.2" rx="${(6.2 + o * 1.6).toFixed(2)}" ry="${ry.toFixed(2)}" fill="black"/>`;
+  if (g) g.innerHTML = TALK_SHAPES[b];
 }
+const bucketOf = amp => amp < 0.12 ? 0 : amp < 0.4 ? 1 : amp < 0.7 ? 2 : 3;
 
 function startVoicePoll() {
   if (voicePoll) return;
@@ -1808,20 +1818,18 @@ function startVoicePoll() {
   }, 250);
   mouthTimer = setInterval(() => {
     if (!voiceSync || voiceSync.status !== "speaking" || !voiceSync.envelope.length) {
-      if (mouthOpen > 0.01) { mouthOpen *= 0.6; setMouthOpen(mouthOpen); }
-      else if (mouthOpen !== 0) { mouthOpen = 0; setMouth("neutral"); }
+      setMouthBucket(0);
       return;
     }
     const playhead = voiceSync.elapsed_ms + (performance.now() - syncAt);
     const amp = voiceSync.envelope[Math.floor(playhead / voiceSync.window_ms)] ?? 0;
-    mouthOpen += (amp - mouthOpen) * 0.55;   // ease toward the target — no jitter
-    setMouthOpen(mouthOpen);
-  }, 40);
+    setMouthBucket(bucketOf(amp));
+  }, 50);
 }
 function stopVoicePoll() {
   clearInterval(voicePoll); voicePoll = null;
   clearInterval(mouthTimer); mouthTimer = null;
-  voiceSync = null; mouthOpen = 0;
+  voiceSync = null; talkBucket = -1;
   setMouth("neutral");
   document.getElementById("callcaption").classList.remove("on");
 }
