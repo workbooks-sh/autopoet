@@ -1,0 +1,2 @@
+skin ffd6c0,c26450
+hair 000000,ff543d,fff500,1d5dff,ffffff

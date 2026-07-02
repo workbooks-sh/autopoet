@@ -1,29 +1,23 @@
 defmodule Autopoet.AvatarTest do
   use ExUnit.Case
 
-  test "composition is deterministic per seed and glasses-free" do
+  test "composition is deterministic per seed, layered, and eyes are fixed/blinkable" do
     a = Autopoet.Avatar.svg("autopoet-1")
-    b = Autopoet.Avatar.svg("autopoet-1")
-    c = Autopoet.Avatar.svg("different-seed")
+    assert a == Autopoet.Avatar.svg("autopoet-1")
+    refute a == Autopoet.Avatar.svg("someone-else")
 
-    assert a == b
-    refute a == c
-
-    # all four composed groups present, at the style's verbatim transforms
-    for t <- ["translate(136 328)", "translate(246 125)", "translate(-45 137)", "translate(119 114)"] do
-      assert String.contains?(a, t)
-    end
-
-    # glasses share eyes' transform — exactly one group at that transform means none
-    assert length(String.split(a, "translate(-45 137)")) == 2
+    # animatable layers present
+    assert a =~ ~s(id="ap-eyes")
+    assert a =~ ~s(id="ap-mouth")
+    # color tokens fully resolved (no leftover placeholders)
+    refute a =~ "SKINCOLOR"
+    refute a =~ "HAIRCOLOR"
   end
 
-  test "the full vendored part library is present and categorized" do
-    assert length(Autopoet.Avatar.variants("lips")) == 30
-    assert length(Autopoet.Avatar.variants("nose")) == 20
-    assert length(Autopoet.Avatar.variants("eyes")) == 5
-    assert length(Autopoet.Avatar.variants("brows")) == 13
-    # glasses vendored + categorized for future curation, just not composed
-    assert length(Autopoet.Avatar.variants("glasses")) == 11
+  test "all 7 dylan moods are available as swappable mouths" do
+    m = Autopoet.Avatar.mouths()
+    for mood <- ~w(neutral happy superHappy sad angry hopeful confused) do
+      assert is_binary(m[mood]) and m[mood] =~ "<path"
+    end
   end
 end

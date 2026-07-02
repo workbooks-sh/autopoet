@@ -84,6 +84,10 @@ defmodule Autopoet.Control do
     conn |> put_resp_content_type("image/svg+xml") |> send_resp(200, Autopoet.Avatar.svg())
   end
 
+  get "/avatar/mouths.json" do
+    conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(Autopoet.Avatar.mouths()))
+  end
+
   get "/proposals" do
     body =
       case Autopoet.Proposals.list() do

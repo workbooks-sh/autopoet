@@ -83,6 +83,45 @@ function fatal(msg) {
 addEventListener("error", e => fatal(e.message + " @ " + e.filename + ":" + e.lineno));
 addEventListener("unhandledrejection", e => fatal(String(e.reason)));
 
+// ── the face: blink (eyes) + talk (mouth) ──────────────────────────────────
+let MOUTHS = {}, talking = false, talkTimer = null;
+fetch("/avatar/mouths.json").then(r => r.json()).then(m => MOUTHS = m);
+
+function setMouth(mood) {
+  const g = document.getElementById("ap-mouth");
+  if (g && MOUTHS[mood]) g.innerHTML = MOUTHS[mood];
+}
+function blinkOnce() {
+  const eyes = document.getElementById("ap-eyes");
+  if (!eyes) return;
+  eyes.style.transform = "scaleY(0.08)";
+  setTimeout(() => { eyes.style.transform = "scaleY(1)"; }, 95);
+}
+// speaking = rapid open/closed mouth cycling; when it stops, rest on the emotion
+let emotion = "neutral";
+function talkTick() {
+  if (!talking) return;
+  setMouth(Math.random() < 0.5 ? "superHappy" : "happy");
+  setTimeout(() => { if (talking) setMouth("neutral"); }, 110);
+  talkTimer = setTimeout(talkTick, 230);
+}
+function talkFor(ms) {
+  talking = true;
+  if (!talkTimer) talkTick();
+  clearTimeout(talkFor._stop);
+  talkFor._stop = setTimeout(() => { talking = false; clearTimeout(talkTimer); talkTimer = null; setMouth(emotion); }, ms);
+}
+function setEmotion(m) { emotion = m; if (!talking) setMouth(m); }
+
+function startFace() {
+  // human blink cadence: every 3–6s, occasional double-blink
+  (function loop() {
+    blinkOnce();
+    if (Math.random() < 0.25) setTimeout(blinkOnce, 220);
+    setTimeout(loop, 3000 + Math.random() * 3000);
+  })();
+}
+
 let sim;
 async function draw() {
   const W = innerWidth, H = innerHeight;
@@ -127,8 +166,15 @@ async function draw() {
     .append("rect").attr("x", -S/2).attr("y", -S/2).attr("width", S).attr("height", S).attr("rx", R);
   selfG.append("rect").attr("x", -S/2).attr("y", -S/2).attr("width", S).attr("height", S)
     .attr("rx", R).attr("fill", "#fff").attr("stroke", "#223").attr("stroke-width", 2);
-  selfG.append("image").attr("href", "/avatar").attr("x", -S/2).attr("y", -S/2)
-    .attr("width", S).attr("height", S).attr("clip-path", "url(#sq)");
+  // inline the avatar SVG (not <image>) so JS can reach #ap-eyes / #ap-mouth to
+  // blink and talk. Fetched once, nested inside the squircle clip.
+  const holder = selfG.append("g").attr("clip-path", "url(#sq)")
+    .attr("transform", `translate(${-S/2},${-S/2})`);
+  fetch("/avatar").then(r => r.text()).then(svg => {
+    holder.html(svg);
+    const inner = holder.select("svg").attr("width", S).attr("height", S);
+    startFace();
+  });
 
   node.append("text").attr("class", "lbl").attr("text-anchor", "middle")
     .attr("dy", d => radius(d) + 14).text(d => d.label.length > 22 ? d.label.slice(0, 21) + "…" : d.label);
@@ -176,6 +222,13 @@ document.getElementById("logbtn").onclick = () =>
   logwrap.style.display = logwrap.style.display === "block" ? "none" : "block";
 new EventSource("/sse").onmessage = e => {
   log.textContent += e.data + "\n"; log.scrollTop = log.scrollHeight;
+  // the face reacts: it "talks" while the system is doing things, and its resting
+  // emotion tracks what happened (accepted = happy, failure/reject = sad).
+  talkFor(1600);
+  if (/ACCEPTED|returned/.test(e.data)) setEmotion("happy");
+  else if (/failed|rejected|WATCHDOG/.test(e.data)) setEmotion("sad");
+  else if (/ATTENTION|drift/.test(e.data)) setEmotion("confused");
+  else setEmotion("neutral");
   // the world changes when proposals/limbs move — redraw on those beats
   if (/PROPOSAL|ACCEPTED|REVERTED|rejected|limb registered/.test(e.data)) draw();
 };
