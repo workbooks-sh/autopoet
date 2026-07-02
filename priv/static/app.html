@@ -220,9 +220,13 @@
     border-radius:999px; padding:10px 0; cursor:pointer;
     transition:background .18s ease, color .18s ease; }
   #commbar button:hover { color:#223; background:#f2f4f7; }
-  #commbar button.sel { color:#fff; }
-  #comm-chat.sel { background:#9c36b5; }    /* chat = purple */
-  #comm-voice.sel { background:#f76707; }   /* voice = orange */
+  /* selected keeps its color on hover — just a shade lighter (never white-on-white) */
+  #comm-chat.sel, #comm-chat.sel:hover { color:#fff; }
+  #comm-voice.sel, #comm-voice.sel:hover { color:#fff; }
+  #comm-chat.sel { background:#8e7cc3; }          /* chat = the graph's guide purple */
+  #comm-chat.sel:hover { background:#9e8dd1; }
+  #comm-voice.sel { background:#6aa84f; }         /* voice = link green */
+  #comm-voice.sel:hover { background:#7cb861; }
   #commbar svg.lucide { width:13px; height:13px; }
 
   /* ── chat panel: shares the column-2 slot with files (one or the other) ── */
@@ -330,6 +334,18 @@
   #callbar button.end { background:#d64541; }
   #callbar button.end:hover { background:#b93b38; }
   #callbar svg.lucide { width:15px; height:15px; }
+  #callbar input { background:#2a2f35; border:none; border-radius:999px; color:#e8eaf0;
+    font:12px -apple-system,BlinkMacSystemFont,sans-serif; padding:8px 14px; width:220px;
+    outline:none; }
+  #callbar input::placeholder { color:#6a727c; }
+  #callbar input:focus { background:#343a42; }
+  /* what the autopoet is SAYING, captioned above the call bar while it speaks */
+  #callcaption { position:absolute; bottom:76px; left:50%; transform:translateX(-50%) translateY(6px);
+    max-width:56%; background:#fff; border:1px solid var(--line); border-radius:13px;
+    padding:9px 15px; font:12.5px/1.5 -apple-system,BlinkMacSystemFont,sans-serif;
+    color:#2a3038; box-shadow:0 10px 30px rgba(25,35,55,.14); z-index:9;
+    opacity:0; pointer-events:none; transition:opacity .2s ease, transform .22s ease; }
+  #callcaption.on { opacity:1; transform:translateX(-50%) translateY(0); }
 
   /* ── app-wide context menu ───────────────────────────────────────────── */
   #ctx { position:fixed; z-index:30; min-width:180px; background:#fff;
@@ -507,8 +523,10 @@
 
   <div id="stage">
     <svg id="graph"></svg>
+    <div id="callcaption"></div>
     <div id="callbar">
       <span class="ind"><span class="dotp"></span>voice link</span>
+      <input id="callin" placeholder="say something… (mic soon)" spellcheck="false">
       <button id="callspeaker" title="autopoet speaks events aloud"><i data-lucide="volume-2"></i></button>
       <button class="end" id="callend" title="end voice"><i data-lucide="phone-off"></i></button>
     </div>
@@ -1474,13 +1492,13 @@ document.getElementById("searchin").addEventListener("input", e => {
     `<div class="it" data-id="${esc(h.id)}"><span class="sw" style="background:${color(h)}"></span>${esc(h.label)}</div>`).join("");
   res.querySelectorAll(".it").forEach(el => el.onclick = () => zoomTo(el.dataset.id));
 });
-function zoomTo(id) {
+function zoomTo(id, panel = true) {
   const n = worldData.nodes.find(n => n.id === id);
   if (!n) return;
   const stage = document.getElementById("stage");
   const t = d3.zoomIdentity.translate(stage.clientWidth / 2 - n.x * 1.25, stage.clientHeight / 2 - n.y * 1.25).scale(1.25);
   svg.transition().duration(550).call(zoomB.transform, t);
-  showPanel(n);
+  if (panel) showPanel(n);
 }
 
 function renderNotifications() {
@@ -1523,9 +1541,13 @@ function setComm(state) {
   }
   document.getElementById("callbar").classList.toggle("on", state === "voice");
   if (state === "voice") {
-    authedPost("/speak", "voice link up. I am listening to the world and will narrate what happens.");
+    zoomTo("self", false);                       // the call focuses on the face
+    say("voice link up. I'm here.");
+    startVoicePoll();
+    setTimeout(() => document.getElementById("callin").focus(), 400);
   } else if (wasVoice) {
     authedPost("/speak/stop", "");
+    stopVoicePoll();
   }
   relayout();
 }
@@ -1743,7 +1765,7 @@ document.getElementById("chathistory").onclick = async () => {
   }
 };
 
-// ── voice call bar ─────────────────────────────────────────────────────────
+// ── voice call bar: speech + mouth sync + push-to-talk ─────────────────────
 document.getElementById("callend").onclick = () => setComm(null);
 document.getElementById("callspeaker").onclick = () => {
   voiceSpeaker = !voiceSpeaker;
@@ -1753,6 +1775,56 @@ document.getElementById("callspeaker").onclick = () => {
   refreshIcons();
   if (!voiceSpeaker) authedPost("/speak/stop", "");
 };
+
+function say(text) {
+  if (voiceSpeaker) authedPost("/speak", text);
+  const cap = document.getElementById("callcaption");
+  cap.textContent = text;
+  cap.classList.add("on");
+}
+
+// mouth flap: poll the REAL speech state (the say queue) and animate while it plays
+let voicePoll = null, flapTimer = null;
+const FLAP = ["happy", "superHappy", "confused", "neutral"];
+function startVoicePoll() {
+  if (voicePoll) return;
+  voicePoll = setInterval(async () => {
+    const s = (await (await fetch("/voice/status")).text()).trim();
+    if (s === "speaking" && !flapTimer) {
+      flapTimer = setInterval(() =>
+        setMouth(FLAP[Math.floor(performance.now() / 130) % FLAP.length]), 120);
+    } else if (s !== "speaking" && flapTimer) {
+      clearInterval(flapTimer); flapTimer = null;
+      setMouth("neutral");
+      document.getElementById("callcaption").classList.remove("on");
+    }
+  }, 250);
+}
+function stopVoicePoll() {
+  clearInterval(voicePoll); voicePoll = null;
+  if (flapTimer) { clearInterval(flapTimer); flapTimer = null; setMouth("neutral"); }
+  document.getElementById("callcaption").classList.remove("on");
+}
+
+// push-to-talk (typed until the mic lands): planner replies, spoken + captioned
+let voiceBusy = false;
+document.getElementById("callin").addEventListener("keydown", async e => {
+  if (e.key !== "Enter" || voiceBusy) return;
+  const inp = e.target, msg = inp.value.trim();
+  if (!msg) return;
+  inp.value = ""; inp.placeholder = "…thinking";
+  voiceBusy = true;
+  try {
+    const res = await authedPost("/chat/send?id=voice", msg);
+    const reply = await res.text();
+    say(res.ok ? reply : "I hit an error answering that.");
+  } catch (_) {
+    say("connection trouble.");
+  }
+  voiceBusy = false;
+  inp.placeholder = "say something… (mic soon)";
+  inp.focus();
+});
 
 setMode(mode);
 loadTree();

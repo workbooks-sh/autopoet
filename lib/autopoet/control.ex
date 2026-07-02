@@ -109,17 +109,20 @@ defmodule Autopoet.Control do
   post "/speak" do
     authed!(conn, fn conn ->
       {:ok, body, conn} = read_body(conn, length: 4_000)
-      clean = body |> String.replace(~r/[^\p{L}\p{N}\s.,;:!?'"()\[\]-]/u, " ") |> String.slice(0, 800)
-      Task.start(fn -> System.cmd("say", [clean], stderr_to_stdout: true) end)
+      Autopoet.Voice.speak(body)
       text(conn, "speaking\n")
     end)
   end
 
   post "/speak/stop" do
     authed!(conn, fn conn ->
-      System.cmd("pkill", ["-x", "say"], stderr_to_stdout: true)
+      Autopoet.Voice.stop()
       text(conn, "quiet\n")
     end)
+  end
+
+  get "/voice/status" do
+    text(conn, to_string(Autopoet.Voice.status()) <> "\n")
   end
 
   post "/notes/save" do
