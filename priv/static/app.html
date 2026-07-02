@@ -34,6 +34,8 @@
   #tree .hd button svg { width:15px; height:15px; }
   #tree svg.lucide { width:14px; height:14px; flex:none; }
   .ic-folder { color:#c9a04e; } .ic-note { color:#5b8cc9; } .ic-sketch { color:#a97bc0; }
+  /* IDE-style dirty marker on unsaved files */
+  #tree .row.isdirty::after { content:"●"; color:#f2a33c; font-size:9px; margin-left:auto; }
   #tree ul { list-style:none; margin:0; padding-left:14px; }
   #tree > ul { padding-left:6px; }
   #tree li > .row { display:flex; align-items:center; gap:6px; padding:2px 6px;
@@ -313,6 +315,7 @@ async function loadTree() {
   document.querySelectorAll("#tree .row[data-path]").forEach(el => {
     el.onclick = () => openFile(el.dataset.path, el.dataset.kind);
     if (el.dataset.path === open.path) el.classList.add("open");
+    el.classList.toggle("isdirty", !!buffers[el.dataset.path]);
   });
   refreshIcons();
 }
@@ -324,31 +327,69 @@ function renderTree(items) {
 }
 const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
 
+// ── GLOBAL DIRTY REGISTRY (IDE-grade) ─────────────────────────────────────
+// Every unsaved buffer lives here, keyed by path — any number of files can be
+// dirty at once. Saving happens ONLY by ⌘S/button (command mode) or debounce
+// (live mode). Never on panel close, file switch, or app exit: buffers persist
+// to localStorage (hot exit) and are restored on load.
+let buffers = {};
+try { buffers = JSON.parse(localStorage.getItem("ap-buffers") || "{}"); } catch (_) {}
+const dirtyCount = () => Object.keys(buffers).length;
+const persistBuffers = () => localStorage.setItem("ap-buffers", JSON.stringify(buffers));
+
+function markDirty(path, kind, content) {
+  const first = !buffers[path];
+  buffers[path] = { content, kind };
+  persistBuffers();
+  if (first) updateDirtyUI(); else updatePill();
+  if (open.path === path) setDot("dirty");
+}
+function clearDirty(path) {
+  delete buffers[path];
+  persistBuffers();
+  updateDirtyUI();
+  if (open.path === path) setDot("saved");
+}
+async function saveOne(path) {
+  const b = buffers[path];
+  if (!b) return;
+  await fetch("/notes/save?path=" + encodeURIComponent(path), { method: "POST", body: b.content, ...authed });
+  clearDirty(path);
+}
+async function saveAll() {
+  for (const path of Object.keys(buffers)) await saveOne(path);
+}
+function updateDirtyUI() {
+  document.querySelectorAll("#tree .row[data-path]").forEach(el =>
+    el.classList.toggle("isdirty", !!buffers[el.dataset.path]));
+  updatePill();
+}
+function updatePill() {
+  const n = dirtyCount();
+  document.querySelector("#savebar .msg").textContent =
+    n === 1 ? "unsaved changes" : n + " files unsaved";
+  showSavebar(n > 0);
+}
+
 async function openFile(path, kind) {
-  // resuming the same dirty buffer (panel was closed in command mode): just show it
-  if (open.path === path && open.dirty) {
-    document.getElementById("app").classList.add("editing");
-    document.getElementById("app").classList.toggle("sketching", kind === "sketch");
-    positionSavebar();
-    return;
-  }
-  await flushSave();   // switching files commits the previous buffer
-  const content = await (await fetch("/notes/file?path=" + encodeURIComponent(path))).text();
-  open = { path, kind, dirty: false };
+  // never commits anything: the previous file's buffer stays in the registry
+  const buffered = buffers[path];
+  const content = buffered ? buffered.content
+    : await (await fetch("/notes/file?path=" + encodeURIComponent(path))).text();
+  open = { path, kind };
   document.getElementById("fname").textContent = path;
   document.getElementById("app").classList.add("editing");
   document.getElementById("app").classList.toggle("sketching", kind === "sketch");
   if (kind === "sketch") loadSketch(content);
   else document.getElementById("prose").value = content;
-  setDot("saved");
+  setDot(buffered ? "dirty" : "saved");
   loadTree();
-  relayout();   // the graph pane just narrowed — keep the face centered in it
+  relayout();
 }
-document.getElementById("closeed").onclick = async () => {
-  if (mode === "live") await flushSave();
+document.getElementById("closeed").onclick = () => {
+  // closing NEVER saves — buffers live in the registry regardless of mode
   document.getElementById("app").classList.remove("editing", "sketching");
-  // command mode keeps a dirty buffer alive — the mini pill persists until ⌘S
-  if (!open.dirty || mode === "live") open = { path: null, kind: null, dirty: false };
+  open = { path: null, kind: null };
   loadTree();
   relayout();
   positionSavebar();
@@ -363,11 +404,11 @@ function setMode(m) {
   document.getElementById("mode-command").classList.toggle("sel", m === "command");
   document.getElementById("mode-live").classList.toggle("sel", m === "live");
   document.getElementById("modeseg").classList.toggle("live", m === "live");
-  if (m === "live") { flushSave(); showSavebar(false); }
+  if (m === "live") saveAll();   // entering live flushes the backlog by definition
 }
 document.getElementById("mode-command").onclick = () => setMode("command");
 document.getElementById("mode-live").onclick = () => setMode("live");
-document.getElementById("dosave").onclick = () => { flushSave(); showSavebar(false); };
+document.getElementById("dosave").onclick = () => saveAll();
 
 // center the pill over the OPEN left region: tree alone (mini) or tree+editor
 function positionSavebar() {
@@ -390,29 +431,25 @@ document.getElementById("app").addEventListener("transitionend", ev => {
 addEventListener("keydown", e => {
   if ((e.metaKey || e.ctrlKey) && e.key === "s") {
     e.preventDefault();
-    flushSave(); showSavebar(false);
+    saveAll();
   }
 });
 
 let saveTimer = null;
 function setDot(cls) { document.getElementById("savedot").className = "dot " + cls; }
-function scheduleSave() {
-  open.dirty = true; setDot("dirty");
+// an edit only updates the registry; LIVE mode additionally debounces a save of
+// that one file. Nothing else ever writes.
+function onEdit() {
+  if (!open.path) return;
+  const content = open.kind === "sketch" ? serializeSketch() : document.getElementById("prose").value;
+  markDirty(open.path, open.kind, content);
   if (mode === "live") {
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(flushSave, 900);
-  } else {
-    showSavebar(true);
+    const p = open.path;
+    saveTimer = setTimeout(() => saveOne(p), 900);
   }
 }
-async function flushSave() {
-  clearTimeout(saveTimer); saveTimer = null;
-  if (!open.path || !open.dirty) return;
-  const body = open.kind === "sketch" ? serializeSketch() : document.getElementById("prose").value;
-  await fetch("/notes/save?path=" + encodeURIComponent(open.path), { method: "POST", body, ...authed });
-  open.dirty = false; setDot("saved"); showSavebar(false);
-}
-document.getElementById("prose").addEventListener("input", scheduleSave);
+document.getElementById("prose").addEventListener("input", onEdit);
 
 // ── the new-file modal (ours, in-theme — never the system prompt) ─────────
 let modalKind = "note";
@@ -477,7 +514,7 @@ sk.addEventListener("pointerdown", e => {
   sk.appendChild(drawing);
 });
 sk.addEventListener("pointermove", e => { if (drawing) drawing.setAttribute("d", drawing.getAttribute("d") + " L " + skPoint(e)); });
-addEventListener("pointerup", () => { if (drawing) { drawing = null; scheduleSave(); } });
+addEventListener("pointerup", () => { if (drawing) { drawing = null; onEdit(); } });
 
 // ══ THE WORLD (graph) ═══════════════════════════════════════════════════
 const COLORS = {
@@ -733,4 +770,5 @@ setMode(mode);
 loadTree();
 draw();
 refreshIcons();
+updateDirtyUI();   // hot exit: restored buffers resurface the pill + tree dots
 </script>
