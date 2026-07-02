@@ -499,6 +499,7 @@
     border:1px solid var(--line); color:#5a6472;
     transition:background .15s ease, color .15s ease, transform .12s ease; }
   #canvasbar .cb:hover { background:#f2f4f7; color:#223; }
+  #canvasbar .cb.active { background:#eef2fb; color:#2f6fdd; }
   #canvasbar .cb:active { transform:scale(.95); }
   #canvasbar .cb svg.lucide { width:15px; height:15px; }
   #canvasbar .cb .bdg { position:absolute; top:-5px; right:-5px; min-width:15px; height:15px;
@@ -782,6 +783,7 @@
       <button class="end" id="callend" title="end voice"><i data-lucide="phone-off"></i></button>
     </div>
     <div id="canvasbar">
+      <div class="cb" id="cb-layout"><i data-lucide="layout-grid"></i><span class="tip">layout · force ⇄ grid</span></div>
       <div class="cb" id="cb-search"><i data-lucide="search"></i><input id="searchin"
         placeholder="search the world…" spellcheck="false"><span class="tip">search the world</span></div>
       <div class="cb" id="cb-filter"><i data-lucide="sliders-horizontal"></i><span class="tip">filter · views</span></div>
@@ -1667,6 +1669,17 @@ svg.call(zoomB);
 let worldData = { nodes: [], links: [] };
 let nodeSel = null, linkSel = null;
 
+// ── grid layout mode (square nodes snapped to the paper grid, 90° edges) ──
+const CELL = 48;                        // one "plot point" — aligns to the 24px paper grid
+let layoutMode = localStorage.getItem("ap-layout") || "force";
+let gridPos = {};                       // persisted { nodeId: {c,r} } cell assignments
+try { gridPos = JSON.parse(localStorage.getItem("ap-gridpos") || "{}"); } catch (_) {}
+let gridCentered = false;
+// node footprint in plot-points → pixel side (with padding that grows gently with size)
+const gridSpan = t => t === "self" ? 2.4 : t === "library" ? 1.8 : 1;
+const nodePx = t => Math.round(gridSpan(t) * CELL - (gridSpan(t) > 1 ? 11 : 8));
+const orthPath = (sx, sy, tx, ty) => `M ${sx} ${sy} L ${tx} ${sy} L ${tx} ${ty}`;   // single 90° corner
+
 // infinite Figma-style sheet: the paper is geometry in world space
 const defs = svg.append("defs");
 defs.append("pattern").attr("id", "grid-minor").attr("width", 24).attr("height", 24).attr("patternUnits", "userSpaceOnUse")
@@ -1749,6 +1762,7 @@ async function createFace(mount, opts = {}) {
 
 let sim;
 async function draw() {
+  if (layoutMode === "grid") return drawGrid();
   const stage = document.getElementById("stage");
   const W = stage.clientWidth, H = stage.clientHeight;
   svg.attr("width", W).attr("height", H);
@@ -1828,6 +1842,95 @@ async function draw() {
   });
 
   applyFilter();   // re-apply any active type filter to the fresh selection
+}
+
+// ── grid layout: square nodes on the paper grid, orthogonal (90°) edges ──
+async function drawGrid() {
+  const stage = document.getElementById("stage");
+  const W = stage.clientWidth, H = stage.clientHeight;
+  svg.attr("width", W).attr("height", H);
+  let data;
+  try { data = await (await fetch("/graph.json")).json(); }
+  catch (err) { return fatal("graph.json fetch failed: " + err); }
+  if (!data.nodes || !data.nodes.length) return;
+  worldData = data;
+  renderNotifications();
+  g.selectAll("*").remove();
+  paper(g);
+
+  // assign each node a UNIQUE grid cell — persisted position wins, else a radial seed;
+  // collisions spiral out to the nearest free cell so nothing overlaps.
+  const used = new Set(), key = (c, r) => c + "," + r;
+  const claim = (c, r) => {
+    for (let ring = 0; ring < 300; ring++)
+      for (let dc = -ring; dc <= ring; dc++) for (let dr = -ring; dr <= ring; dr++) {
+        if (Math.max(Math.abs(dc), Math.abs(dr)) !== ring) continue;
+        const k = key(c + dc, r + dr);
+        if (!used.has(k)) { used.add(k); return { c: c + dc, r: r + dr }; }
+      }
+    used.add(key(c, r)); return { c, r };
+  };
+  const nodes = [...data.nodes].sort((a, b) => (b.id === "self") - (a.id === "self"));
+  const pos = {};
+  let seed = 0;
+  for (const n of nodes) {
+    let c, r;
+    if (gridPos[n.id]) ({ c, r } = gridPos[n.id]);
+    else if (n.id === "self") { c = 0; r = 0; }
+    else {
+      const a = seed * 2.399963, rad = 3 + Math.sqrt(seed) * 1.7;   // phyllotaxis seed → grid
+      c = Math.round(Math.cos(a) * rad); r = Math.round(Math.sin(a) * rad); seed++;
+    }
+    pos[n.id] = claim(c, r);
+  }
+  const sid = e => e && e.id !== undefined ? e.id : e;   // link ends may be strings or objects
+  const X = id => (pos[id] ? pos[id].c : 0) * CELL, Y = id => (pos[id] ? pos[id].r : 0) * CELL;
+
+  const links = g.append("g").selectAll("path").data(data.links).join("path")
+    .attr("fill", "none").attr("stroke", l => l.kind === "ref" ? "#b8c4d0" : "#d2d7dd")
+    .attr("stroke-width", l => l.kind === "ref" ? 1.6 : 1.2)
+    .attr("d", l => orthPath(X(sid(l.source)), Y(sid(l.source)), X(sid(l.target)), Y(sid(l.target))));
+  const reroute = () => links.attr("d", l => orthPath(X(sid(l.source)), Y(sid(l.source)), X(sid(l.target)), Y(sid(l.target))));
+
+  const node = nodeSel = g.append("g").selectAll("g").data(data.nodes).join("g")
+    .attr("transform", d => `translate(${X(d.id)},${Y(d.id)})`)
+    .style("cursor", "grab")
+    .on("click", (e, d) => showPanel(d))
+    .call(d3.drag()
+      .on("start", function () { d3.select(this).style("cursor", "grabbing"); })
+      .on("drag", function (e, d) {
+        pos[d.id] = { c: Math.round(e.x / CELL), r: Math.round(e.y / CELL) };
+        d3.select(this).attr("transform", `translate(${X(d.id)},${Y(d.id)})`);
+        reroute();
+      })
+      .on("end", function (e, d) {
+        d3.select(this).style("cursor", "grab");
+        gridPos[d.id] = pos[d.id];
+        localStorage.setItem("ap-gridpos", JSON.stringify(gridPos));
+      }));
+
+  // non-self: a squircle square, sized by type, inset with padding inside its cell
+  node.filter(d => d.id !== "self").append("rect")
+    .attr("width", d => nodePx(d.type)).attr("height", d => nodePx(d.type))
+    .attr("x", d => -nodePx(d.type) / 2).attr("y", d => -nodePx(d.type) / 2)
+    .attr("rx", d => nodePx(d.type) * 0.3)
+    .attr("fill", d => color(d)).attr("fill-opacity", 0.9).attr("stroke", "#fff").attr("stroke-width", 2);
+
+  // self: the face inside a squircle square
+  const selfG = node.filter(d => d.id === "self"), SS = nodePx("self");
+  selfG.append("clipPath").attr("id", "sqg")
+    .append("rect").attr("x", -SS / 2).attr("y", -SS / 2).attr("width", SS).attr("height", SS).attr("rx", SS * 0.3);
+  selfG.append("rect").attr("x", -SS / 2).attr("y", -SS / 2).attr("width", SS).attr("height", SS)
+    .attr("rx", SS * 0.3).attr("fill", "#fff").attr("stroke", "rgba(0,0,0,.12)");
+  const cg = selfG.append("g").attr("clip-path", "url(#sqg)").node();
+  createFace(cg, { idPrefix: "", svgAttrs: { x: -SS / 2, y: -SS / 2, width: SS, height: SS },
+                   hoverTarget: selfG.node(), clickTarget: selfG.node() });
+
+  node.append("text").attr("class", "lbl").attr("text-anchor", "middle")
+    .attr("dy", d => nodePx(d.type) / 2 + 14).text(d => d.label.length > 22 ? d.label.slice(0, 21) + "…" : d.label);
+
+  if (!gridCentered) { svg.call(zoomB.transform, d3.zoomIdentity.translate(W / 2, H / 2)); gridCentered = true; }
+  applyFilter();
 }
 
 // ── node details panel ────────────────────────────────────────────────────
@@ -2131,6 +2234,17 @@ function openFilterPop() {
   });
   document.getElementById("flt-all").onclick = () => { activeTypes = new Set(presentTypes().map(([t]) => t)); applyFilter(); closeFilterPop(); };
 }
+// layout toggle: force-directed ⇄ grid
+function setLayout(mode) {
+  layoutMode = mode; localStorage.setItem("ap-layout", mode);
+  gridCentered = false;
+  if (mode === "force") svg.call(zoomB.transform, d3.zoomIdentity);   // let forceCenter re-place
+  document.getElementById("cb-layout").classList.toggle("active", mode === "grid");
+  draw();
+}
+document.getElementById("cb-layout").onclick = () => setLayout(layoutMode === "grid" ? "force" : "grid");
+document.getElementById("cb-layout").classList.toggle("active", layoutMode === "grid");
+
 document.getElementById("cb-filter").onclick = e => { e.stopPropagation(); collapseSearch(); openFilterPop(); };
 addEventListener("mousedown", e => {
   const p = document.getElementById("filterpop");
