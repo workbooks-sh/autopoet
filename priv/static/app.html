@@ -2018,6 +2018,18 @@ async function draw() {
         }
       }
     })
+    // an ANCHORED cluster (badge pinned to world space) is held in place: a uniform
+    // spring keeps the members' centroid at the anchor while they stay locally dynamic
+    .force("anchor", alpha => {
+      for (const c of clusters) {
+        if (c.collapsed || !(c.badge && c.badge.world)) continue;
+        const ms = clusterMembers(c, data.nodes).map(id => byId.get(id)).filter(n => n && n.x != null);
+        if (!ms.length) continue;
+        const cx = d3.mean(ms, n => n.x), cy = d3.mean(ms, n => n.y);
+        const kx = (c.badge.cx - cx) * alpha * 0.55, ky = (c.badge.cy - cy) * alpha * 0.55;
+        for (const n of ms) { n.vx += kx; n.vy += ky; }
+      }
+    })
     // cluster members spring back to their REMEMBERED arrangement (centroid + each
     // member's stored offset) — the group translates freely but keeps its shape
     .force("cluster", alpha => {
@@ -2062,16 +2074,16 @@ async function draw() {
         .attr("fill", c.color).attr("fill-opacity", .065)
         .attr("stroke", c.color).attr("stroke-opacity", .3)
         .attr("stroke-width", 1.4).attr("stroke-linejoin", "round");
-      // shape pins: handles sitting ON the membrane — drag to sculpt, right-click to remove
+      // shape pins: handles sitting ON the membrane — drag to sculpt, right-click for options
       pinPoints(c, mpts).forEach((pp, i) => {
         gp.append("circle").attr("cx", pp[0]).attr("cy", pp[1]).attr("r", 4.5)
-          .attr("class", "cl-pin").attr("stroke", c.color)
+          .attr("class", "cl-pin" + (c.pins[i].world ? " cl-pin-world" : "")).attr("stroke", c.color)
           .on("mousedown", e => beginPinDrag(e, c, i))
-          .on("contextmenu", e => { e.preventDefault(); e.stopPropagation();
-            c.pins.splice(i, 1); clusterChanged(); });
+          .on("contextmenu", e => { e.preventDefault(); e.stopPropagation(); pinCtx(e, c, i); });
       });
       const top = pts.reduce((a, p) => p[1] < a[1] ? p : a, pts[0]);
-      drawClusterBadge(gp, c, top[0], top[1] - 78);
+      const bp = (c.badge && c.badge.world) ? [c.badge.x, c.badge.y] : [top[0], top[1] - 78];
+      drawClusterBadge(gp, c, bp[0], bp[1]);
     }
   }
 
@@ -2849,12 +2861,16 @@ function badgeInk(hex) {
 }
 function drawClusterBadge(gp, c, x, y) {
   const ink = badgeInk(c.color);
+  const pinned = !!(c.badge && c.badge.world);
   const bw = 30 + c.name.length * 7.4;
   const b = gp.append("g").attr("transform", `translate(${x - bw / 2},${y})`)
     .style("cursor", "grab")
-    .on("mousedown", e => beginClusterDrag(e, c));
+    .on("mousedown", e => beginClusterDrag(e, c))   // the handle always moves the cluster (anchor tows along)
+    .on("contextmenu", e => { e.preventDefault(); e.stopPropagation(); badgeCtx(e, c, x, y); });
   b.append("rect").attr("width", bw).attr("height", 22).attr("rx", 11)
-    .attr("fill", c.color).attr("fill-opacity", .92);
+    .attr("fill", c.color).attr("fill-opacity", .92)
+    .attr("stroke", pinned ? "#1c2230" : "none").attr("stroke-width", pinned ? 1.4 : 0)
+    .attr("stroke-dasharray", pinned ? "3 2.5" : null);   // dashed ring = pinned to world space
   for (let gy = 0; gy < 3; gy++) for (let gx = 0; gx < 2; gx++)
     b.append("circle").attr("cx", 10 + gx * 4).attr("cy", 7 + gy * 4).attr("r", 1.15)
       .attr("fill", ink).attr("fill-opacity", .75);
@@ -2863,7 +2879,8 @@ function drawClusterBadge(gp, c, x, y) {
 let clDrag = null;
 function beginClusterDrag(e, c) {
   e.preventDefault(); e.stopPropagation();
-  const drag = { c, start: d3.pointer(e, g.node()), snap: {}, moved: false };
+  const drag = { c, start: d3.pointer(e, g.node()), snap: {}, moved: false,
+                 badgeOrig: c.badge && c.badge.world ? { ...c.badge } : null };
   for (const id of clusterMembers(c, worldData.nodes)) {
     const n = worldData.nodes.find(x => x.id === id);
     if (n && n.x != null) { drag.snap[id] = { x: n.x, y: n.y }; n.fx = n.x; n.fy = n.y; }
@@ -2879,6 +2896,10 @@ addEventListener("mousemove", e => {
   for (const [id, s] of Object.entries(clDrag.snap)) {
     const n = worldData.nodes.find(x => x.id === id);
     if (n) { n.fx = s.x + dx; n.fy = s.y + dy; }
+  }
+  if (clDrag.badgeOrig) {   // an anchored cluster tows its anchor along
+    const bo = clDrag.badgeOrig;
+    clDrag.c.badge = { x: bo.x + dx, y: bo.y + dy, cx: bo.cx + dx, cy: bo.cy + dy, world: true };
   }
 });
 addEventListener("mouseup", () => {
@@ -2900,18 +2921,70 @@ const memberCentroid = pts => [d3.mean(pts, p => p[0]), d3.mean(pts, p => p[1])]
 // A pin's stored offset is its VISUAL spot ON the membrane stroke (relative to the
 // member centroid, so it travels with the cluster); for the hull geometry the point
 // is pulled ~pad inward so the drawn outline passes through the pin.
+// a pin either RIDES the cluster (offset from the member centroid) or is PINNED TO
+// WORLD SPACE (absolute x/y — it stays put and the membrane stretches around it)
+const pinVisual = (p, cx, cy) => p.world ? [p.x, p.y] : [cx + p.dx, cy + p.dy];
 function withPins(c, mpts) {
   if (!(c.pins || []).length || !mpts.length) return mpts;
   const [cx, cy] = memberCentroid(mpts);
   return mpts.concat(c.pins.map(p => {
-    const L = Math.hypot(p.dx, p.dy) || 1, pull = Math.min(44, L * 0.8);
-    return [cx + p.dx - p.dx / L * pull, cy + p.dy - p.dy / L * pull];
+    const [vx, vy] = pinVisual(p, cx, cy);
+    const dx = vx - cx, dy = vy - cy;
+    const L = Math.hypot(dx, dy) || 1, pull = Math.min(44, L * 0.8);
+    return [vx - dx / L * pull, vy - dy / L * pull];
   }));
 }
 // the visual (on-stroke) pin positions for a cluster
 function pinPoints(c, mpts) {
   const [cx, cy] = memberCentroid(mpts);
-  return (c.pins || []).map(p => [cx + p.dx, cy + p.dy]);
+  return (c.pins || []).map(p => pinVisual(p, cx, cy));
+}
+function togglePinWorld(c, idx) {
+  const mpts = clusterMembers(c, worldData.nodes)
+    .map(id => worldData.nodes.find(n => n.id === id)).filter(n => n && n.x != null).map(n => [n.x, n.y]);
+  if (!mpts.length) return;
+  const [cx, cy] = memberCentroid(mpts);
+  const p = c.pins[idx];
+  c.pins[idx] = p.world
+    ? { dx: +(p.x - cx).toFixed(1), dy: +(p.y - cy).toFixed(1) }
+    : { x: +(cx + p.dx).toFixed(1), y: +(cy + p.dy).toFixed(1), world: true };
+  clusterChanged();
+}
+function pinCtx(e, c, idx) {
+  const p = c.pins[idx];
+  showCtx(e.clientX, e.clientY, [
+    { icon: "map-pin", label: p.world ? "release — ride the cluster" : "pin to world space",
+      fn: () => togglePinWorld(c, idx) },
+    "-",
+    { icon: "trash-2", label: "remove pin", danger: true,
+      fn: () => { c.pins.splice(idx, 1); clusterChanged(); } }
+  ]);
+}
+// pinning the badge ANCHORS THE WHOLE CLUSTER in world space — as if you held it
+// there by the handle. The badge freezes at its spot, an anchor spring holds the
+// members' centroid in place (they stay locally dynamic), and dragging the pinned
+// badge tows cluster + anchor together. Shape points stay relative to the cluster.
+function toggleBadgeWorld(c, atX, atY) {
+  if (c.badge && c.badge.world) { c.badge = null; }
+  else {
+    const mpts = clusterMembers(c, worldData.nodes)
+      .map(id => worldData.nodes.find(n => n.id === id)).filter(n => n && n.x != null).map(n => [n.x, n.y]);
+    if (!mpts.length) return;
+    const [cx, cy] = memberCentroid(mpts);
+    c.badge = { x: +atX.toFixed(1), y: +atY.toFixed(1), cx: +cx.toFixed(1), cy: +cy.toFixed(1), world: true };
+  }
+  clusterChanged();
+}
+function badgeCtx(e, c, bx, by) {
+  showCtx(e.clientX, e.clientY, [
+    { icon: "map-pin", label: c.badge && c.badge.world ? "release anchor — float free" : "anchor cluster in world space",
+      fn: () => toggleBadgeWorld(c, bx, by) },
+    { icon: "info", label: "details", fn: () => showClusterPanel(c) },
+    { icon: c.collapsed ? "maximize-2" : "minimize-2", label: c.collapsed ? "expand" : "collapse to one node",
+      fn: () => { c.collapsed = !c.collapsed; saveClusters(); draw(); } },
+    "-",
+    { icon: "trash-2", label: "dissolve cluster", danger: true, fn: () => removeCluster(c.id) }
+  ]);
 }
 function nearestOnPoly(p, poly) {
   let best = { d: Infinity, pt: poly[0] };
@@ -2979,10 +3052,10 @@ function beginPinDrag(e, c, idx) {
 addEventListener("mousemove", e => {
   if (!pinDrag) return;
   const p = d3.pointer(e, g.node());
-  pinDrag.c.pins[pinDrag.idx] = {
-    dx: pinDrag.orig.dx + p[0] - pinDrag.start[0],
-    dy: pinDrag.orig.dy + p[1] - pinDrag.start[1]
-  };
+  const dx = p[0] - pinDrag.start[0], dy = p[1] - pinDrag.start[1];
+  pinDrag.c.pins[pinDrag.idx] = pinDrag.orig.world
+    ? { x: pinDrag.orig.x + dx, y: pinDrag.orig.y + dy, world: true }
+    : { dx: pinDrag.orig.dx + dx, dy: pinDrag.orig.dy + dy };
 });
 addEventListener("mouseup", () => {
   if (!pinDrag) return;
