@@ -530,10 +530,7 @@ function updateDirtyUI() {
   updatePill();
 }
 function updatePill() {
-  const n = dirtyCount();
-  document.querySelector("#savebar .msg").textContent =
-    n === 1 ? "unsaved changes" : n + " files unsaved";
-  showSavebar(n > 0);
+  showSavebar(dirtyCount() > 0);
 }
 
 async function openFile(path, kind) {
