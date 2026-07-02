@@ -565,6 +565,58 @@
   .tl { width:12px; height:12px; border-radius:50%; cursor:pointer; -webkit-app-region:no-drag; }
   .tl.close { background:#ff5f57; } .tl.min { background:#febc2e; } .tl.max { background:#28c840; }
 
+  /* ── sidebar footer: account · settings · env ── */
+  #sidebarfoot { flex:none; display:flex; align-items:center; gap:6px; padding:8px 12px 10px;
+    border-top:1px solid #ebebe4; }
+  #sidebarfoot .footgap { flex:1; }
+  .footprofile { width:28px; height:28px; border-radius:50%; border:none; cursor:pointer;
+    background:#8e7cc3; color:#fff; font:600 12px ui-monospace,monospace;
+    display:flex; align-items:center; justify-content:center; transition:filter .15s ease; }
+  .footprofile:hover { filter:brightness(1.08); }
+  .footbtn { width:28px; height:28px; border:none; background:none; border-radius:8px;
+    color:#7a8290; cursor:pointer; display:flex; align-items:center; justify-content:center;
+    transition:background .15s ease, color .15s ease; }
+  .footbtn:hover { background:#e8e8e2; color:#3a4250; }
+  .footbtn svg.lucide { width:16px; height:16px; }
+  .footbtn .envE { font:700 14px ui-monospace,monospace; }
+  /* the footer popups (open upward from the footer) */
+  #footpop { position:fixed; z-index:40; display:none; background:#fff; border:1px solid var(--line);
+    border-radius:12px; box-shadow:0 14px 40px rgba(25,35,55,.18); padding:6px; min-width:210px; }
+  #footpop.on { display:block; }
+  #footpop .fp-head { display:flex; align-items:center; gap:10px; padding:8px 9px 10px; }
+  #footpop .fp-av { width:34px; height:34px; border-radius:50%; background:#8e7cc3; color:#fff;
+    font:600 14px ui-monospace,monospace; display:flex; align-items:center; justify-content:center; flex:none; }
+  #footpop .fp-name { font-weight:600; font-size:13px; color:#2a3140; }
+  #footpop .fp-mail { font:11px ui-monospace,monospace; color:#98a0ac; }
+  #footpop .fp-sep { height:1px; background:#ececec; margin:4px 2px; }
+  #footpop .fp-title { font-size:11px; letter-spacing:.05em; color:#98a0ac; padding:6px 9px 4px; text-transform:uppercase; }
+  #footpop .fp-item { display:flex; align-items:center; gap:9px; width:100%; text-align:left;
+    font:inherit; font-size:12.5px; color:#3a4250; border:none; background:none; cursor:pointer;
+    padding:8px 9px; border-radius:8px; }
+  #footpop .fp-item:hover { background:#f2f4f7; }
+  #footpop .fp-item.danger:hover { background:#fdecea; color:#c0392b; }
+  #footpop .fp-item svg.lucide { width:15px; height:15px; color:#98a0ac; }
+  #footpop .fp-item.danger:hover svg.lucide { color:#c0392b; }
+  /* settings: theme segmented toggle */
+  #footpop .fp-seg { display:flex; gap:4px; padding:4px 9px 8px; }
+  #footpop .fp-seg button { flex:1; display:flex; align-items:center; justify-content:center; gap:6px;
+    font:inherit; font-size:12px; color:#67707c; border:1px solid var(--line); background:#fff;
+    border-radius:8px; padding:7px; cursor:pointer; }
+  #footpop .fp-seg button.sel { border-color:#5b8cc9; background:#f2f6fb; color:#2a3140; font-weight:600; }
+  #footpop .fp-seg svg.lucide { width:13px; height:13px; }
+  /* env: key/value editor */
+  #footpop .fp-env { display:flex; flex-direction:column; gap:5px; padding:4px 8px 8px; max-height:240px; overflow:auto; }
+  #footpop .fp-envrow { display:flex; gap:5px; align-items:center; }
+  #footpop .fp-envrow input { font:11.5px ui-monospace,monospace; border:1px solid var(--line);
+    border-radius:7px; padding:5px 7px; outline:none; min-width:0; }
+  #footpop .fp-envrow .k { width:44%; } #footpop .fp-envrow .v { flex:1; }
+  #footpop .fp-envrow .rm { border:none; background:none; color:#b3bac4; cursor:pointer; font-size:15px; padding:0 3px; }
+  #footpop .fp-envrow .rm:hover { color:#c0392b; }
+  #footpop .fp-envadd { font:inherit; font-size:11.5px; color:#67707c; border:1px dashed var(--line);
+    background:none; border-radius:8px; padding:6px; cursor:pointer; margin:2px 8px 4px; }
+  #footpop .fp-envadd:hover { border-color:#c7d0e0; color:#223; }
+  #footpop .fp-note { font:10.5px ui-monospace,monospace; color:#b3bac4; padding:2px 10px 6px; }
+
   /* ── onboarding / sign-in (a pre-app screen; plain white, centered) ── */
   #onboard { position:fixed; inset:0; z-index:60; background:#fff; display:flex;
     align-items:center; justify-content:center; -webkit-app-region:drag; }
@@ -638,6 +690,12 @@
     <div id="commbar">
       <button id="comm-chat"><i data-lucide="message-square"></i>chat</button>
       <button id="comm-voice"><i data-lucide="audio-lines"></i>voice</button>
+    </div>
+    <div id="sidebarfoot">
+      <button id="foot-profile" class="footprofile" title="account"><span class="uinitial">·</span></button>
+      <div class="footgap"></div>
+      <button id="foot-settings" class="footbtn" title="settings"><i data-lucide="settings"></i></button>
+      <button id="foot-env" class="footbtn" title="environment · integrations"><span class="envE">E</span></button>
     </div>
   </div>
 
@@ -765,6 +823,7 @@
 <div id="modal"></div>
 <div id="iconpop"></div>
 <div id="mention"></div>
+<div id="footpop"></div>
 
 <!-- "gooey" metaball filter: heavy blur then a soft alpha-threshold. Thin features
      (an icon's spikes/spokes, an A's holes) melt below the cutoff, leaving the
@@ -2643,15 +2702,103 @@ function showOnboardSteps() {
     <button class="obstepgo" id="ob-done">enter autopoet</button>`;
   document.getElementById("ob-done").onclick = () => authedPost("/auth/onboarding/done").then(() => location.reload());
 }
+let currentUser = null;
 async function initAuth() {
   let st;
   try { st = await (await fetch("/auth/state.json")).json(); }
   catch (_) { return hideOnboard(); }   // no auth backend ⇒ don't block the app
+  currentUser = st.user;
+  setFooterUser();
   if (st.authenticated && st.onboarded) return hideOnboard();
   if (st.authenticated) return showOnboardSteps();
   showSignIn();
 }
+function setFooterUser() {
+  const el = document.querySelector("#foot-profile .uinitial");
+  if (el) el.textContent = ((currentUser && currentUser.name) || "·").slice(0, 1).toLowerCase();
+}
 document.getElementById("ob-in").onclick = () => authedPost("/auth/signin").then(() => location.reload());
 document.getElementById("ob-up").onclick = () => authedPost("/auth/signup").then(() => showOnboardSteps());
 initAuth();
+
+// ── sidebar footer: account · settings · env ──────────────────────────────
+function toast(msg) {
+  let t = document.getElementById("aptoast");
+  if (!t) {
+    t = document.createElement("div"); t.id = "aptoast"; document.body.appendChild(t);
+    t.style = "position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#223;color:#fff;padding:8px 14px;border-radius:9px;font:12px ui-monospace,monospace;z-index:80;opacity:0;transition:opacity .2s ease;pointer-events:none";
+  }
+  t.textContent = msg; t.style.opacity = "1";
+  clearTimeout(t._h); t._h = setTimeout(() => t.style.opacity = "0", 1600);
+}
+function openFootPop(anchor, html) {
+  const p = document.getElementById("footpop");
+  p.innerHTML = html; p.classList.add("on"); refreshIcons();
+  const r = anchor.getBoundingClientRect();
+  requestAnimationFrame(() => {
+    p.style.left = Math.max(8, Math.min(r.left, innerWidth - p.offsetWidth - 8)) + "px";
+    p.style.top = "auto"; p.style.bottom = (innerHeight - r.top + 8) + "px";
+  });
+}
+function closeFootPop() { const p = document.getElementById("footpop"); p.classList.remove("on"); p.innerHTML = ""; }
+addEventListener("mousedown", e => {
+  const p = document.getElementById("footpop");
+  if (p.classList.contains("on") && !p.contains(e.target) && !e.target.closest("#sidebarfoot")) closeFootPop();
+});
+
+// profile · sign out (real) + billing (stub)
+document.getElementById("foot-profile").onclick = e => {
+  e.stopPropagation();
+  const u = currentUser || { name: "guest", email: "" };
+  const ini = (u.name || "·").slice(0, 1).toLowerCase();
+  openFootPop(e.currentTarget, `
+    <div class="fp-head"><span class="fp-av">${esc(ini)}</span><div><div class="fp-name">${esc(u.name || "guest")}</div><div class="fp-mail">${esc(u.email || "")}</div></div></div>
+    <div class="fp-sep"></div>
+    <button class="fp-item" data-act="billing"><i data-lucide="credit-card"></i>billing</button>
+    <button class="fp-item danger" data-act="signout"><i data-lucide="log-out"></i>sign out</button>`);
+  document.querySelector('#footpop [data-act="billing"]').onclick = () => { closeFootPop(); toast("billing — coming soon"); };
+  document.querySelector('#footpop [data-act="signout"]').onclick = () => authedPost("/auth/signout").then(() => location.reload());
+};
+
+// settings · theme (persisted) + app config
+function applyTheme(t) { document.documentElement.setAttribute("data-theme", t); localStorage.setItem("ap-theme", t); }
+applyTheme(localStorage.getItem("ap-theme") || "light");
+document.getElementById("foot-settings").onclick = e => {
+  e.stopPropagation();
+  const t = localStorage.getItem("ap-theme") || "light";
+  openFootPop(e.currentTarget, `
+    <div class="fp-title">appearance</div>
+    <div class="fp-seg">
+      <button data-theme="light" class="${t === 'light' ? 'sel' : ''}"><i data-lucide="sun"></i>light</button>
+      <button data-theme="dark" class="${t === 'dark' ? 'sel' : ''}"><i data-lucide="moon"></i>dark</button>
+    </div>
+    <div class="fp-note">// dark theme in progress</div>
+    <div class="fp-sep"></div>
+    <button class="fp-item" data-act="more"><i data-lucide="sliders-horizontal"></i>app settings…</button>`);
+  document.querySelectorAll("#footpop .fp-seg button").forEach(b => b.onclick = () => {
+    applyTheme(b.dataset.theme);
+    document.querySelectorAll("#footpop .fp-seg button").forEach(x => x.classList.toggle("sel", x === b));
+  });
+  document.querySelector('#footpop [data-act="more"]').onclick = () => { closeFootPop(); toast("app settings — coming soon"); };
+};
+
+// env · integrations (dev-local key/values for now)
+const getEnv = () => { try { return JSON.parse(localStorage.getItem("ap-env") || "[]"); } catch (_) { return []; } };
+const setEnvRows = rows => localStorage.setItem("ap-env", JSON.stringify(rows));
+document.getElementById("foot-env").onclick = e => { e.stopPropagation(); renderEnvPop(e.currentTarget); };
+function renderEnvPop(anchor) {
+  const rows = getEnv();
+  openFootPop(anchor, `
+    <div class="fp-title">environment · integrations</div>
+    <div class="fp-env" id="fp-env">
+      ${rows.map(r => `<div class="fp-envrow"><input class="k" placeholder="KEY" value="${esc(r.k || '')}"><input class="v" placeholder="value" value="${esc(r.v || '')}"><button class="rm">×</button></div>`).join("")}
+    </div>
+    <button class="fp-envadd" id="fp-envadd">+ variable</button>
+    <div class="fp-note">// dev-local for now — wires to runtime config later</div>`);
+  const commit = () => setEnvRows([...document.querySelectorAll("#fp-env .fp-envrow")].map(row =>
+    ({ k: row.querySelector(".k").value, v: row.querySelector(".v").value })));
+  document.querySelectorAll("#fp-env input").forEach(inp => inp.oninput = commit);
+  document.querySelectorAll("#fp-env .rm").forEach((b, i) => b.onclick = () => { const rs = getEnv(); rs.splice(i, 1); setEnvRows(rs); renderEnvPop(anchor); });
+  document.getElementById("fp-envadd").onclick = () => { commit(); const rs = getEnv(); rs.push({ k: "", v: "" }); setEnvRows(rs); renderEnvPop(anchor); };
+}
 </script>
