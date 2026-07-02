@@ -74,6 +74,54 @@ defmodule Autopoet.Control do
     end
   end
 
+  # ── chat: conversations with the autopoet ─────────────────────────────────
+
+  get "/chat/sessions.json" do
+    conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(Autopoet.Chat.sessions()))
+  end
+
+  get "/chat/transcript" do
+    conn = fetch_query_params(conn)
+
+    case Autopoet.Chat.transcript(conn.query_params["id"] || "") do
+      {:ok, body} -> text(conn, body)
+      _ -> send_resp(conn, 404, "no such chat\n")
+    end
+  end
+
+  post "/chat/new" do
+    authed!(conn, fn conn -> text(conn, Autopoet.Chat.new() <> "\n") end)
+  end
+
+  post "/chat/send" do
+    authed!(conn, fn conn ->
+      {:ok, body, conn} = read_body(conn, length: 100_000)
+
+      case Autopoet.Chat.send(conn.query_params["id"], body) do
+        {:ok, reply} -> text(conn, reply)
+        {:error, reason} -> send_resp(conn, 502, "chat failed: #{inspect(reason)}\n")
+      end
+    end)
+  end
+
+  # ── voice (v1: local TTS via macOS `say`; STT rides Moonshine/Gemini Live later) ──
+
+  post "/speak" do
+    authed!(conn, fn conn ->
+      {:ok, body, conn} = read_body(conn, length: 4_000)
+      clean = body |> String.replace(~r/[^\p{L}\p{N}\s.,;:!?'"()\[\]-]/u, " ") |> String.slice(0, 800)
+      Task.start(fn -> System.cmd("say", [clean], stderr_to_stdout: true) end)
+      text(conn, "speaking\n")
+    end)
+  end
+
+  post "/speak/stop" do
+    authed!(conn, fn conn ->
+      System.cmd("pkill", ["-x", "say"], stderr_to_stdout: true)
+      text(conn, "quiet\n")
+    end)
+  end
+
   post "/notes/save" do
     authed!(conn, fn conn ->
       {:ok, body, conn} = read_body(conn, length: 10_000_000)
