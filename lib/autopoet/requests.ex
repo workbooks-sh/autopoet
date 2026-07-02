@@ -1,31 +1,50 @@
 defmodule Autopoet.Requests do
   @moduledoc """
-  Pending typed self-edit requests — the way a human hands the autopoet work
-  (`./autopoetctl request <target> <change...>`). Filed through the real
-  `Nexus.Autopoet.Request` (typed delta = the injection firewall; emits
-  `self_edit.requested` onto the bus), held here until the next heartbeat cycle
-  drains them. Deduped by the request's own dedup key.
-  """
-  use Agent
+  The ONE intake for typed self-edit requests — the issue system. Two filers,
+  one lane:
 
-  def start_link(_), do: Agent.start_link(fn -> %{} end, name: __MODULE__)
+    * humans, via `./autopoetctl request <target> <change>`
+    * ANY agent/limb, via the ungated `request` bash verb inside its run
+      (metacognition is deliberately grant-free in the runtime)
+
+  Both paths produce a `Nexus.Autopoet.Request` → a `self_edit.requested` bus
+  event; this process subscribes and queues every one (deduped by the request's
+  own key) until the next heartbeat drains them into the brain. Fire-and-forget:
+  a filer never waits.
+  """
+  use GenServer
+
+  def start_link(_), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
 
   def file(target, change) do
     with {:ok, req} <- Nexus.Autopoet.Request.new(%{target: target, change: change}) do
       Nexus.Autopoet.Request.file(req)
-
-      Agent.update(
-        __MODULE__,
-        &Map.put(&1, Nexus.Autopoet.Request.dedup_key(req), %{target: target, change: change})
-      )
-
       Autopoet.Log.puts("request filed: #{target} — #{change}")
       :ok
     end
   end
 
-  def pending, do: Agent.get(__MODULE__, &Map.values/1)
+  def pending, do: GenServer.call(__MODULE__, :pending)
 
   @doc "Hand all pending requests to the cycle and clear the queue."
-  def drain, do: Agent.get_and_update(__MODULE__, fn m -> {Map.values(m), %{}} end)
+  def drain, do: GenServer.call(__MODULE__, :drain)
+
+  @impl true
+  def init(nil) do
+    Nexus.Events.subscribe()
+    {:ok, %{}}
+  end
+
+  @impl true
+  def handle_info({:event, %{kind: "self_edit.requested"} = ev}, q) do
+    key = ev[:dedup_key] || "#{ev[:target]}::#{ev[:change]}"
+    Autopoet.Log.puts("request queued (#{ev[:target]}): #{String.slice(to_string(ev[:change]), 0, 120)}")
+    {:noreply, Map.put(q, key, %{target: ev[:target], change: ev[:change], why: ev[:why], evidence: ev[:evidence]})}
+  end
+
+  def handle_info(_msg, q), do: {:noreply, q}
+
+  @impl true
+  def handle_call(:pending, _from, q), do: {:reply, Map.values(q), q}
+  def handle_call(:drain, _from, q), do: {:reply, Map.values(q), %{}}
 end

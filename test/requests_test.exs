@@ -15,6 +15,7 @@ defmodule Autopoet.RequestsTest do
     Nexus.Events.subscribe()
     assert :ok = Autopoet.Requests.file("journal", "add a from-request page")
     assert_receive {:event, %{kind: "self_edit.requested"}}, 2_000
+    Process.sleep(150)
     assert Autopoet.Requests.pending() != []
 
     # the exact effect the armed scheduler fires
@@ -25,5 +26,17 @@ defmodule Autopoet.RequestsTest do
 
     # queue drained; dedup key consumed
     assert Autopoet.Requests.pending() == []
+  end
+  test "an AGENT-side request (bare bus event, the ungated bash verb path) reaches the queue" do
+    Nexus.Events.emit(%{
+      kind: "self_edit.requested",
+      target: "research_limb",
+      change: "search verb returned malformed results twice",
+      dedup_key: "research_limb::search-malformed",
+      tags: []
+    })
+
+    Process.sleep(150)
+    assert Enum.any?(Autopoet.Requests.pending(), &(&1.target == "research_limb"))
   end
 end
