@@ -199,8 +199,8 @@ async function draw() {
   // clipped inside. No heavy stroke — the color IS the frame.
   const selfG = node.filter(d => d.id === "self");
   const S = 96, R = 30;
-  // hovering the face gives it the droopy mouth ("sad"); leaving → back to neutral.
-  selfG.on("mouseenter", () => setMouth("sad")).on("mouseleave", () => setMouth("neutral"));
+  // hovering the face gives it the "hopeful" mouth; leaving → back to neutral.
+  selfG.on("mouseenter", () => setMouth("hopeful")).on("mouseleave", () => setMouth("neutral"));
   selfG.append("clipPath").attr("id", "sq")
     .append("rect").attr("x", -S/2).attr("y", -S/2).attr("width", S).attr("height", S).attr("rx", R);
   selfG.append("rect").attr("x", -S/2).attr("y", -S/2).attr("width", S).attr("height", S)
