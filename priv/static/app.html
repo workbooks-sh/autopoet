@@ -1093,11 +1093,12 @@ sktext.addEventListener("blur", () => sktext.style.display = "none");
 // ══ THE WORLD (graph) ═══════════════════════════════════════════════════
 const COLORS = {
   self: "#223", doc: "#4a90d9", guide: "#8e7cc3", limb: "#e07a5f", request: "#d96ba0",
+  library: "#2aa198",
   proposal: { pending:"#f2c14e", accepted:"#6aa84f", rejected:"#cc4125",
               "rejected-by-gate":"#a61c00", reverted:"#999" }
 };
 const color = n => n.type === "proposal" ? (COLORS.proposal[n.status] || "#f2c14e") : (COLORS[n.type] || "#888");
-const radius = n => n.type === "self" ? 46 : (n.type === "doc" ? 16 : 13);
+const radius = n => n.type === "self" ? 46 : (n.type === "doc" ? 16 : n.type === "library" ? 18 : 13);
 
 const svg = d3.select("#graph"), g = svg.append("g");
 const zoomB = d3.zoom().scaleExtent([0.25, 3]).on("zoom", e => g.attr("transform", e.transform));

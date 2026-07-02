@@ -102,7 +102,11 @@ defmodule Autopoet.WorldGraph do
 
     self_node = %{id: "self", label: "autopoet", type: "self", detail: self_detail()}
 
-    nodes = [self_node | doc_nodes ++ limb_nodes ++ proposal_nodes ++ request_nodes]
+    # the OOTA recipe library, as ONE node (not its 472 files) — a readable reference the agent
+    # reaches at /work/oota. Omitted when the library isn't seeded.
+    oota_nodes = oota_node()
+
+    nodes = [self_node | doc_nodes ++ limb_nodes ++ oota_nodes ++ proposal_nodes ++ request_nodes]
 
     # everything tethers to the self unless it already hangs off another doc
     ref_targets = MapSet.new(ref_links, & &1.target)
@@ -114,6 +118,29 @@ defmodule Autopoet.WorldGraph do
       end
 
     %{nodes: nodes, links: tethers ++ ref_links}
+  end
+
+  defp oota_node do
+    dir = Autopoet.Oota.dest()
+
+    if File.dir?(dir) do
+      files = Path.wildcard(Path.join(dir, "**")) |> Enum.count(&File.regular?/1)
+
+      [
+        %{
+          id: "oota",
+          label: "oota library",
+          type: "library",
+          detail:
+            "OOTA recipe library — #{files} media/document tool recipes, readable in-sandbox at " <>
+              "/work/oota (tools/steps, docs, examples, components, wrappers). READ a recipe for the " <>
+              "approach, then re-express it in the wasm-native toolchain (JS/C/C++/Go/Rust). Python " <>
+              "recipes are reference-only. Never a host process."
+        }
+      ]
+    else
+      []
+    end
   end
 
   defp self_detail do
