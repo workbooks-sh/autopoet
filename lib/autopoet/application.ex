@@ -37,6 +37,7 @@ defmodule Autopoet.Application do
 
     seed_workbook()
     Autopoet.Guide.seed()
+    Autopoet.Notes.seed()
     seed_limbs()
     Autopoet.Limbs.register_from_body()
     wire_brain()

@@ -41,6 +41,36 @@ defmodule Autopoet.Control do
     conn |> put_resp_content_type("image/svg+xml") |> send_resp(200, Autopoet.Avatar.svg(Autopoet.Avatar.default_seed(), 32))
   end
 
+  get "/notes/tree.json" do
+    conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(Autopoet.Notes.tree()))
+  end
+
+  get "/notes/file" do
+    conn = fetch_query_params(conn)
+
+    case Autopoet.Notes.read(conn.query_params["path"] || "") do
+      {:ok, content} -> text(conn, content)
+      _ -> send_resp(conn, 404, "no such note\n")
+    end
+  end
+
+  post "/notes/save" do
+    authed!(conn, fn conn ->
+      {:ok, body, conn} = read_body(conn, length: 10_000_000)
+      Autopoet.Notes.write(conn.query_params["path"], body)
+      text(conn, "saved\n")
+    end)
+  end
+
+  post "/notes/new" do
+    authed!(conn, fn conn ->
+      case Autopoet.Notes.create(conn.query_params["path"], conn.query_params["kind"] || "note") do
+        :ok -> text(conn, "created\n")
+        {:error, reason} -> text(conn, "refused: #{inspect(reason)}\n")
+      end
+    end)
+  end
+
   get "/graph.json" do
     conn
     |> put_resp_content_type("application/json")

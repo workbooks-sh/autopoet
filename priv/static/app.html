@@ -2,25 +2,65 @@
 <meta charset="utf-8">
 <title>autopoet</title>
 <style>
-  :root { --ink:#223; --paper:#fbfbf9; --grid:#e6e8ea; }
+  :root { --ink:#223; --paper:#fbfbf9; --grid:#e6e8ea; --line:#e3e5e8; }
   html,body { margin:0; height:100%; overflow:hidden;
     font:13px/1.5 ui-monospace,SFMono-Regular,monospace; color:var(--ink);
-    background:var(--paper); }  /* the grid is real geometry in the canvas, not wallpaper */
-  #graph { position:fixed; inset:0; cursor:grab; }
-  #graph:active { cursor:grabbing; }
+    background:var(--paper); }
 
-  /* custom chrome (frameless mode): our own macOS-style traffic lights */
-  #chrome { position:fixed; top:0; left:0; right:0; height:32px; z-index:5;
-    display:flex; align-items:center; gap:8px; padding-left:13px;
-    -webkit-app-region: drag; }        /* drag region (Chromium/elixir-desktop) */
-  .tl { width:12px; height:12px; border-radius:50%; cursor:pointer;
-    -webkit-app-region: no-drag; }
-  .tl.close { background:#ff5f57; } .tl.min { background:#febc2e; } .tl.max { background:#28c840; }
+  #app { display:grid; height:100vh;
+    grid-template-columns:240px 0px 1fr;
+    grid-template-rows:1fr 88px; }
+  #app.editing { grid-template-columns:240px minmax(360px,32vw) 1fr; }
+
+  /* ── vault tree (green in the mock) ─────────────────────────────────── */
+  #tree { grid-row:1; grid-column:1; border-right:1px solid var(--line);
+    background:#f7f7f4; overflow:auto; padding:40px 0 10px; }
+  #tree .hd { display:flex; align-items:center; gap:6px; padding:2px 10px 8px;
+    color:#889; font-size:11px; }
+  #tree .hd b { flex:1; font-weight:600; letter-spacing:.06em; }
+  #tree .hd button { font:inherit; border:1px solid #ddd; background:#fff;
+    border-radius:5px; cursor:pointer; padding:0 7px; line-height:1.6; }
+  #tree ul { list-style:none; margin:0; padding-left:14px; }
+  #tree > ul { padding-left:6px; }
+  #tree li > .row { display:flex; align-items:center; gap:6px; padding:2px 6px;
+    border-radius:5px; cursor:pointer; white-space:nowrap; }
+  #tree li > .row:hover { background:#ececе6; background:#ecece6; }
+  #tree li > .row.open { background:#e4e8f5; }
+  #tree svg.ic { width:13px; height:13px; flex:none; }
+
+  /* ── prose / sketch editor (blue in the mock) ───────────────────────── */
+  #editor { grid-row:1; grid-column:2; border-right:1px solid var(--line);
+    display:none; flex-direction:column; background:#fff; min-width:0; }
+  #app.editing #editor { display:flex; }
+  #editor .hd { display:flex; align-items:center; gap:8px; padding:40px 14px 8px;
+    color:#667; font-size:11px; border-bottom:1px solid var(--line); }
+  #editor .hd .name { flex:1; overflow:hidden; text-overflow:ellipsis; }
+  #editor .hd .dot { width:8px; height:8px; border-radius:50%; background:#bbb; }
+  #editor .hd .dot.dirty { background:#f2c14e; }
+  #editor .hd .dot.saved { background:#6aa84f; }
+  #editor .hd button { font:inherit; border:none; background:none; cursor:pointer; color:#99a; }
+  #prose { flex:1; border:none; outline:none; resize:none; padding:18px 20px;
+    font:14px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:#223;
+    background:#fff; }
+  #sketch { flex:1; touch-action:none; cursor:crosshair; background:#fff; display:none; }
+  #app.sketching #prose { display:none; }
+  #app.sketching #sketch { display:block; }
+
+  /* ── the world (graph) ──────────────────────────────────────────────── */
+  #stage { grid-row:1; grid-column:3; position:relative; min-width:0; }
+  #graph { position:absolute; inset:0; width:100%; height:100%; cursor:grab; }
+  #graph:active { cursor:grabbing; }
   text.lbl { font:11px ui-monospace,monospace; fill:#556; pointer-events:none; }
 
-  #panel { position:fixed; top:16px; right:16px; width:340px; max-height:70vh;
+  /* ── console footer (pink in the mock): compact, full bleed ─────────── */
+  #console { grid-row:2; grid-column:1 / -1; border-top:1px solid var(--line);
+    background:#141619; color:#aab4be; overflow:auto; padding:6px 12px;
+    font-size:11px; line-height:1.6; white-space:pre-wrap; word-break:break-all; }
+
+  /* node details panel */
+  #panel { position:fixed; top:16px; right:16px; width:340px; max-height:66vh;
     overflow:auto; background:#fff; border:1px solid #ddd; border-radius:10px;
-    padding:14px; box-shadow:0 6px 24px rgba(0,0,0,.08); display:none; }
+    padding:14px; box-shadow:0 6px 24px rgba(0,0,0,.08); display:none; z-index:6; }
   #panel h3 { margin:0 0 6px; font-size:13px; word-break:break-all; }
   #panel pre { white-space:pre-wrap; word-break:break-word; font-size:11px; color:#445; }
   #panel .tag { display:inline-block; padding:1px 8px; border-radius:99px;
@@ -29,81 +69,192 @@
     border-radius:6px; border:1px solid #ccc; background:#fff; }
   #panel button.ok { background:#e8f5e9; } #panel button.no { background:#fdecea; }
 
-  #logbtn { position:fixed; left:16px; bottom:16px; z-index:3; font:inherit;
-    padding:4px 14px; border-radius:8px; border:1px solid #ccc; background:#fff; cursor:pointer; }
-  #logwrap { position:fixed; left:0; right:0; bottom:0; height:32vh; background:#fff;
-    border-top:1px solid #ddd; display:none; z-index:2; }
-  #log { height:100%; overflow:auto; margin:0; padding:10px 16px; white-space:pre-wrap;
-    word-break:break-all; font-size:11px; color:#445; }
+  /* custom chrome (frameless mode) */
+  #chrome { position:fixed; top:0; left:0; width:240px; height:32px; z-index:9;
+    display:__CHROME__; align-items:center; gap:8px; padding-left:13px;
+    -webkit-app-region:drag; }
+  .tl { width:12px; height:12px; border-radius:50%; cursor:pointer; -webkit-app-region:no-drag; }
+  .tl.close { background:#ff5f57; } .tl.min { background:#febc2e; } .tl.max { background:#28c840; }
 </style>
 
-<div id="chrome" style="display:__CHROME__">
+<div id="chrome">
   <span class="tl close" title="close"></span>
   <span class="tl min" title="minimize"></span>
   <span class="tl max" title="zoom"></span>
 </div>
-<svg id="graph"></svg>
+
+<div id="app">
+  <div id="tree">
+    <div class="hd"><b>VAULT</b>
+      <button id="newnote" title="new document">+doc</button>
+      <button id="newsketch" title="new sketch">+sk</button>
+    </div>
+    <ul id="treeroot"></ul>
+  </div>
+
+  <div id="editor">
+    <div class="hd">
+      <span class="dot" id="savedot"></span>
+      <span class="name" id="fname"></span>
+      <button id="closeed" title="close">✕</button>
+    </div>
+    <textarea id="prose" spellcheck="false" placeholder="write plainly — this is your source of truth"></textarea>
+    <svg id="sketch" xmlns="http://www.w3.org/2000/svg"></svg>
+  </div>
+
+  <div id="stage"><svg id="graph"></svg></div>
+  <pre id="console"></pre>
+</div>
+
 <div id="panel"></div>
-<button id="logbtn">log</button>
-<div id="logwrap"><pre id="log"></pre></div>
 <script src="/static/d3.v7.min.js"></script>
 <script>
 const TOKEN = "__TOKEN__";
-// custom chrome → real window controls (close routes through the kill switch)
-function win(action) {
-  fetch("/win/" + action, { method: "POST", headers: { authorization: `Bearer ${TOKEN}` } });
-}
+const authed = { headers: { authorization: `Bearer ${TOKEN}` } };
+
+// ── window chrome ─────────────────────────────────────────────────────────
+function win(a) { fetch("/win/" + a, { method: "POST", ...authed }); }
 document.querySelector("#chrome .close")?.addEventListener("click", () => win("close"));
 document.querySelector("#chrome .min")?.addEventListener("click", () => win("minimize"));
 document.querySelector("#chrome .max")?.addEventListener("click", () => win("maximize"));
+
+// ── error surfacing (no devtools in the webview) ─────────────────────────
+function fatal(msg) {
+  let b = document.getElementById("err");
+  if (!b) { b = document.createElement("pre"); b.id = "err";
+    b.style = "position:fixed;top:8px;right:8px;z-index:99;background:#fdecea;color:#a00;padding:8px;border-radius:6px;max-width:60vw;white-space:pre-wrap";
+    document.body.appendChild(b); }
+  b.textContent = "error: " + msg;
+}
+addEventListener("error", e => fatal(e.message + " @ " + e.filename + ":" + e.lineno));
+addEventListener("unhandledrejection", e => fatal(String(e.reason)));
+
+// ══ VAULT ═══════════════════════════════════════════════════════════════
+const ICONS = {
+  folder: `<svg class="ic" viewBox="0 0 16 16"><path d="M1.5 3h4l1.5 2h7.5v8h-13z" fill="#d8b25a"/></svg>`,
+  note:   `<svg class="ic" viewBox="0 0 16 16"><path d="M3 1h7l3 3v11H3z" fill="#7aa2d8"/><path d="M10 1v3h3" fill="#b9cdea"/></svg>`,
+  sketch: `<svg class="ic" viewBox="0 0 16 16"><path d="M2 14l1-4 8-8 3 3-8 8z" fill="#c98bd8"/><path d="M11 2l3 3" stroke="#8e5da0"/></svg>`
+};
+let open = { path: null, kind: null, dirty: false };
+
+async function loadTree() {
+  const tree = await (await fetch("/notes/tree.json")).json();
+  document.getElementById("treeroot").innerHTML = renderTree(tree);
+  document.querySelectorAll("#tree .row[data-path]").forEach(el => {
+    el.onclick = () => openFile(el.dataset.path, el.dataset.kind);
+    if (el.dataset.path === open.path) el.classList.add("open");
+  });
+}
+function renderTree(items) {
+  return items.map(n => n.type === "folder"
+    ? `<li><div class="row">${ICONS.folder}<span>${esc(n.name)}</span></div><ul>${renderTree(n.children || [])}</ul></li>`
+    : `<li><div class="row" data-path="${esc(n.path)}" data-kind="${n.type}">${ICONS[n.type]}<span>${esc(n.name)}</span></div></li>`
+  ).join("");
+}
+const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+
+async function openFile(path, kind) {
+  await flushSave();
+  const content = await (await fetch("/notes/file?path=" + encodeURIComponent(path))).text();
+  open = { path, kind, dirty: false };
+  document.getElementById("fname").textContent = path;
+  document.getElementById("app").classList.add("editing");
+  document.getElementById("app").classList.toggle("sketching", kind === "sketch");
+  if (kind === "sketch") loadSketch(content);
+  else document.getElementById("prose").value = content;
+  setDot("saved");
+  loadTree();
+}
+document.getElementById("closeed").onclick = async () => {
+  await flushSave();
+  open = { path: null, kind: null, dirty: false };
+  document.getElementById("app").classList.remove("editing", "sketching");
+  loadTree();
+};
+
+// autosave (debounced) → the diff-triggered translation lane server-side
+let saveTimer = null;
+function setDot(cls) { document.getElementById("savedot").className = "dot " + cls; }
+function scheduleSave() {
+  open.dirty = true; setDot("dirty");
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(flushSave, 900);
+}
+async function flushSave() {
+  clearTimeout(saveTimer); saveTimer = null;
+  if (!open.path || !open.dirty) return;
+  const body = open.kind === "sketch" ? serializeSketch() : document.getElementById("prose").value;
+  await fetch("/notes/save?path=" + encodeURIComponent(open.path), { method: "POST", body, ...authed });
+  open.dirty = false; setDot("saved");
+}
+document.getElementById("prose").addEventListener("input", scheduleSave);
+
+function newFile(kind) {
+  const name = prompt(kind === "sketch" ? "sketch name (folders with /):" : "document name (folders with /):");
+  if (!name) return;
+  const path = kind === "sketch"
+    ? (name.endsWith(".sketch.svg") ? name : name + ".sketch.svg")
+    : (name.endsWith(".md") ? name : name + ".md");
+  fetch(`/notes/new?path=${encodeURIComponent(path)}&kind=${kind}`, { method: "POST", ...authed })
+    .then(() => loadTree()).then(() => openFile(path, kind));
+}
+document.getElementById("newnote").onclick = () => newFile("note");
+document.getElementById("newsketch").onclick = () => newFile("sketch");
+
+// ── sketch surface: freehand strokes → SVG paths ─────────────────────────
+const sk = document.getElementById("sketch");
+let drawing = null;
+function loadSketch(svgText) {
+  const doc = new DOMParser().parseFromString(svgText, "image/svg+xml");
+  sk.setAttribute("viewBox", doc.documentElement.getAttribute("viewBox") || "0 0 1200 800");
+  sk.innerHTML = doc.documentElement.innerHTML;
+}
+function serializeSketch() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${sk.getAttribute("viewBox")}" fill="none">\n${sk.innerHTML}\n</svg>`;
+}
+function skPoint(e) {
+  const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(sk.getScreenCTM().inverse());
+  return `${pt.x.toFixed(1)} ${pt.y.toFixed(1)}`;
+}
+sk.addEventListener("pointerdown", e => {
+  sk.setPointerCapture(e.pointerId);
+  drawing = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  drawing.setAttribute("d", "M " + skPoint(e));
+  drawing.setAttribute("stroke", "#223"); drawing.setAttribute("stroke-width", "2.5");
+  drawing.setAttribute("stroke-linecap", "round"); drawing.setAttribute("fill", "none");
+  sk.appendChild(drawing);
+});
+sk.addEventListener("pointermove", e => { if (drawing) drawing.setAttribute("d", drawing.getAttribute("d") + " L " + skPoint(e)); });
+addEventListener("pointerup", () => { if (drawing) { drawing = null; scheduleSave(); } });
+
+// ══ THE WORLD (graph) ═══════════════════════════════════════════════════
 const COLORS = {
   self: "#223", doc: "#4a90d9", guide: "#8e7cc3", limb: "#e07a5f", request: "#d96ba0",
   proposal: { pending:"#f2c14e", accepted:"#6aa84f", rejected:"#cc4125",
               "rejected-by-gate":"#a61c00", reverted:"#999" }
 };
-const color = n => n.type === "proposal"
-  ? (COLORS.proposal[n.status] || "#f2c14e") : (COLORS[n.type] || "#888");
+const color = n => n.type === "proposal" ? (COLORS.proposal[n.status] || "#f2c14e") : (COLORS[n.type] || "#888");
 const radius = n => n.type === "self" ? 46 : (n.type === "doc" ? 16 : 13);
 
 const svg = d3.select("#graph"), g = svg.append("g");
 svg.call(d3.zoom().scaleExtent([0.25, 3]).on("zoom", e => g.attr("transform", e.transform)));
 
-// The infinite sheet (Figma-style): graph paper as REAL geometry in the same
-// coordinate space as the nodes — userSpaceOnUse patterns ride the zoom transform,
-// so panning/zooming moves and scales the paper with the world.
+// infinite Figma-style sheet: the paper is geometry in world space
 const defs = svg.append("defs");
-const minor = defs.append("pattern").attr("id", "grid-minor")
-  .attr("width", 24).attr("height", 24).attr("patternUnits", "userSpaceOnUse");
-minor.append("path").attr("d", "M 24 0 H 0 V 24")
-  .attr("fill", "none").attr("stroke", "var(--grid)").attr("stroke-width", 1);
-const major = defs.append("pattern").attr("id", "grid-major")
-  .attr("width", 120).attr("height", 120).attr("patternUnits", "userSpaceOnUse");
-major.append("path").attr("d", "M 120 0 H 0 V 120")
-  .attr("fill", "none").attr("stroke", "#d8dce0").attr("stroke-width", 1.2);
-
-const SHEET = 100000;  // ±50k units — effectively infinite at max pan/zoom
+defs.append("pattern").attr("id", "grid-minor").attr("width", 24).attr("height", 24).attr("patternUnits", "userSpaceOnUse")
+  .append("path").attr("d", "M 24 0 H 0 V 24").attr("fill", "none").attr("stroke", "var(--grid)").attr("stroke-width", 1);
+defs.append("pattern").attr("id", "grid-major").attr("width", 120).attr("height", 120).attr("patternUnits", "userSpaceOnUse")
+  .append("path").attr("d", "M 120 0 H 0 V 120").attr("fill", "none").attr("stroke", "#d8dce0").attr("stroke-width", 1.2);
+const SHEET = 100000;
 function paper(sel) {
   for (const id of ["grid-minor", "grid-major"])
-    sel.append("rect").attr("x", -SHEET/2).attr("y", -SHEET/2)
-       .attr("width", SHEET).attr("height", SHEET)
+    sel.append("rect").attr("x", -SHEET/2).attr("y", -SHEET/2).attr("width", SHEET).attr("height", SHEET)
        .attr("fill", `url(#${id})`).attr("pointer-events", "none");
 }
 
-// any uncaught error becomes visible ON the page — no devtools in the webview
-function fatal(msg) {
-  let b = document.getElementById("err");
-  if (!b) { b = document.createElement("pre"); b.id = "err";
-    b.style = "position:fixed;top:8px;left:8px;z-index:9;background:#fdecea;color:#a00;padding:8px;border-radius:6px;max-width:80vw;white-space:pre-wrap";
-    document.body.appendChild(b); }
-  b.textContent = "render error: " + msg;
-}
-addEventListener("error", e => fatal(e.message + " @ " + e.filename + ":" + e.lineno));
-addEventListener("unhandledrejection", e => fatal(String(e.reason)));
-
-// ── the face: blink (eyes) + talk (mouth) ──────────────────────────────────
-let MOUTHS = {}, talking = false, talkTimer = null;
+// ── the face ──────────────────────────────────────────────────────────────
+let MOUTHS = {};
 fetch("/avatar/mouths.json").then(r => r.json()).then(m => MOUTHS = m);
-
 function setMouth(mood) {
   const g = document.getElementById("ap-mouth");
   if (g && MOUTHS[mood]) g.innerHTML = MOUTHS[mood];
@@ -114,41 +265,19 @@ function blinkOnce() {
   eyes.style.transform = "scaleY(0.08)";
   setTimeout(() => { eyes.style.transform = "scaleY(1)"; }, 95);
 }
-// speaking = rapid open/closed mouth cycling; when it stops, rest on the emotion
-let emotion = "neutral";
-function talkTick() {
-  if (!talking) return;
-  setMouth(Math.random() < 0.5 ? "superHappy" : "happy");
-  setTimeout(() => { if (talking) setMouth("neutral"); }, 110);
-  talkTimer = setTimeout(talkTick, 230);
-}
-function talkFor(ms) {
-  talking = true;
-  if (!talkTimer) talkTick();
-  clearTimeout(talkFor._stop);
-  talkFor._stop = setTimeout(() => { talking = false; clearTimeout(talkTimer); talkTimer = null; setMouth(emotion); }, ms);
-}
-function setEmotion(m) { emotion = m; if (!talking) setMouth(m); }
-
+let faceStarted = false;
 function startFace() {
-  // human blink cadence: every 3–6s, occasional double-blink
+  if (faceStarted) return; faceStarted = true;
   (function loop() {
     blinkOnce();
     if (Math.random() < 0.25) setTimeout(blinkOnce, 220);
     setTimeout(loop, 3000 + Math.random() * 3000);
   })();
 }
-
-// Cursor parallax: the face turns to look at the pointer. Features translate
-// toward it in viewBox units (eyes deeper than the base → parallax), plus a hair
-// of skew so it reads as a 3D turn, not a slide. Installed ONCE; it looks up the
-// live face each frame (the graph redraws swap the avatar node) and no-ops when
-// the face isn't present. rAF-throttled; transforms only.
 let parallaxOn = false;
 function startParallax() {
   if (parallaxOn) return; parallaxOn = true;
   let tx = 0, ty = 0, want = { x: 0, y: 0 }, raf = null;
-
   function onMove(e) {
     const av = document.getElementById("ap-svg");
     if (!av) return;
@@ -164,11 +293,9 @@ function startParallax() {
     raf = null;
     const face = document.getElementById("ap-face"), eyesPx = document.getElementById("ap-eyes-px");
     if (!face || !eyesPx) return;
-    tx += (want.x - tx) * 0.35; ty += (want.y - ty) * 0.35;   // ease toward target
-    const k = 2.2;                                             // whole-face "look" shift
+    tx += (want.x - tx) * 0.35; ty += (want.y - ty) * 0.35;
     face.setAttribute("transform",
-      `translate(${(tx * k).toFixed(2)} ${(ty * k).toFixed(2)}) skewX(${(-tx * 1.8).toFixed(2)}) skewY(${(ty * 1.0).toFixed(2)})`);
-    // gentle eye depth (much less than before) so eyes & mouth don't diverge/cramp
+      `translate(${(tx * 2.2).toFixed(2)} ${(ty * 2.2).toFixed(2)}) skewX(${(-tx * 1.8).toFixed(2)}) skewY(${(ty * 1.0).toFixed(2)})`);
     eyesPx.setAttribute("transform", `translate(${(tx * 0.8).toFixed(2)} ${(ty * 0.8).toFixed(2)})`);
     if (Math.abs(want.x - tx) > 0.005 || Math.abs(want.y - ty) > 0.005) raf = requestAnimationFrame(apply);
   }
@@ -177,14 +304,15 @@ function startParallax() {
 
 let sim;
 async function draw() {
-  const W = innerWidth, H = innerHeight;
-  svg.attr("width", W).attr("height", H);   // SVG must be explicitly sized (CSS-only collapses in WebKit)
+  const stage = document.getElementById("stage");
+  const W = stage.clientWidth, H = stage.clientHeight;
+  svg.attr("width", W).attr("height", H);
   let data;
   try { data = await (await fetch("/graph.json")).json(); }
   catch (err) { return fatal("graph.json fetch failed: " + err); }
   if (!data.nodes || !data.nodes.length) return fatal("graph.json returned no nodes");
   g.selectAll("*").remove();
-  paper(g);   // the sheet goes under everything, in world coordinates
+  paper(g);
 
   sim = d3.forceSimulation(data.nodes)
     .force("link", d3.forceLink(data.links).id(d => d.id)
@@ -194,7 +322,7 @@ async function draw() {
     .force("collide", d3.forceCollide(d => radius(d) + 14));
 
   const self = data.nodes.find(n => n.id === "self");
-  self.fx = W / 2; self.fy = H / 2;   // the face anchors the world; everything orbits
+  self.fx = W / 2; self.fy = H / 2;
 
   const link = g.append("g").selectAll("line").data(data.links).join("line")
     .attr("stroke", l => l.kind === "ref" ? "#b8c4d0" : "#e2e6ea")
@@ -213,11 +341,8 @@ async function draw() {
     .attr("r", radius).attr("fill", d => color(d))
     .attr("fill-opacity", 0.85).attr("stroke", "#fff").attr("stroke-width", 2);
 
-  // the self: a squircle mask with the seeded avatar (its own colored background)
-  // clipped inside. No heavy stroke — the color IS the frame.
   const selfG = node.filter(d => d.id === "self");
   const S = 96, R = 30;
-  // hovering the face gives it the "hopeful" mouth; leaving → back to neutral.
   selfG.on("mouseenter", () => setMouth("hopeful")).on("mouseleave", () => setMouth("neutral"));
   selfG.append("clipPath").attr("id", "sq")
     .append("rect").attr("x", -S/2).attr("y", -S/2).attr("width", S).attr("height", S).attr("rx", R);
@@ -225,16 +350,13 @@ async function draw() {
     .attr("rx", R).attr("fill", "#fff")
     .attr("stroke", "rgba(0,0,0,.12)").attr("stroke-width", 1);
 
-  // inject the avatar with correct SVG namespacing (d3 .html() mangles nested SVG,
-  // which distorts it). Parse → import the <svg> node → size + clip it.
   fetch("/avatar").then(r => r.text()).then(txt => {
     const doc = new DOMParser().parseFromString(txt, "image/svg+xml");
     const av = document.importNode(doc.documentElement, true);
     av.setAttribute("x", -S/2); av.setAttribute("y", -S/2);
     av.setAttribute("width", S); av.setAttribute("height", S);
     av.id = "ap-svg";
-    const holder = selfG.append("g").attr("clip-path", "url(#sq)").node();
-    holder.appendChild(av);
+    selfG.append("g").attr("clip-path", "url(#sq)").node().appendChild(av);
     startFace();
     startParallax();
   });
@@ -249,9 +371,10 @@ async function draw() {
   });
 }
 
+// ── node details panel ────────────────────────────────────────────────────
 const panel = document.getElementById("panel");
 function showPanel(d) {
-  let html = `<h3>${d.label}</h3><span class="tag" style="background:${color(d)}">${d.type}${d.status ? " · " + d.status : ""}</span>`;
+  let html = `<h3>${esc(d.label)}</h3><span class="tag" style="background:${color(d)}">${d.type}${d.status ? " · " + d.status : ""}</span>`;
   if (d.type === "proposal" && d.status === "pending") {
     const id = d.id.slice(5);
     html += `<div style="margin-bottom:8px">
@@ -262,34 +385,32 @@ function showPanel(d) {
     const id = d.id.slice(5);
     html += `<div style="margin-bottom:8px"><button onclick="act('${id}','revert')">Revert</button></div>`;
   }
-  html += `<pre>${(d.detail || "").replace(/&/g, "&amp;").replace(/</g, "&lt;")}</pre>`;
+  html += `<pre>${esc(d.detail || "")}</pre>`;
   panel.innerHTML = html; panel.style.display = "block";
 }
 document.addEventListener("keydown", e => { if (e.key === "Escape") panel.style.display = "none"; });
-svg.on("click", (e) => { if (e.target.id === "graph") panel.style.display = "none"; });
-
+svg.on("click", e => { if (e.target.id === "graph") panel.style.display = "none"; });
 function act(id, verb) {
-  fetch(`/proposal/${id}/${verb}`, { method: "POST", headers: { authorization: `Bearer ${TOKEN}` } })
+  fetch(`/proposal/${id}/${verb}`, { method: "POST", ...authed })
     .then(() => { panel.style.display = "none"; draw(); });
 }
 function rejectWithReason(id) {
   const reason = prompt("Reject reason (teaches the brain — optional):") || "";
-  fetch(`/proposal/${id}/reject?reason=${encodeURIComponent(reason)}`,
-        { method: "POST", headers: { authorization: `Bearer ${TOKEN}` } })
+  fetch(`/proposal/${id}/reject?reason=${encodeURIComponent(reason)}`, { method: "POST", ...authed })
     .then(() => { panel.style.display = "none"; draw(); });
 }
 
-// log drawer (SSE)
-const logwrap = document.getElementById("logwrap"), log = document.getElementById("log");
-document.getElementById("logbtn").onclick = () =>
-  logwrap.style.display = logwrap.style.display === "block" ? "none" : "block";
+// ── console footer (SSE) ──────────────────────────────────────────────────
+const cons = document.getElementById("console");
 new EventSource("/sse").onmessage = e => {
-  log.textContent += e.data + "\n"; log.scrollTop = log.scrollHeight;
-  // the resting face stays neutral — mouth shapes are for deliberate interactions
-  // (hover) and, later, real talking; never random churn on every log line.
+  cons.textContent += e.data + "\n";
+  const lines = cons.textContent.split("\n");
+  if (lines.length > 400) cons.textContent = lines.slice(-400).join("\n");
+  cons.scrollTop = cons.scrollHeight;
   if (/PROPOSAL|ACCEPTED|REVERTED|rejected|limb registered/.test(e.data)) draw();
 };
 
+loadTree();
 draw();
 addEventListener("resize", () => draw());
 </script>

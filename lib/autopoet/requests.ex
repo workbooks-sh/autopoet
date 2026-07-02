@@ -49,7 +49,10 @@ defmodule Autopoet.Requests do
 
   @impl true
   def handle_info({:event, %{kind: "self_edit.requested"} = ev}, q) do
-    key = fname(ev[:dedup_key] || "#{ev[:target]}::#{ev[:change]}")
+    # ONE pending request per TARGET — the latest wins. Rapid vault saves collapse
+    # to the newest content; repeated limb failures collapse to the latest reason.
+    # Distinct intents belong on distinct targets.
+    key = fname(to_string(ev[:target]))
     entry = %{target: ev[:target], change: ev[:change], why: ev[:why], evidence: ev[:evidence]}
     File.write!(Path.join(dir(), key <> ".req"), :erlang.term_to_binary(entry))
     Autopoet.Log.puts("request queued (#{ev[:target]}): #{String.slice(to_string(ev[:change]), 0, 120)}")
