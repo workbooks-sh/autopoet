@@ -865,7 +865,8 @@
   .fxedbody { display:flex; font:9.5px/1.75 ui-monospace,monospace; padding:6px 0; }
   .fxedln { color:#c9d0d9; padding:0 7px; text-align:right; border-right:1px solid #f0f2f5;
     margin-right:7px; }
-  .fxedcode { color:#3a4250; white-space:pre-wrap; padding-right:8px; flex:1; }
+  /* pre, never wrap: every edit site owns a whole line, so retyping can't reflow */
+  .fxedcode { color:#3a4250; white-space:pre; overflow:hidden; padding-right:8px; flex:1; }
   /* the visible MATCH: the rule's word and the note's word light together */
   .semlit { background:#fdf3d7; border-bottom:2px solid #c9a04e; color:#7a5d1c;
     border-radius:3px; padding:0 1px; }
@@ -4223,42 +4224,42 @@ const SLIDES = [
     fx(fx) {
       // the trifecta, cyclical: X your english → Y derived machinery (readable) →
       // Z a deterministic verdict. Editing X is the intervention: Y diffs, Z flips.
-      // clockwise cycle: rules.md → rules.work → the email → the verdict → back to you
+      // TWO LAYERS. Top row: you write → it compiles (rules.md → rules.work).
+      // Bottom row: life happens → it acts (the email → the verdict).
+      // One arrow per row — that's the whole grammar.
       const arrows = fxEl(`<div style="position:absolute;inset:0"></div>`);
       arrows.innerHTML = `<svg viewBox="0 0 480 230" width="480" height="230" fill="none"
-          stroke="#c3b8dd" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-        <g id="fxa1"><path class="am" d="M188 26 C 236 8, 274 9, 316 24"/><path class="ah" d="M308 18 l 9 6 -10 5"/></g>
-        <g id="fxa2"><path class="am" d="M401 114 C 411 130, 409 144, 401 158"/><path class="ah" d="M395 150 l 6 10 7 -8"/></g>
-        <g id="fxa3"><path class="am" d="M294 192 C 262 210, 224 210, 190 194"/><path class="ah" d="M199 189 l -10 5 8 7"/></g>
-        <g id="fxa4"><path class="am" d="M16 156 C 7 141, 7 126, 14 112"/><path class="ah" d="M8 121 l 6 -10 8 7"/></g>
+          stroke="#b9a9d9" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <g id="fxa1"><path class="am" d="M186 38 C 222 26, 258 26, 296 36"/><path class="ah" d="M288 30 l 9 6 -10 5"/></g>
+        <g id="fxa2"><path class="am" d="M190 196 C 224 208, 258 208, 292 198"/><path class="ah" d="M284 192 l 9 6 -10 5"/></g>
       </svg>`;
-      const ed = fxEl(`<div class="fxed" style="left:1%;top:5%">
+      const ed = fxEl(`<div class="fxed" style="left:0;top:4%;width:178px">
         <div class="fxedhdr"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
           <img src="/static/micons/markdown.svg" width="11" height="11" alt="">rules.md</div>
-        <div class="fxedbody"><div class="fxedln">1<br>2<br>3</div>
-          <div class="fxedcode">when an <span id="fxinv1">invoice</span> arrives, check\nit against the budget — past\n<span id="fxdur">80%</span>, <span id="fxact">hold it for my sign-off</span><span class="fxcaret"></span>.</div>
+        <div class="fxedbody"><div class="fxedln">1<br>2<br>3<br>4</div>
+          <div class="fxedcode">when an <span id="fxinv1">invoice</span> arrives,\ncheck it against budget;\npast <span id="fxdur">80%</span>, then\n<span id="fxact">hold for my sign-off.</span><span class="fxcaret"></span></div>
         </div></div>`);
-      const work = fxEl(`<div class="fxed" style="right:0;top:7%;width:170px">
+      const work = fxEl(`<div class="fxed" style="right:0;top:4%;width:172px">
         <div class="fxedhdr"><img src="/static/micons/tune.svg" width="11" height="11" alt="" style="margin-left:0">rules.work · derived</div>
-        <div class="fxedbody" style="padding:5px 0"><div class="fxedcode" style="padding-left:9px">hook :email\n<span id="fxinv3">match invoice</span>\nspent + amount\nover <span id="fxwd">80%</span>? <span id="fxactw">hold</span> : ok</div></div>
+        <div class="fxedbody" style="padding:5px 0"><div class="fxedcode" style="padding-left:9px">hook :email\n<span id="fxinv3">match invoice</span>\nspent = sum(ledger)\nload = spent + $1,200\nload > <span id="fxwd">80%</span> budget ?\n  yes → <span id="fxactw">hold for sign-off</span>\n  no  → approve</div></div>
       </div>`);
-      const mail = fxEl(`<div class="fxchat" style="right:1%;top:73%;width:178px">
+      const mail = fxEl(`<div class="fxchat" style="left:0;top:74%;width:184px">
         <div style="font:9.5px/1.5 ui-monospace,monospace;color:#3a4250;text-align:left">${OB_GMAIL_SVG} <span id="fxinv2">invoice</span> #204 · <b>$1,200</b></div>
-        <div style="font:8.5px/1.4 ui-monospace,monospace;color:#b3bac4;text-align:left">budget $6,000 · spent $3,900 → 85%</div>
+        <div style="font:8.5px/1.4 ui-monospace,monospace;color:#b3bac4;text-align:left">$3,900 + $1,200 → 85% of budget</div>
       </div>`);
-      const res = fxEl(`<div class="fxchat" style="left:2%;top:71%;width:168px">
+      const res = fxEl(`<div class="fxchat" style="right:0;top:74%;width:172px">
         <div style="font:10px/1.6 ui-monospace,monospace;text-align:left"><span id="fxverd" class="vhold">⏸ held for sign-off</span></div>
         <div style="font:8.5px/1.4 ui-monospace,monospace;color:#b3bac4;text-align:left"><span id="fxnote">85% > 80%</span> — your rule</div>
       </div>`);
       fx.append(arrows, ed, work, mail, res);
       fxIn(ed, .15); fxIn(work, .7); fxIn(mail, 1.1); fxIn(res, 1.5);
-      // the cycle draws itself: write → machinery → verdict → back to you
+      // each row's arrow draws itself
       arrows.querySelectorAll(".am").forEach((p, k) => {
         const L = p.getTotalLength();
         p.style.strokeDasharray = L; p.style.strokeDashoffset = L;
-        gsap.to(p, { strokeDashoffset: 0, duration: .7, delay: .6 + k * .45, ease: "power2.inOut" });
+        gsap.to(p, { strokeDashoffset: 0, duration: .7, delay: .6 + k * .5, ease: "power2.inOut" });
       });
-      gsap.from(arrows.querySelectorAll(".ah"), { autoAlpha: 0, duration: .3, delay: 1.2, stagger: .45 });
+      gsap.from(arrows.querySelectorAll(".ah"), { autoAlpha: 0, duration: .3, delay: 1.25, stagger: .5 });
       const face = document.getElementById("slideface");
       let alive = true;
       const calls = [], timers = [];
@@ -4292,13 +4293,13 @@ const SLIDES = [
       // the LOOP: same invoice every time — only YOUR LAW changes. The edits VARY:
       // sometimes the action clause, sometimes the threshold; the verdict follows.
       const T = [
-        { el: "fxact", to: "ask finance to review it", mEl: "fxactw", mTo: "ask finance",
+        { el: "fxact", to: "ask finance to review.", mEl: "fxactw", mTo: "ask finance",
           v: "📨 sent to finance", vc: "vsend", note: "85% > 80%" },
         { el: "fxdur", to: "90%", mEl: "fxwd", mTo: "90%",
           v: "✓ approved", vc: "vok", note: "85% < 90%" },
         { el: "fxdur", to: "80%", mEl: "fxwd", mTo: "80%",
           v: "📨 sent to finance", vc: "vsend", note: "85% > 80%" },
-        { el: "fxact", to: "hold it for my sign-off", mEl: "fxactw", mTo: "hold",
+        { el: "fxact", to: "hold for my sign-off.", mEl: "fxactw", mTo: "hold for sign-off",
           v: "⏸ held for sign-off", vc: "vhold", note: "85% > 80%" }
       ];
       let step = 0;
@@ -4306,17 +4307,15 @@ const SLIDES = [
         if (!alive) return;
         const s = T[step++ % T.length];
         retype(fx.querySelector("#" + s.el), s.to, () => {
-          pulse(arrows.querySelector("#fxa1"));
+          pulse(arrows.querySelector("#fxa1"));    // top layer: english → machinery
           later(.4, () => diffSwap(fx.querySelector("#" + s.mEl), s.mTo));
-          later(1.3, () => pulse(arrows.querySelector("#fxa2")));   // machinery re-reads the mail
-          later(1.9, () => {
-            pulse(arrows.querySelector("#fxa3"));
+          later(1.7, () => {
+            pulse(arrows.querySelector("#fxa2"));  // bottom layer: same mail → new verdict
             diffSwap(fx.querySelector("#fxverd"), s.v, s.vc);
             fx.querySelector("#fxnote").textContent = s.note;
             gsap.fromTo(face, { scale: 1 }, { scale: 1.05, duration: .18, yoyo: true, repeat: 1 });
           });
-          later(3.6, () => pulse(arrows.querySelector("#fxa4")));   // …and back to you
-          later(4.4, swing);
+          later(4.2, swing);
         });
       }
       later(3.6, swing);
