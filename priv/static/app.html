@@ -1082,6 +1082,20 @@ proseEl.addEventListener("keydown", e => {
 proseEl.addEventListener("blur", () => setTimeout(closeMention, 150));
 proseEl.addEventListener("scroll", () => mentionRange && closeMention());
 
+// a [[ref]] behaves as ONE baked-in unit — backspace/delete removes the whole
+// reference at once (you can't chip away at the brackets or the name inside)
+proseEl.addEventListener("keydown", e => {
+  if (proseEl.selectionStart !== proseEl.selectionEnd) return;
+  const pos = proseEl.selectionStart, v = proseEl.value;
+  if (e.key === "Backspace") {
+    const m = v.slice(0, pos).match(/\[\[[^\[\]]*\]\]$/);
+    if (m) { e.preventDefault(); const s = pos - m[0].length; proseEl.value = v.slice(0, s) + v.slice(pos); proseEl.setSelectionRange(s, s); onEdit(); }
+  } else if (e.key === "Delete") {
+    const m = v.slice(pos).match(/^\[\[[^\[\]]*\]\]/);
+    if (m) { e.preventDefault(); proseEl.value = v.slice(0, pos) + v.slice(pos + m[0].length); proseEl.setSelectionRange(pos, pos); onEdit(); }
+  }
+});
+
 // caret pixel position inside a textarea (mirror-div technique)
 function caretCoords(ta) {
   const div = document.createElement("div"), cs = getComputedStyle(ta);
