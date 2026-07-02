@@ -163,6 +163,20 @@ defmodule Autopoet.Control do
     end)
   end
 
+  post "/limb" do
+    authed!(conn, fn conn ->
+      name = conn.query_params["name"] || ""
+      task = conn.query_params["task"] || ""
+
+      if name == "" or task == "" do
+        text(conn, "usage: limb?name=<limb>&task=<task>\n")
+      else
+        {:ok, out} = Autopoet.Limbs.dispatch(name, task)
+        text(conn, "dispatched #{name} (async) -> #{out}\n")
+      end
+    end)
+  end
+
   post "/research" do
     authed!(conn, fn conn ->
       q = conn.query_params["q"] || ""

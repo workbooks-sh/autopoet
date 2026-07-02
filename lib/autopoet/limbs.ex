@@ -36,6 +36,34 @@ defmodule Autopoet.Limbs do
     :ok
   end
 
+  @doc """
+  Generic dispatch: run ANY body-defined limb on a task (async). The answer is
+  saved under data/limb-runs/ and announced on the bus — what happens with it is
+  the caller's business (self-grown organs get a lane without bespoke plumbing).
+  Returns the output path it will write.
+  """
+  def dispatch(name, task) when is_binary(task) and task != "" do
+    out =
+      Path.join([Autopoet.Discovery.home(), "data", "limb-runs",
+                 "#{System.os_time(:second)}-#{name}.txt"])
+
+    Task.Supervisor.start_child(Nexus.Events.TaskSup, fn ->
+      case Nexus.Agent.run_named(name, task) do
+        {:ok, %{answer: answer} = result} ->
+          File.mkdir_p!(Path.dirname(out))
+          File.write!(out, answer)
+          Autopoet.Log.puts("limb #{name} returned: #{byte_size(answer)}B in #{result[:turns] || "?"} turns -> #{Path.relative_to(out, Autopoet.Discovery.home())}")
+          Nexus.Events.emit(%{kind: "limb.returned", limb: to_string(name), out: out, bytes: byte_size(answer), tags: []})
+
+        {:error, reason} ->
+          Autopoet.Log.puts("limb #{name} failed: #{inspect(reason)}")
+      end
+    end)
+
+    Autopoet.Log.puts("limb dispatched: #{name}")
+    {:ok, out}
+  end
+
   defp run_research(question) do
     {:ok, handoff} =
       Nexus.Autopoet.Plan.handoff(%{
