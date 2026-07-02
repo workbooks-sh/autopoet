@@ -859,6 +859,8 @@
   .fxline { height:7px; border-radius:4px; background:#dfe4ea; }
   .fxcompbtn { position:absolute; right:11px; bottom:11px; font:600 9.5px ui-monospace,monospace;
     color:#fff; background:#8e7cc3; padding:4px 11px; border-radius:7px; }
+  .fxvoice { display:flex; align-items:center; gap:3px; height:26px; }
+  .fxvoice .vb { width:3px; height:9px; background:#8e7cc3; border-radius:2px; display:block; }
   @keyframes fxblink { 50% { opacity:0; } }
 </style>
 
@@ -4162,6 +4164,54 @@ const SLIDES = [
       gsap.from(nodes, { scale: 0, duration: .5, delay: .65, stagger: .18, ease: "back.out(3)" });
       gsap.to(nodes, { y: "-=5", duration: 2, yoyo: true, repeat: -1, ease: "sine.inOut", stagger: .3, delay: 1.4 });
       gsap.to(note, { x: 74, autoAlpha: 0, duration: 1.0, delay: 1.1, ease: "power2.in" });
+    } },
+  { title: "a living document", mood: "neutral",
+    sub: "edit a note and the diff flows through — the output updates in place. not a chat: a document that stays true.",
+    fx(fx) {
+      // the note gets EDITED — old line struck out, new line typed in…
+      const doc = fxEl(`<div class="fxcard" style="left:2%;top:24%;width:142px;height:80px">plan: launch page\n<span id="fxold">tone: quiet, warm</span>\n<span id="fxnew" style="color:#6aa84f"></span></div>`);
+      fx.append(doc);
+      fxIn(doc);
+      // …and the OUTPUT updates in place, no rebuild, no conversation
+      const out = fxEl(`<div class="fxcard fxfile" style="right:4%;top:30%;width:130px;flex-direction:column;align-items:flex-start;gap:8px">
+        <div class="fxfile" style="position:static"><img src="/static/micons/svelte.svg" width="13" height="13" alt="">launch/page.svelte</div>
+        <div class="fxline" id="fxoutbar" style="width:38px"></div>
+      </div>`);
+      fx.append(out);
+      fxIn(out, .25);
+      const calls = [];
+      calls.push(gsap.delayedCall(1.0, () => {
+        const o = doc.querySelector("#fxold");
+        if (o) { o.style.textDecoration = "line-through"; o.style.color = "#c0392b"; }
+      }));
+      const text = "tone: bold.";
+      const span = doc.querySelector("#fxnew");
+      let i = 0, t = null;
+      calls.push(gsap.delayedCall(1.4, () => {
+        t = setInterval(() => { span.textContent = "+ " + text.slice(0, ++i); if (i >= text.length) clearInterval(t); }, 55);
+      }));
+      // the diff travels: note → face → output
+      const dot = fxEl(`<div class="fxnode" style="width:9px;height:9px;left:31%;top:47%;background:#6aa84f"></div>`);
+      fx.append(dot);
+      gsap.set(dot, { autoAlpha: 0 });
+      gsap.to(dot, { autoAlpha: 1, duration: .2, delay: 2.5 });
+      gsap.to(dot, { left: "64%", duration: .9, delay: 2.6, ease: "power1.inOut" });
+      gsap.to(dot, { autoAlpha: 0, duration: .2, delay: 3.4 });
+      gsap.to(out.querySelector("#fxoutbar"), { width: 74, background: "#6aa84f", duration: .5, delay: 3.4, ease: "power2.out" });
+      gsap.fromTo(out, { scale: 1 }, { scale: 1.06, duration: .22, delay: 3.4, yoyo: true, repeat: 1, ease: "sine.inOut" });
+      return () => { if (t) clearInterval(t); calls.forEach(c => c.kill()); };
+    } },
+  { title: "but sure, you can chat", mood: "happy",
+    sub: "chat and voice are right there too. (yes — after all that. some days you just want to talk.)",
+    fx(fx) {
+      const b1 = fxEl(`<div class="fxchip" style="left:5%;top:26%">“add a pricing page?”</div>`);
+      const b2 = fxEl(`<div class="fxchip" style="left:3%;top:47%;background:#f4f1fb;border-color:#d9c9f0">done — on the graph</div>`);
+      const voice = fxEl(`<div class="fxchip fxvoice" style="right:8%;top:38%">` +
+        `<span class="vb"></span><span class="vb"></span><span class="vb"></span><span class="vb"></span><span class="vb"></span></div>`);
+      fx.append(b1, b2, voice);
+      fxIn(b1, .2); fxIn(b2, .9); fxIn(voice, .5);
+      gsap.to(voice.querySelectorAll(".vb"), { scaleY: () => 0.5 + Math.random() * 2.4, duration: .28,
+        yoyo: true, repeat: -1, repeatRefresh: true, stagger: .07, ease: "sine.inOut", delay: 1.1 });
     } },
   { title: "it improves itself", mood: "neutral",
     sub: "the autopoet tends its own body — it writes structure, files its own issues, and keeps a full undo history.",
