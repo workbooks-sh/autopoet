@@ -42,6 +42,21 @@ defmodule Autopoet.Control do
     conn |> put_resp_content_type("application/javascript") |> send_resp(200, js)
   end
 
+  get "/static/perfect-freehand.mjs" do
+    js = [:code.priv_dir(:autopoet), "static", "perfect-freehand.mjs"] |> Path.join() |> File.read!()
+    conn |> put_resp_content_type("text/javascript") |> send_resp(200, js)
+  end
+
+  get "/static/micons/:name" do
+    path = Path.join([:code.priv_dir(:autopoet), "static", "micons", Path.basename(name)])
+
+    if File.exists?(path) and String.ends_with?(name, ".svg") do
+      conn |> put_resp_content_type("image/svg+xml") |> send_resp(200, File.read!(path))
+    else
+      send_resp(conn, 404, "no icon\n")
+    end
+  end
+
   get "/favicon.ico" do
     conn |> put_resp_content_type("image/svg+xml") |> send_resp(200, Autopoet.Avatar.svg(Autopoet.Avatar.default_seed(), 32))
   end

@@ -46,7 +46,7 @@
     border-radius:5px; cursor:pointer; white-space:nowrap; }
   #tree li > .row:hover { background:#ececе6; background:#ecece6; }
   #tree li > .row.open { background:#e4e8f5; }
-  #tree svg.ic { width:13px; height:13px; flex:none; }
+  #tree img.mic { width:16px; height:16px; flex:none; }   /* VS Code material icons */
 
   /* ── prose / sketch editor (blue in the mock) ───────────────────────── */
   #editor { grid-row:1; grid-column:2; border-right:1px solid var(--line);
@@ -69,20 +69,34 @@
   #prose { flex:1; border:none; outline:none; resize:none; padding:18px 20px;
     font:14px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:#223;
     background:#fff; }
-  #sketch { flex:1; touch-action:none; cursor:crosshair; background:#fff; display:none; }
-  #sktools { display:none; gap:4px; padding:6px 12px; border-bottom:1px solid var(--line);
-    background:#fbfbf9; }
-  #sktools button { border:none; background:none; cursor:pointer; color:#7a8290;
-    padding:5px 7px; border-radius:7px; display:flex; align-items:center;
-    transition:background .15s ease, color .15s ease; }
-  #sktools button:hover { background:#efefe9; color:#3a4250; }
-  #sktools button.sel { background:#e4e8f5; color:#2f6fdd; }
-  #sktools svg.lucide { width:14px; height:14px; }
+  /* ── the sketch surface: MS-Paint bones, our theme ─────────────────────── */
+  #skwrap { flex:1; display:none; min-height:0; }
+  #app.sketching #skwrap { display:flex; }
+  #app.sketching #prose { display:none; }
+  #skpal { width:82px; flex:none; border-right:1px solid var(--line); background:#f7f7f4;
+    padding:10px 9px; display:flex; flex-direction:column; gap:12px; overflow:auto; }
+  #skpal .tools { display:grid; grid-template-columns:1fr 1fr; gap:5px; }
+  #skpal .tools button { aspect-ratio:1; display:flex; align-items:center; justify-content:center;
+    border:1px solid #d8dade; border-radius:6px; background:#fdfdfc; cursor:pointer; color:#5a6472;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.9), 0 1px 2px rgba(20,30,50,.06); }
+  #skpal .tools button:hover { color:#223; }
+  #skpal .tools button.sel { background:#e4e8f5; color:#2f6fdd; border-color:#b9c8e8;
+    box-shadow:inset 0 1px 3px rgba(30,50,90,.18); }   /* sunken = selected, Paint-style */
+  #skpal svg.lucide { width:15px; height:15px; }
+  #skpal .sizes { display:flex; flex-direction:column; gap:4px; }
+  #skpal .sizes button { display:flex; align-items:center; justify-content:center; height:20px;
+    border:1px solid #d8dade; border-radius:5px; background:#fdfdfc; cursor:pointer; }
+  #skpal .sizes button span { display:block; width:60%; border-radius:99px; background:#5a6472; }
+  #skpal .sizes button.sel { background:#e4e8f5; border-color:#b9c8e8; }
+  #skpal .sizes button.sel span { background:#2f6fdd; }
+  #skpal .swatches { display:grid; grid-template-columns:1fr 1fr; gap:5px; }
+  #skpal .swatches button { aspect-ratio:1; border-radius:6px; cursor:pointer;
+    border:1px solid rgba(0,0,0,.15); }
+  #skpal .swatches button.sel { outline:2px solid #2f6fdd; outline-offset:1px; }
+  #skundo { grid-column:1 / -1; aspect-ratio:auto !important; height:26px; }
+  #sketch { flex:1; touch-action:none; cursor:crosshair; background:#fff; min-width:0; }
   #sktext { position:absolute; z-index:9; display:none; font:16px -apple-system,sans-serif;
     border:1px solid #5b8cc9; border-radius:6px; padding:2px 8px; outline:none; background:#fff; }
-  #app.sketching #prose { display:none; }
-  #app.sketching #sketch { display:block; }
-  #app.sketching #sktools { display:flex; }
 
   /* ── the world (graph) ──────────────────────────────────────────────── */
   #stage { grid-row:1; grid-column:3; position:relative; min-width:0; }
@@ -329,14 +343,26 @@
       <button id="closeed" title="collapse"><i data-lucide="chevrons-left"></i></button>
     </div>
     <textarea id="prose" spellcheck="false" placeholder="write plainly — this is your source of truth"></textarea>
-    <div id="sktools">
-      <button data-tool="pen" class="sel" title="draw"><i data-lucide="pen-line"></i></button>
-      <button data-tool="rect" title="box"><i data-lucide="square"></i></button>
-      <button data-tool="ellipse" title="circle"><i data-lucide="circle"></i></button>
-      <button data-tool="arrow" title="arrow"><i data-lucide="move-up-right"></i></button>
-      <button data-tool="text" title="text"><i data-lucide="type"></i></button>
+    <div id="skwrap">
+      <div id="skpal">
+        <div class="tools">
+          <button data-tool="pen" class="sel" title="pencil"><i data-lucide="pencil"></i></button>
+          <button data-tool="eraser" title="eraser"><i data-lucide="eraser"></i></button>
+          <button data-tool="rect" title="box"><i data-lucide="square"></i></button>
+          <button data-tool="ellipse" title="circle"><i data-lucide="circle"></i></button>
+          <button data-tool="arrow" title="arrow"><i data-lucide="move-up-right"></i></button>
+          <button data-tool="text" title="text"><i data-lucide="type"></i></button>
+        </div>
+        <div class="sizes">
+          <button data-size="2" class="sel"><span style="height:2px"></span></button>
+          <button data-size="4"><span style="height:4px"></span></button>
+          <button data-size="7"><span style="height:7px"></span></button>
+        </div>
+        <div class="swatches" id="skswatches"></div>
+        <div class="tools"><button id="skundo" title="undo ⌘Z"><i data-lucide="undo-2"></i></button></div>
+      </div>
+      <svg id="sketch" xmlns="http://www.w3.org/2000/svg"></svg>
     </div>
-    <svg id="sketch" xmlns="http://www.w3.org/2000/svg"></svg>
     <input id="sktext" spellcheck="false">
   </div>
 
@@ -379,17 +405,17 @@
 <div id="modal">
   <h3>NEW IN VAULT</h3>
   <div class="kind" data-kind="note">
-    <span class="ic-note"><i data-lucide="file-text"></i></span>
+    <img class="mic" style="width:19px;height:19px" src="/static/micons/markdown.svg" alt="">
     <div><div class="t">document</div>
       <div class="d">plain language — your thoughts become real structure on save</div></div>
   </div>
   <div class="kind" data-kind="sketch">
-    <span class="ic-sketch"><i data-lucide="pen-tool"></i></span>
+    <img class="mic" style="width:19px;height:19px" src="/static/micons/svg.svg" alt="">
     <div><div class="t">sketch</div>
       <div class="d">freehand drawing — the autopoet interprets what you draw</div></div>
   </div>
   <div class="kind" data-kind="folder">
-    <span class="ic-folder"><i data-lucide="folder"></i></span>
+    <img class="mic" style="width:19px;height:19px" src="/static/micons/folder.svg" alt="">
     <div><div class="t">folder</div>
       <div class="d">you can put shit in it</div></div>
   </div>
@@ -402,6 +428,10 @@
 
 <script src="/static/d3.v7.min.js"></script>
 <script src="/static/lucide.min.js"></script>
+<script type="module">
+  import { getStroke } from "/static/perfect-freehand.mjs";
+  window.getStroke = getStroke;   // the Excalidraw-grade ink engine (pen falls back until loaded)
+</script>
 <script>
 const TOKEN = "__TOKEN__";
 const authed = { headers: { authorization: `Bearer ${TOKEN}` } };
@@ -424,10 +454,11 @@ addEventListener("error", e => fatal(e.message + " @ " + e.filename + ":" + e.li
 addEventListener("unhandledrejection", e => fatal(String(e.reason)));
 
 // ══ VAULT ═══════════════════════════════════════════════════════════════
+// VS Code Material Icon Theme file icons (vendored SVGs, served from /static/micons)
+const mic = n => `<img class="mic" src="/static/micons/${n}.svg" alt="">`;
 const ICONS = {
-  folder: `<span class="ic-folder"><i data-lucide="folder"></i></span>`,
-  note:   `<span class="ic-note"><i data-lucide="file-text"></i></span>`,
-  sketch: `<span class="ic-sketch"><i data-lucide="pen-tool"></i></span>`
+  folder: mic("folder"), folderOpen: mic("folder-open"),
+  note: mic("markdown"), sketch: mic("svg")
 };
 const refreshIcons = () => window.lucide && lucide.createIcons();
 let open = { path: null, kind: null, dirty: false };
@@ -439,10 +470,14 @@ async function loadTree() {
     const path = el.dataset.path, kind = el.dataset.kind, folder = el.dataset.folder !== undefined;
     if (!folder) el.onclick = () => openFile(path, kind);
     if (folder) el.onclick = () => {
-      if (closedFolders.has(path)) closedFolders.delete(path); else closedFolders.add(path);
+      const nowClosed = !closedFolders.has(path);
+      if (nowClosed) closedFolders.add(path); else closedFolders.delete(path);
       persistFolders();
-      el.classList.toggle("openf");
-      el.parentElement.querySelector("ul")?.classList.toggle("hide");
+      el.classList.toggle("openf", !nowClosed);
+      el.parentElement.querySelector("ul")?.classList.toggle("hide", nowClosed);
+      // swap the material folder icon open/closed
+      const img = el.querySelector("img.mic");
+      if (img) img.src = `/static/micons/${nowClosed ? "folder" : "folder-open"}.svg`;
     };
     if (path === open.path) el.classList.add("open");
     el.classList.toggle("isdirty", !!buffers[path]);
@@ -484,7 +519,7 @@ function renderTree(items) {
       const closed = closedFolders.has(n.path);
       return `<li><div class="row ${closed ? "" : "openf"}" data-path="${esc(n.path)}" data-folder>
         <span class="tw"><i data-lucide="chevron-right"></i></span>
-        ${ICONS.folder}<span>${esc(n.name)}</span></div>
+        ${closed ? ICONS.folder : ICONS.folderOpen}<span>${esc(n.name)}</span></div>
         <ul class="${closed ? "hide" : ""}">${renderTree(n.children || [])}</ul></li>`;
     }
     return `<li><div class="row" data-path="${esc(n.path)}" data-kind="${n.type}">${ICONS[n.type]}<span>${esc(n.name)}</span></div></li>`;
@@ -686,30 +721,100 @@ document.getElementById("newnote").onclick = () => openModal("note");
 document.getElementById("newsketch").onclick = () => openModal("sketch");
 document.getElementById("newfolder").onclick = () => openModal("folder");
 
-// ── sketch surface: pen / box / circle / arrow / text ─────────────────────
+// ── sketch: MS-Paint bones, Excalidraw-grade ink (perfect-freehand), SVG out ──
 const sk = document.getElementById("sketch");
 const SVGNS = "http://www.w3.org/2000/svg";
-let tool = "pen", drawing = null, anchor = null;
+let tool = "pen", drawing = null, anchor = null, ink = "#223344", skSize = 2, penPts = [];
+const undoStack = [];
 
-document.querySelectorAll("#sktools button").forEach(b =>
+document.querySelectorAll("#skpal .tools button[data-tool]").forEach(b =>
   b.onclick = () => {
     tool = b.dataset.tool;
-    document.querySelectorAll("#sktools button").forEach(x => x.classList.toggle("sel", x === b));
+    document.querySelectorAll("#skpal .tools button[data-tool]").forEach(x => x.classList.toggle("sel", x === b));
   });
+document.querySelectorAll("#skpal .sizes button").forEach(b =>
+  b.onclick = () => {
+    skSize = +b.dataset.size;
+    document.querySelectorAll("#skpal .sizes button").forEach(x => x.classList.toggle("sel", x === b));
+  });
+
+const SWATCHES = ["#223344", "#e03131", "#2f6fdd", "#2f9e44", "#f2a33c", "#9c36b5", "#f76707", "#ffffff"];
+document.getElementById("skswatches").innerHTML = SWATCHES.map((c, i) =>
+  `<button data-c="${c}" class="${i === 0 ? "sel" : ""}" style="background:${c}"></button>`).join("");
+document.querySelectorAll("#skswatches button").forEach(b =>
+  b.onclick = () => {
+    ink = b.dataset.c;
+    document.querySelectorAll("#skswatches button").forEach(x => x.classList.toggle("sel", x === b));
+  });
+
+function commitEl(el) { undoStack.push({ op: "add", el }); onEdit(); }
+function skUndo() {
+  const u = undoStack.pop();
+  if (!u) return;
+  if (u.op === "add") u.el.remove();
+  else u.parent.insertBefore(u.el, u.next);
+  onEdit();
+}
+document.getElementById("skundo").onclick = skUndo;
+addEventListener("keydown", e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "z" &&
+      document.getElementById("app").classList.contains("sketching")) {
+    e.preventDefault(); skUndo();
+  }
+});
+
+// perfect-freehand outline → SVG path (the standard quadratic-midpoint fill)
+function pathFromStroke(pts) {
+  if (!pts.length) return "";
+  const d = pts.reduce((acc, [x0, y0], i, arr) => {
+    const [x1, y1] = arr[(i + 1) % arr.length];
+    acc.push(x0.toFixed(2), y0.toFixed(2), ((x0 + x1) / 2).toFixed(2), ((y0 + y1) / 2).toFixed(2));
+    return acc;
+  }, ["M", ...pts[0].slice(0, 2).map(n => n.toFixed(2)), "Q"]);
+  d.push("Z");
+  return d.join(" ");
+}
+function renderPen() {
+  if (!drawing) return;
+  if (window.getStroke) {
+    const outline = getStroke(penPts, {
+      size: skSize * 3.4, thinning: 0.55, smoothing: 0.5, streamline: 0.45,
+      simulatePressure: penPts.every(p => p[2] === 0.5)
+    });
+    drawing.setAttribute("d", pathFromStroke(outline));
+    drawing.setAttribute("fill", ink);
+    drawing.removeAttribute("stroke");
+  } else {
+    drawing.setAttribute("d", "M " + penPts.map(p => `${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(" L "));
+  }
+}
+function eraseAt(e) {
+  const hit = document.elementFromPoint(e.clientX, e.clientY);
+  if (hit && hit !== sk && sk.contains(hit) && hit.tagName !== "defs" && !hit.closest("defs")) {
+    undoStack.push({ op: "del", el: hit, parent: hit.parentNode, next: hit.nextSibling });
+    hit.remove();
+  }
+}
 
 function loadSketch(svgText) {
   const doc = new DOMParser().parseFromString(svgText, "image/svg+xml");
   sk.setAttribute("viewBox", doc.documentElement.getAttribute("viewBox") || "0 0 1200 800");
-  sk.innerHTML = doc.documentElement.innerHTML;
-  ensureArrowMarker();
+  sk.innerHTML = doc.documentElement.innerHTML;   // saved sketches carry their own defs
 }
-function ensureArrowMarker() {
-  if (sk.querySelector("#arrhead")) return;
-  const defs = document.createElementNS(SVGNS, "defs");
-  defs.innerHTML = `<marker id="arrhead" viewBox="0 0 10 10" refX="8" refY="5"
-    markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-    <path d="M 0 0 L 10 5 L 0 10 z" fill="#223"/></marker>`;
-  sk.prepend(defs);
+// arrowheads follow the ink color: one marker per used color
+function ensureArrowMarker(c) {
+  const id = "arr" + c.replace(/[^a-zA-Z0-9]/g, "");
+  if (sk.querySelector("#" + id)) return id;
+  let defs = sk.querySelector("defs");
+  if (!defs) { defs = document.createElementNS(SVGNS, "defs"); sk.prepend(defs); }
+  const m = document.createElementNS(SVGNS, "marker");
+  m.setAttribute("id", id); m.setAttribute("viewBox", "0 0 10 10");
+  m.setAttribute("refX", 8); m.setAttribute("refY", 5);
+  m.setAttribute("markerWidth", 7); m.setAttribute("markerHeight", 7);
+  m.setAttribute("orient", "auto-start-reverse");
+  m.innerHTML = `<path d="M 0 0 L 10 5 L 0 10 z" fill="${c}"/>`;
+  defs.appendChild(m);
+  return id;
 }
 function serializeSketch() {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${sk.getAttribute("viewBox")}" fill="none">\n${sk.innerHTML}\n</svg>`;
@@ -718,7 +823,7 @@ function skPt(e) {
   return new DOMPoint(e.clientX, e.clientY).matrixTransform(sk.getScreenCTM().inverse());
 }
 const stroke = el => {
-  el.setAttribute("stroke", "#223"); el.setAttribute("stroke-width", "2.5");
+  el.setAttribute("stroke", ink); el.setAttribute("stroke-width", skSize + 0.5);
   el.setAttribute("stroke-linecap", "round"); el.setAttribute("fill", "none");
   return el;
 };
@@ -727,10 +832,11 @@ sk.addEventListener("pointerdown", e => {
   if (tool === "text") return placeText(e);
   sk.setPointerCapture(e.pointerId);
   const p = skPt(e); anchor = p;
-  ensureArrowMarker();
+  if (tool === "eraser") { drawing = "erasing"; eraseAt(e); return; }
   if (tool === "pen") {
-    drawing = stroke(document.createElementNS(SVGNS, "path"));
-    drawing.setAttribute("d", `M ${p.x.toFixed(1)} ${p.y.toFixed(1)}`);
+    penPts = [[p.x, p.y, e.pressure || 0.5]];
+    drawing = document.createElementNS(SVGNS, "path");
+    renderPen();
   } else if (tool === "rect") {
     drawing = stroke(document.createElementNS(SVGNS, "rect"));
     drawing.setAttribute("rx", 6);
@@ -739,15 +845,18 @@ sk.addEventListener("pointerdown", e => {
   } else if (tool === "arrow") {
     drawing = stroke(document.createElementNS(SVGNS, "line"));
     drawing.setAttribute("x1", p.x); drawing.setAttribute("y1", p.y);
-    drawing.setAttribute("marker-end", "url(#arrhead)");
+    drawing.setAttribute("marker-end", `url(#${ensureArrowMarker(ink)})`);
   }
-  if (drawing) sk.appendChild(drawing);
+  if (drawing && drawing !== "erasing") sk.appendChild(drawing);
 });
 sk.addEventListener("pointermove", e => {
   if (!drawing) return;
+  if (drawing === "erasing") return eraseAt(e);
   const p = skPt(e);
-  if (tool === "pen") drawing.setAttribute("d", drawing.getAttribute("d") + ` L ${p.x.toFixed(1)} ${p.y.toFixed(1)}`);
-  else if (tool === "rect") {
+  if (tool === "pen") {
+    penPts.push([p.x, p.y, e.pressure || 0.5]);
+    renderPen();
+  } else if (tool === "rect") {
     drawing.setAttribute("x", Math.min(anchor.x, p.x)); drawing.setAttribute("y", Math.min(anchor.y, p.y));
     drawing.setAttribute("width", Math.abs(p.x - anchor.x)); drawing.setAttribute("height", Math.abs(p.y - anchor.y));
   } else if (tool === "ellipse") {
@@ -759,11 +868,12 @@ sk.addEventListener("pointermove", e => {
 });
 addEventListener("pointerup", () => {
   if (!drawing) return;
+  if (drawing === "erasing") { drawing = null; onEdit(); return; }
   // discard accidental dots (shapes with no size)
   const tiny = (tool === "rect" && +drawing.getAttribute("width") < 3) ||
                (tool === "ellipse" && +drawing.getAttribute("rx") < 2);
-  if (tiny) drawing.remove(); else onEdit();
-  drawing = null;
+  if (tiny) drawing.remove(); else commitEl(drawing);
+  drawing = null; penPts = [];
 });
 
 // text tool: click places an in-place input; Enter commits an SVG <text>
@@ -781,13 +891,13 @@ sktext.addEventListener("keydown", e => {
   if (e.key === "Enter" && sktext.value.trim()) {
     const t = document.createElementNS(SVGNS, "text");
     t.setAttribute("x", textAt.x); t.setAttribute("y", textAt.y);
-    t.setAttribute("fill", "#223");
+    t.setAttribute("fill", ink);
     t.setAttribute("font-family", "-apple-system, sans-serif");
-    t.setAttribute("font-size", "20");
+    t.setAttribute("font-size", 12 + skSize * 4);
     t.textContent = sktext.value.trim();
     sk.appendChild(t);
     sktext.style.display = "none";
-    onEdit();
+    commitEl(t);
   }
   if (e.key === "Escape") sktext.style.display = "none";
 });
