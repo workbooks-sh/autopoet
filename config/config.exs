@@ -1,5 +1,11 @@
 import Config
 
+# The nexus Store rides SQLite (durable, under data/nexus/.nexus/) instead of the
+# ETS default — this app is long-lived; its data must outlive the BEAM.
+if config_env() != :test do
+  config :nexus, store_adapter: Nexus.Store.Sqlite
+end
+
 if config_env() == :test do
   config :autopoet,
     headless: true,

@@ -85,6 +85,13 @@ defmodule Autopoet.Proposals do
       set_status(id, "accepted")
       Nexus.Events.emit(%{kind: "proposal.accepted", proposal: id, tags: []})
       Autopoet.Log.puts("PROPOSAL #{id} ACCEPTED (#{map_size(changes)} file(s) applied; autonomy was #{verdict.autonomy})")
+
+      # hot-reload: an accepted agent definition registers immediately (limbs
+      # otherwise only register at boot — an accepted organ must come alive now)
+      if Enum.any?(changes, fn {_, src} -> src =~ ~r/^agent :/m end) do
+        Autopoet.Limbs.register_from_body()
+      end
+
       :ok
     else
       %{verdict: :fail} = v ->

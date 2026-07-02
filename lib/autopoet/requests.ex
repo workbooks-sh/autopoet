@@ -29,22 +29,43 @@ defmodule Autopoet.Requests do
   @doc "Hand all pending requests to the cycle and clear the queue."
   def drain, do: GenServer.call(__MODULE__, :drain)
 
+  def dir, do: Path.join([Autopoet.Discovery.home(), "data", "requests"])
+
   @impl true
   def init(nil) do
+    File.mkdir_p!(dir())
+
+    # Reload undrained requests from disk — a restart must not eat a filed issue.
+    q =
+      for f <- Path.wildcard(Path.join(dir(), "*.req")), into: %{} do
+        {Path.basename(f, ".req"), f |> File.read!() |> :erlang.binary_to_term()}
+      end
+
+    if map_size(q) > 0, do: Autopoet.Log.puts("requests: #{map_size(q)} pending reloaded from disk")
+
     Nexus.Events.subscribe()
-    {:ok, %{}}
+    {:ok, q}
   end
 
   @impl true
   def handle_info({:event, %{kind: "self_edit.requested"} = ev}, q) do
-    key = ev[:dedup_key] || "#{ev[:target]}::#{ev[:change]}"
+    key = fname(ev[:dedup_key] || "#{ev[:target]}::#{ev[:change]}")
+    entry = %{target: ev[:target], change: ev[:change], why: ev[:why], evidence: ev[:evidence]}
+    File.write!(Path.join(dir(), key <> ".req"), :erlang.term_to_binary(entry))
     Autopoet.Log.puts("request queued (#{ev[:target]}): #{String.slice(to_string(ev[:change]), 0, 120)}")
-    {:noreply, Map.put(q, key, %{target: ev[:target], change: ev[:change], why: ev[:why], evidence: ev[:evidence]})}
+    {:noreply, Map.put(q, key, entry)}
   end
 
   def handle_info(_msg, q), do: {:noreply, q}
 
   @impl true
   def handle_call(:pending, _from, q), do: {:reply, Map.values(q), q}
-  def handle_call(:drain, _from, q), do: {:reply, Map.values(q), %{}}
+
+  def handle_call(:drain, _from, q) do
+    for key <- Map.keys(q), do: File.rm(Path.join(dir(), key <> ".req"))
+    {:reply, Map.values(q), %{}}
+  end
+
+  # dedup keys become filenames — encode so slashes/spaces can't escape the dir
+  defp fname(key), do: Base.url_encode64(:erlang.md5(to_string(key)), padding: false)
 end
