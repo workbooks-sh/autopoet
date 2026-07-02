@@ -159,20 +159,25 @@ async function draw() {
     .attr("r", radius).attr("fill", d => color(d))
     .attr("fill-opacity", 0.85).attr("stroke", "#fff").attr("stroke-width", 2);
 
-  // the self: a squircle with the face inside
+  // the self: a squircle mask with the seeded avatar (its own colored background)
+  // clipped inside. No heavy stroke — the color IS the frame.
   const selfG = node.filter(d => d.id === "self");
-  const S = 92, R = 30;
+  const S = 96, R = 30;
   selfG.append("clipPath").attr("id", "sq")
     .append("rect").attr("x", -S/2).attr("y", -S/2).attr("width", S).attr("height", S).attr("rx", R);
   selfG.append("rect").attr("x", -S/2).attr("y", -S/2).attr("width", S).attr("height", S)
-    .attr("rx", R).attr("fill", "#fff").attr("stroke", "#223").attr("stroke-width", 2);
-  // inline the avatar SVG (not <image>) so JS can reach #ap-eyes / #ap-mouth to
-  // blink and talk. Fetched once, nested inside the squircle clip.
-  const holder = selfG.append("g").attr("clip-path", "url(#sq)")
-    .attr("transform", `translate(${-S/2},${-S/2})`);
-  fetch("/avatar").then(r => r.text()).then(svg => {
-    holder.html(svg);
-    const inner = holder.select("svg").attr("width", S).attr("height", S);
+    .attr("rx", R).attr("fill", "#fff")
+    .attr("stroke", "rgba(0,0,0,.12)").attr("stroke-width", 1);
+
+  // inject the avatar with correct SVG namespacing (d3 .html() mangles nested SVG,
+  // which distorts it). Parse → import the <svg> node → size + clip it.
+  fetch("/avatar").then(r => r.text()).then(txt => {
+    const doc = new DOMParser().parseFromString(txt, "image/svg+xml");
+    const av = document.importNode(doc.documentElement, true);
+    av.setAttribute("x", -S/2); av.setAttribute("y", -S/2);
+    av.setAttribute("width", S); av.setAttribute("height", S);
+    const holder = selfG.append("g").attr("clip-path", "url(#sq)").node();
+    holder.appendChild(av);
     startFace();
   });
 
