@@ -148,10 +148,11 @@ function startParallax() {
     const face = document.getElementById("ap-face"), eyesPx = document.getElementById("ap-eyes-px");
     if (!face || !eyesPx) return;
     tx += (want.x - tx) * 0.35; ty += (want.y - ty) * 0.35;   // ease toward target
-    const k = 2.6;
+    const k = 2.2;                                             // whole-face "look" shift
     face.setAttribute("transform",
-      `translate(${(tx * k).toFixed(2)} ${(ty * k).toFixed(2)}) skewX(${(-tx * 2.2).toFixed(2)}) skewY(${(ty * 1.2).toFixed(2)})`);
-    eyesPx.setAttribute("transform", `translate(${(tx * 1.7).toFixed(2)} ${(ty * 1.7).toFixed(2)})`);
+      `translate(${(tx * k).toFixed(2)} ${(ty * k).toFixed(2)}) skewX(${(-tx * 1.8).toFixed(2)}) skewY(${(ty * 1.0).toFixed(2)})`);
+    // gentle eye depth (much less than before) so eyes & mouth don't diverge/cramp
+    eyesPx.setAttribute("transform", `translate(${(tx * 0.8).toFixed(2)} ${(ty * 0.8).toFixed(2)})`);
     if (Math.abs(want.x - tx) > 0.005 || Math.abs(want.y - ty) > 0.005) raf = requestAnimationFrame(apply);
   }
   addEventListener("mousemove", onMove, { passive: true });
@@ -198,6 +199,8 @@ async function draw() {
   // clipped inside. No heavy stroke — the color IS the frame.
   const selfG = node.filter(d => d.id === "self");
   const S = 96, R = 30;
+  // hovering the face gives it the droopy mouth ("sad"); leaving → back to neutral.
+  selfG.on("mouseenter", () => setMouth("sad")).on("mouseleave", () => setMouth("neutral"));
   selfG.append("clipPath").attr("id", "sq")
     .append("rect").attr("x", -S/2).attr("y", -S/2).attr("width", S).attr("height", S).attr("rx", R);
   selfG.append("rect").attr("x", -S/2).attr("y", -S/2).attr("width", S).attr("height", S)
@@ -264,14 +267,8 @@ document.getElementById("logbtn").onclick = () =>
   logwrap.style.display = logwrap.style.display === "block" ? "none" : "block";
 new EventSource("/sse").onmessage = e => {
   log.textContent += e.data + "\n"; log.scrollTop = log.scrollHeight;
-  // the face reacts: it "talks" while the system is doing things, and its resting
-  // emotion tracks what happened (accepted = happy, failure/reject = sad).
-  talkFor(1600);
-  if (/ACCEPTED|returned/.test(e.data)) setEmotion("happy");
-  else if (/failed|rejected|WATCHDOG/.test(e.data)) setEmotion("sad");
-  else if (/ATTENTION|drift/.test(e.data)) setEmotion("confused");
-  else setEmotion("neutral");
-  // the world changes when proposals/limbs move — redraw on those beats
+  // the resting face stays neutral — mouth shapes are for deliberate interactions
+  // (hover) and, later, real talking; never random churn on every log line.
   if (/PROPOSAL|ACCEPTED|REVERTED|rejected|limb registered/.test(e.data)) draw();
 };
 

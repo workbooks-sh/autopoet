@@ -33,7 +33,7 @@ defmodule Autopoet.Avatar do
       <g id="ap-eyes-px" style="transition:transform .12s ease-out">
         <g id="ap-eyes" style="transform-box:fill-box;transform-origin:center;transition:transform .09s ease">#{File.read!(base_path("eyes"))}</g>
       </g>
-      <g id="ap-mouth">#{part("mood", "neutral")}</g>
+      <g id="ap-mouth" transform="translate(0 2)">#{part("mood", "neutral")}</g>
     </g>
     </svg>
     """
