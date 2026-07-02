@@ -149,6 +149,13 @@ defmodule Autopoet.Control do
     conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(Autopoet.History.log()))
   end
 
+  # what one commit changed — the inspect panel's "what happened here" file list
+  get "/history/diff.json" do
+    conn = fetch_query_params(conn)
+    files = Autopoet.History.diff(conn.query_params["rev"] || "@")
+    conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(%{files: files}))
+  end
+
   post "/history/merge" do
     authed!(conn, fn conn ->
       case Autopoet.History.merge_heads() do

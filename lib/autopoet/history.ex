@@ -63,6 +63,9 @@ defmodule Autopoet.History do
   @doc "Restore the VAULT to how it looked at `rev` (files copied back to data/notes)."
   def restore(rev), do: GenServer.call(__MODULE__, {:restore, rev}, 30_000)
 
+  @doc "What a commit changed: `[\"M vault/plan.md\", ...]` (jj diff -s lines)."
+  def diff(rev), do: GenServer.call(__MODULE__, {:diff, rev}, 15_000)
+
   # ── server ──────────────────────────────────────────────────────────────────
 
   @impl true
@@ -89,6 +92,11 @@ defmodule Autopoet.History do
   def handle_call({:restore, rev}, _from, s) do
     s = ensure(s)
     {:reply, if(s.status == :ready, do: safely_val(fn -> do_restore(rev) end, {:error, :history_unavailable}), else: {:error, :history_unavailable}), s}
+  end
+
+  def handle_call({:diff, rev}, _from, s) do
+    s = ensure(s)
+    {:reply, if(s.status == :ready, do: safely_val(fn -> do_diff(rev) end, []), else: []), s}
   end
 
   # ── mutations (already serialized by the GenServer) ────────────────────────
@@ -204,6 +212,13 @@ defmodule Autopoet.History do
         commit("vault: restored #{length(vault_files)} file(s) @ #{String.slice(rev, 0, 8)}")
         {:ok, length(vault_files)}
       end
+    end
+  end
+
+  defp do_diff(rev) do
+    case jj(["diff", "--no-pager", "-s", "-r", rev]) do
+      {out, 0} -> String.split(out, "\n", trim: true)
+      _ -> []
     end
   end
 
