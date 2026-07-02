@@ -37,6 +37,11 @@ defmodule Autopoet.Control do
     conn |> put_resp_content_type("application/javascript") |> send_resp(200, js)
   end
 
+  get "/static/lucide.min.js" do
+    js = [:code.priv_dir(:autopoet), "static", "lucide.min.js"] |> Path.join() |> File.read!()
+    conn |> put_resp_content_type("application/javascript") |> send_resp(200, js)
+  end
+
   get "/favicon.ico" do
     conn |> put_resp_content_type("image/svg+xml") |> send_resp(200, Autopoet.Avatar.svg(Autopoet.Avatar.default_seed(), 32))
   end

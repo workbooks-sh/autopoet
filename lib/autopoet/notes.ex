@@ -80,6 +80,11 @@ defmodule Autopoet.Notes do
     if File.exists?(p), do: {:error, :exists}, else: do_create(p, kind)
   end
 
+  defp do_create(p, "folder") do
+    File.mkdir_p!(p)
+    :ok
+  end
+
   defp do_create(p, "sketch") do
     File.mkdir_p!(Path.dirname(p))
 
