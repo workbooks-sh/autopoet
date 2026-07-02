@@ -57,6 +57,25 @@ defmodule Autopoet.Control do
     end
   end
 
+  # the full VS Code Material icon set as names — powers the icon picker's search
+  get "/micons.json" do
+    dir = Path.join([:code.priv_dir(:autopoet), "static", "micons"])
+
+    names =
+      case File.ls(dir) do
+        {:ok, files} ->
+          files
+          |> Enum.filter(&String.ends_with?(&1, ".svg"))
+          |> Enum.map(&String.trim_trailing(&1, ".svg"))
+          |> Enum.sort()
+
+        _ ->
+          []
+      end
+
+    conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(names))
+  end
+
   get "/favicon.ico" do
     conn |> put_resp_content_type("image/svg+xml") |> send_resp(200, Autopoet.Avatar.svg(Autopoet.Avatar.default_seed(), 32))
   end
@@ -222,10 +241,33 @@ defmodule Autopoet.Control do
 
   post "/notes/new" do
     authed!(conn, fn conn ->
-      case Autopoet.Notes.create(conn.query_params["path"], conn.query_params["kind"] || "note") do
+      q = conn.query_params
+
+      meta = %{
+        "type" => q["type"],
+        "icon" => q["icon"],
+        "tags" => (q["tags"] || "") |> String.split(",", trim: true) |> Enum.map(&String.trim/1)
+      }
+
+      case Autopoet.Notes.create(q["path"], q["kind"] || "note", meta) do
         :ok -> text(conn, "created\n")
         {:error, reason} -> text(conn, "refused: #{inspect(reason)}\n")
       end
+    end)
+  end
+
+  # update an existing item's metadata (type/icon/tags) — the edit-modal save path
+  post "/notes/meta" do
+    authed!(conn, fn conn ->
+      q = conn.query_params
+
+      Autopoet.Notes.set_meta(q["path"], %{
+        "type" => q["type"],
+        "icon" => q["icon"],
+        "tags" => (q["tags"] || "") |> String.split(",", trim: true) |> Enum.map(&String.trim/1)
+      })
+
+      text(conn, "meta saved\n")
     end)
   end
 

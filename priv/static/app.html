@@ -69,8 +69,30 @@
   .ic-folder { color:#c9a04e; } .ic-note { color:#5b8cc9; } .ic-sketch { color:#a97bc0; }
   /* a workspace = a #-prefixed grouping (like a folder, but a named group of notes) */
   #tree .row.wsrow { margin-top:5px; font-weight:600; color:#5a6472; letter-spacing:.02em; }
-  #tree .row.wsrow .hashtag { color:#8e7cc3; font-weight:800; width:13px; flex:none;
-    display:inline-flex; justify-content:center; font-family:ui-monospace,monospace; }
+  /* the # is GRAY (folder-tone) everywhere so a composed badge has consistent contrast */
+  .hashtag { color:#8b95a3; font-weight:800; flex:none; display:inline-flex;
+    align-items:center; justify-content:center; font-family:ui-monospace,monospace; line-height:1; }
+  #tree .row.wsrow .hashtag { width:13px; }
+  /* the composed badge overhangs its box to the right — reserve gap so it doesn't
+     crowd the label (the # badge sits further right, so it needs a touch more) */
+  #tree .composed { margin-right:5px; }
+  #tree .wsrow .composed { margin-right:9px; }
+  /* composed icon: base (folder shape / gray #) + a picked icon badged bottom-right.
+     the badge gets a drop-shadow HALO that follows the SVG's own alpha shape (a
+     "sticker" outline) — not a boxy square — so it cuts cleanly out of the base. */
+  .composed { position:relative; display:inline-flex; align-items:center; flex:none; }
+  .composed .cbadge { position:absolute; right:-3px; bottom:-3px; display:inline-flex;
+    align-items:center; justify-content:center; }
+  /* the # is narrow — push its badge further right so the # shape stays visible */
+  .composed .cbadge-ws { right:-7px; }
+  /* OUTER: runs the grow/smooth filter on the masked child (filter must wrap the mask) */
+  .composed .cbadge .cmask { position:absolute; inset:0; filter:url(#goo); }
+  /* INNER: the icon's alpha masks a solid fill of the surrounding colour = silhouette */
+  .composed .cbadge .csil { position:absolute; inset:0; background:#f7f7f4;
+    -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
+    -webkit-mask-position:center; mask-position:center;
+    -webkit-mask-size:contain; mask-size:contain; }
+  .composed .cbadge img { position:relative; display:block; }
   /* IDE-style dirty marker on unsaved files */
   #tree .row.isdirty::after { content:"●"; color:#f2a33c; font-size:9px; margin-left:auto; }
   #tree ul { list-style:none; margin:0; padding-left:14px; }
@@ -190,33 +212,98 @@
     border-radius:6px; border:1px solid #ccc; background:#fff; }
   #panel button.ok { background:#e8f5e9; } #panel button.no { background:#fdecea; }
 
-  /* ── new-file modal (ours, not the system prompt) ────────────────────── */
-  #shade { position:fixed; inset:0; background:rgba(30,34,40,.28); z-index:20;
-    display:none; opacity:0; transition:opacity .2s ease; }
+  /* ── new-in-vault modal (ours, in-theme) — LIGHT frosted backdrop, per-kind form ── */
+  #shade { position:fixed; inset:0; background:rgba(247,247,244,.5); backdrop-filter:blur(6px);
+    -webkit-backdrop-filter:blur(6px); z-index:20; display:none; opacity:0; transition:opacity .2s ease; }
   #shade.on { display:block; opacity:1; }
-  #modal { position:fixed; z-index:21; top:18vh; left:50%; width:380px;
+  #modal { position:fixed; z-index:21; top:16vh; left:50%; width:360px;
     transform:translateX(-50%) translateY(8px) scale(.98); opacity:0; display:none;
-    background:#fff; border:1px solid var(--line); border-radius:12px;
-    box-shadow:0 18px 48px rgba(0,0,0,.16); padding:16px;
+    background:#fff; border:1px solid var(--line); border-radius:14px;
+    box-shadow:0 18px 48px rgba(25,35,55,.14); padding:16px;
     transition:opacity .22s ease, transform .22s cubic-bezier(.22,.9,.24,1); }
   #modal.on { display:block; opacity:1; transform:translateX(-50%) translateY(0) scale(1); }
   #modal h3 { margin:0 0 10px; font-size:12px; letter-spacing:.06em; color:#889; font-weight:600; }
-  #modal .kind { display:flex; gap:10px; align-items:center; padding:9px 10px;
-    border:1px solid var(--line); border-radius:9px; cursor:pointer; margin-bottom:6px;
-    transition:border-color .15s ease, background .15s ease; }
-  #modal .kind:hover { background:#f7f7f4; }
-  #modal .kind.sel { border-color:#5b8cc9; background:#f2f6fb; }
-  #modal .kind svg.lucide { width:17px; height:17px; flex:none; }
-  #modal .kind .t { font-weight:600; font-size:12px; }
-  #modal .kind .d { font-size:11px; color:#98a0ac;
-    font-family:-apple-system,BlinkMacSystemFont,sans-serif; }
-  #modal input { width:100%; box-sizing:border-box; margin:10px 0 12px; padding:7px 10px;
-    font:inherit; border:1px solid var(--line); border-radius:8px; outline:none; }
+  /* header: icon button + title */
+  #modal .mhd { display:flex; align-items:center; gap:11px; margin-bottom:12px; }
+  #modal .iconbtn { display:flex; align-items:center; justify-content:center; width:44px; height:44px;
+    border:1px solid var(--line); border-radius:12px; background:#fbfbfa; cursor:pointer;
+    transition:border-color .15s ease, background .15s ease; flex:none; }
+  #modal .iconbtn:hover { border-color:#c7d0e0; background:#f2f4f7; }
+  #modal .mtitle { font-weight:600; font-size:15px; color:#2a3140; }
+  /* destination breadcrumb */
+  #modal .destbc { display:flex; align-items:center; gap:6px; width:100%; box-sizing:border-box;
+    padding:6px 9px; margin-bottom:10px; border:1px dashed var(--line); border-radius:8px;
+    background:#fbfbfa; color:#67707c; font:inherit; font-size:11.5px; cursor:pointer;
+    transition:border-color .15s ease, color .15s ease; }
+  #modal .destbc:hover { border-color:#c7d0e0; color:#2a3140; }
+  #modal .destbc > span { flex:1; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #modal .destbc svg.lucide { width:13px; height:13px; flex:none; color:#98a0ac; }
+  #modal input { width:100%; box-sizing:border-box; margin:0 0 11px; padding:8px 11px;
+    font:inherit; font-size:13px; border:1px solid var(--line); border-radius:9px; outline:none; }
   #modal input:focus { border-color:#5b8cc9; }
-  #modal .acts { display:flex; justify-content:flex-end; gap:8px; }
-  #modal .acts button { font:inherit; padding:5px 14px; border-radius:8px;
-    border:1px solid var(--line); background:#fff; cursor:pointer; }
-  #modal .acts .go { background:#223; color:#fff; border-color:#223; }
+  /* labelled rows (type, tags) */
+  #modal .mrow { display:flex; align-items:flex-start; gap:10px; margin-bottom:11px; }
+  #modal .mrow .ml { width:38px; flex:none; font-size:11px; color:#98a0ac; padding-top:7px; letter-spacing:.04em; }
+  /* type = two cards, each with an icon + one-line explanation */
+  #modal .typecards { display:flex; gap:8px; margin-bottom:11px; }
+  #modal .tycard { flex:1; display:flex; gap:8px; align-items:flex-start; text-align:left;
+    padding:9px 10px; border:1px solid var(--line); border-radius:10px; background:#fff; cursor:pointer;
+    transition:border-color .15s ease, background .15s ease; }
+  #modal .tycard:hover { border-color:#c7d0e0; }
+  #modal .tycard.sel { border-color:#5b8cc9; background:#f2f6fb; }
+  #modal .tycard svg.lucide { width:16px; height:16px; flex:none; color:#5b8cc9; margin-top:1px; }
+  #modal .tyt { font-weight:600; font-size:12px; color:#2a3140; }
+  #modal .tyd { font-size:10.5px; color:#98a0ac; line-height:1.35; margin-top:2px;
+    font-family:-apple-system,BlinkMacSystemFont,sans-serif; }
+  /* tags input */
+  #modal .tagbox { flex:1; display:flex; flex-wrap:wrap; gap:5px; align-items:center;
+    border:1px solid var(--line); border-radius:9px; padding:5px 7px; min-height:20px; }
+  #modal .tagbox .tag { display:inline-flex; align-items:center; gap:4px; font-size:11px;
+    background:#eef1f8; color:#4a5568; border-radius:6px; padding:2px 4px 2px 7px; }
+  #modal .tagbox .tag b { cursor:pointer; color:#98a0ac; font-weight:400; font-size:13px; }
+  #modal .tagbox .tag b:hover { color:#e05252; }
+  #modal .tagbox input { flex:1; min-width:70px; margin:0; padding:2px; border:none; font-size:12px; }
+  #modal .acts { display:flex; justify-content:flex-end; gap:8px; margin-top:4px; }
+  #modal .acts button { font:inherit; font-size:12px; padding:7px 15px; border-radius:9px;
+    border:1px solid var(--line); background:#fff; color:#67707c; cursor:pointer; }
+  #modal .acts .go { background:#2f6fdd; color:#fff; border-color:#2f6fdd; font-weight:600; }
+  #modal .acts .go:hover { background:#245cc0; }
+  /* shared popup: destination list + icon picker */
+  #iconpop { position:fixed; z-index:22; }
+  #iconpop.destpop, #iconpop.iconpicker { background:#fff; border:1px solid var(--line);
+    border-radius:11px; box-shadow:0 14px 38px rgba(25,35,55,.16); padding:7px; }
+  #iconpop .dlist { display:flex; flex-direction:column; gap:2px; max-height:300px; overflow:auto; min-width:200px; }
+  #iconpop .ditem { text-align:left; font:inherit; font-size:12px; white-space:pre; padding:6px 9px;
+    border:none; background:none; border-radius:7px; cursor:pointer; color:#4a5568; }
+  #iconpop .ditem:hover { background:#f2f4f7; }
+  #iconpop .ditem.sel { background:#eef1f8; color:#2a3140; font-weight:600; }
+  #iconpop .isearch { width:216px; box-sizing:border-box; margin:0 0 6px; padding:7px 10px;
+    font:inherit; font-size:12px; border:1px solid var(--line); border-radius:8px; outline:none; }
+  #iconpop .igrid { display:grid; grid-template-columns:repeat(7, 1fr); gap:2px;
+    width:230px; max-height:260px; overflow:auto; }
+  #iconpop .icell { display:flex; align-items:center; justify-content:center; width:30px; height:30px;
+    border:1px solid transparent; border-radius:7px; background:none; cursor:pointer; }
+  #iconpop .icell:hover { background:#f2f4f7; }
+  #iconpop .icell.sel { border-color:#5b8cc9; background:#f2f6fb; }
+  #iconpop .icell img { width:18px; height:18px; }
+  /* @-mention popup in the editor */
+  #mention { position:fixed; z-index:30; display:none; background:#fff; border:1px solid var(--line);
+    border-radius:10px; box-shadow:0 12px 34px rgba(25,35,55,.16); padding:5px; min-width:200px; max-width:280px; }
+  #mention.on { display:block; }
+  #mention .mitem { display:flex; align-items:center; gap:8px; width:100%; text-align:left;
+    padding:6px 8px; border:none; background:none; border-radius:7px; cursor:pointer; color:#3a4250; }
+  #mention .mitem.sel, #mention .mitem:hover { background:#eef1f8; }
+  #mention .mitem .mn { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12.5px; }
+  #mention .mitem .mk { font-size:10px; color:#b3bac4; }
+  #mention .mitem svg.lucide, #mention .mitem img.mic { width:15px; height:15px; flex:none; }
+  #mention .mitem .composed { flex:none; }
+  /* program/context glyph, right of a file's name */
+  #tree .tymark { width:12px; height:12px; flex:none; margin-left:6px; }
+  #tree .tymark.ty-program { color:#9aa7bd; }
+  #tree .tymark.ty-context { color:#c2ab7a; }
+  /* tree tag chips */
+  #tree .rtags { display:inline-flex; gap:3px; margin-left:6px; }
+  #tree .rtag { font-size:9px; color:#8e7cc3; background:#f0edf7; border-radius:4px; padding:0 4px; line-height:15px; }
 
   /* ── command / live mode: lives IN the stoplight row of column 1 only ─── */
   #modetoggle { position:relative; display:grid; align-items:center; -webkit-app-region:no-drag; }
@@ -613,34 +700,23 @@
 <div id="ctx"></div>
 
 <div id="shade"></div>
-<div id="modal">
-  <h3>NEW IN VAULT</h3>
-  <div class="kind" data-kind="note">
-    <img class="mic" style="width:19px;height:19px" src="/static/micons/markdown.svg" alt="">
-    <div><div class="t">document</div>
-      <div class="d">plain language — your thoughts become real structure on save</div></div>
-  </div>
-  <div class="kind" data-kind="sketch">
-    <img class="mic" style="width:19px;height:19px" src="/static/micons/svg.svg" alt="">
-    <div><div class="t">sketch</div>
-      <div class="d">freehand drawing — the autopoet interprets what you draw</div></div>
-  </div>
-  <div class="kind" data-kind="folder">
-    <img class="mic" style="width:19px;height:19px" src="/static/micons/folder.svg" alt="">
-    <div><div class="t">folder</div>
-      <div class="d">you can put shit in it</div></div>
-  </div>
-  <div class="kind" data-kind="workspace">
-    <i data-lucide="hash"></i>
-    <div><div class="t">workspace</div>
-      <div class="d">a named grouping — bundles related notes under one # heading</div></div>
-  </div>
-  <input id="modalname" placeholder="name (nest with /)" spellcheck="false">
-  <div class="acts">
-    <button id="modalcancel">cancel</button>
-    <button class="go" id="modalgo">create</button>
-  </div>
-</div>
+<div id="modal"></div>
+<div id="iconpop"></div>
+<div id="mention"></div>
+
+<!-- "gooey" metaball filter: heavy blur then a soft alpha-threshold. Thin features
+     (an icon's spikes/spokes, an A's holes) melt below the cutoff, leaving the
+     SIMPLEST SMOOTH shape that roughly encloses the icon — a clean, rounded mask,
+     never sharp — that erases the folder/# behind the composed badge. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <filter id="goo" x="-120%" y="-120%" width="340%" height="340%">
+    <feGaussianBlur in="SourceGraphic" stdDeviation="2.3" result="b"/>
+    <!-- blur spreads the edge outward uniformly; a STEEP alpha slope (80) snaps it
+         back to a HARD edge — so we get a big uniform grow/choke that is SHARP, not
+         blurry. The low cutoff (offset) sets how far out the shell lands (~3-4px). -->
+    <feColorMatrix in="b" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 80 -4.6"/>
+  </filter>
+</defs></svg>
 
 <script src="/static/d3.v7.min.js"></script>
 <script src="/static/lucide.min.js"></script>
@@ -676,28 +752,57 @@ const ICONS = {
   folder: mic("folder"), folderOpen: mic("folder-open"),
   note: mic("markdown"), sketch: mic("svg")
 };
+const DEF_ICON = { note: "markdown", sketch: "svg", folder: "folder", workspace: "hash" };
+const micUrl = n => `/static/micons/${n}.svg`;
+const micTag = (n, sz = 18) => n === "hash"
+  ? `<span class="hashtag" style="font-size:${sz}px">#</span>`
+  : `<img class="mic" style="width:${sz}px;height:${sz}px" src="${micUrl(n)}" alt="">`;
+// folder & workspace keep their SHAPE + gray tone; a picked icon COMPOSES into the
+// bottom-right corner (like the Material folder system) rather than replacing the base.
+function iconFor(kind, icon, sz) {
+  const b = Math.round(sz * 0.74);
+  // CUTOUT (three nested layers, order matters): the INNER .csil paints the surround
+  // colour masked to the icon's alpha = an icon-shaped silhouette; the OUTER .cmask
+  // runs the #goo grow/smooth filter ON that silhouette (CSS applies filter before
+  // mask, so the filter MUST wrap the masked child, not carry the mask itself); the
+  // icon sits on top in the resulting clean cutout.
+  const badge = (name, def, cls) => name && name !== def
+    ? `<span class="cbadge ${cls || ""}" style="width:${b}px;height:${b}px">
+         <span class="cmask"><span class="csil" style="-webkit-mask-image:url(${micUrl(name)});mask-image:url(${micUrl(name)})"></span></span>
+         <img src="${micUrl(name)}" style="width:100%;height:100%" alt=""></span>` : "";
+  if (kind === "folder" || kind === "folderOpen")
+    return `<span class="composed">${micTag(kind === "folderOpen" ? "folder-open" : "folder", sz)}${badge(icon, "folder")}</span>`;
+  if (kind === "workspace")
+    return `<span class="composed"><span class="hashtag" style="font-size:${sz}px">#</span>${badge(icon, "hash", "cbadge-ws")}</span>`;
+  return micTag(icon, sz);
+}
 const refreshIcons = () => window.lucide && lucide.createIcons();
 let open = { path: null, kind: null, dirty: false };
+let vaultTree = [];   // the current tree — feeds the new-item destination picker
 
 async function loadTree() {
   const tree = await (await fetch("/notes/tree.json")).json();
+  vaultTree = tree;
   document.getElementById("treeroot").innerHTML = renderTree(tree);
   document.querySelectorAll("#tree .row[data-path]").forEach(el => {
     const path = el.dataset.path, kind = el.dataset.kind, folder = el.dataset.folder !== undefined;
     if (!folder) el.onclick = () => openFile(path, kind);
     if (folder) el.onclick = () => {
+      lastFocusDir = path;   // new items default into the folder/workspace you last touched
       const nowClosed = !closedFolders.has(path);
       if (nowClosed) closedFolders.add(path); else closedFolders.delete(path);
       persistFolders();
       el.classList.toggle("openf", !nowClosed);
       el.parentElement.querySelector("ul")?.classList.toggle("hide", nowClosed);
-      // swap the material folder icon open/closed
+      // swap the material folder icon open/closed (only the default folder icon —
+      // a custom-picked icon stays put)
       const img = el.querySelector("img.mic");
-      if (img) img.src = `/static/micons/${nowClosed ? "folder" : "folder-open"}.svg`;
+      if (img && /\/(folder|folder-open)\.svg$/.test(img.getAttribute("src") || ""))
+        img.src = `/static/micons/${nowClosed ? "folder" : "folder-open"}.svg`;
     };
     if (path === open.path) el.classList.add("open");
     el.classList.toggle("isdirty", !!buffers[path]);
-    el.addEventListener("dblclick", () => renameNote(path, kind));
+    el.addEventListener("dblclick", () => editItem(path));
     el.addEventListener("contextmenu", e => {
       e.preventDefault();
       const items = [];
@@ -705,7 +810,7 @@ async function loadTree() {
       if (folder) items.push(
         { icon: "file-plus-2", label: "new document inside", fn: () => openModalPrefixed("note", path + "/") },
         { icon: "pen-tool", label: "new sketch inside", fn: () => openModalPrefixed("sketch", path + "/") });
-      items.push({ icon: "pencil", label: "rename", fn: () => renameNote(path, kind) }, "-",
+      items.push({ icon: "pencil", label: "edit", fn: () => editItem(path) }, "-",
         { icon: "trash-2", label: "delete", danger: true, fn: () => deleteNote(path) });
       showCtx(e.clientX, e.clientY, items);
     });
@@ -729,26 +834,42 @@ let closedFolders = new Set();
 try { closedFolders = new Set(JSON.parse(localStorage.getItem("ap-closed") || "[]")); } catch (_) {}
 const persistFolders = () => localStorage.setItem("ap-closed", JSON.stringify([...closedFolders]));
 
+const treeIcon = n => (n.meta && n.meta.icon) || DEF_ICON[n.type];
+const tagChips = n => {
+  const tags = (n.meta && n.meta.tags) || [];
+  return tags.length ? `<span class="rtags">${tags.map(t => `<span class="rtag">${esc(t)}</span>`).join("")}</span>` : "";
+};
+// program vs context, at a glance — a small glyph right of a file's name
+const typeMark = n => {
+  if (n.type !== "note" && n.type !== "sketch") return "";
+  const t = (n.meta && n.meta.type) === "context" ? "context" : "program";
+  return `<i class="tymark ty-${t}" data-lucide="${t === "context" ? "book-open" : "blocks"}" title="${t}"></i>`;
+};
 function renderTree(items) {
   return items.map(n => {
     if (n.type === "workspace") {
-      // a grouping — a # instead of a folder chevron, still collapsible
       const closed = closedFolders.has(n.path);
       return `<li><div class="row wsrow ${closed ? "" : "openf"}" data-path="${esc(n.path)}" data-folder data-ws>
-        <span class="hashtag">#</span><span>${esc(n.name)}</span></div>
+        ${iconFor("workspace", treeIcon(n), 16)}<span>${esc(n.name)}</span>${tagChips(n)}</div>
         <ul class="${closed ? "hide" : ""}">${renderTree(n.children || [])}</ul></li>`;
     }
     if (n.type === "folder") {
       const closed = closedFolders.has(n.path);
       return `<li><div class="row ${closed ? "" : "openf"}" data-path="${esc(n.path)}" data-folder>
         <span class="tw"><i data-lucide="chevron-right"></i></span>
-        ${closed ? ICONS.folder : ICONS.folderOpen}<span>${esc(n.name)}</span></div>
+        ${iconFor(closed ? "folder" : "folderOpen", treeIcon(n), 16)}<span>${esc(n.name)}</span>${tagChips(n)}</div>
         <ul class="${closed ? "hide" : ""}">${renderTree(n.children || [])}</ul></li>`;
     }
-    return `<li><div class="row" data-path="${esc(n.path)}" data-kind="${n.type}">${ICONS[n.type]}<span>${esc(n.name)}</span></div></li>`;
+    return `<li><div class="row" data-path="${esc(n.path)}" data-kind="${n.type}">${iconFor(n.type, treeIcon(n), 16)}<span>${esc(n.name)}</span>${typeMark(n)}${tagChips(n)}</div></li>`;
   }).join("");
 }
 const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+// editor header: just the file name + its extension (no path); no extension ⇒ .md
+function fileLabel(path) {
+  const base = path.slice(path.lastIndexOf("/") + 1);
+  if (base.endsWith(".sketch.svg")) return base;
+  return base.includes(".") ? base : base + ".md";
+}
 
 // ── GLOBAL DIRTY REGISTRY (IDE-grade) ─────────────────────────────────────
 // Every unsaved buffer lives here, keyed by path — any number of files can be
@@ -805,12 +926,13 @@ function updatePill() {
 
 async function openFile(path, kind) {
   if (commState === "chat") setComm(null);   // a file and the chat share the slot
+  lastFocusDir = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
   // never commits anything: the previous file's buffer stays in the registry
   const buffered = buffers[path];
   const content = buffered ? buffered.content
     : await (await fetch("/notes/file?path=" + encodeURIComponent(path))).text();
   open = { path, kind, src: "vault" };
-  document.getElementById("fname").textContent = path;
+  document.getElementById("fname").textContent = fileLabel(path);
   document.getElementById("app").classList.add("editing");
   document.getElementById("app").classList.toggle("sketching", kind === "sketch");
   if (kind === "sketch") loadSketch(content);
@@ -896,11 +1018,90 @@ function onEdit() {
 }
 document.getElementById("prose").addEventListener("input", onEdit);
 
+// ══ @-mention: search + reference a vault item from inside the editor ══
+// Markdown already owns '#' (headings), so ALL references go through '@' — files,
+// folders, workspaces — and insert an Obsidian-style [[backlink]] the graph + brain
+// already understand.
+const proseEl = document.getElementById("prose");
+let mentionItems = [], mentionSel = 0, mentionRange = null;
+
+function flatVault(items, acc) {
+  for (const n of items || []) {
+    acc.push({ name: n.name, path: n.path, type: n.type, meta: n.meta });
+    if (n.children) flatVault(n.children, acc);
+  }
+  return acc;
+}
+function mentionContext() {
+  const pos = proseEl.selectionStart;
+  const m = proseEl.value.slice(0, pos).match(/(?:^|\s)@([^\s@#[\]]*)$/);
+  return m ? { query: m[1], start: pos - m[1].length - 1, end: pos } : null;
+}
+function updateMention() {
+  const ctx = mentionContext();
+  if (!ctx) return closeMention();
+  const q = ctx.query.toLowerCase();
+  const items = flatVault(vaultTree, []).filter(n => n.path !== open.path && n.name.toLowerCase().includes(q)).slice(0, 8);
+  if (!items.length) return closeMention();
+  mentionRange = ctx; mentionItems = items; mentionSel = 0;
+  renderMention();
+}
+function renderMention() {
+  const pop = document.getElementById("mention");
+  pop.innerHTML = mentionItems.map((n, i) =>
+    `<button class="mitem ${i === mentionSel ? "sel" : ""}" data-i="${i}">${iconFor(n.type, (n.meta && n.meta.icon) || DEF_ICON[n.type], 15)}<span class="mn">${esc(n.name)}</span><span class="mk">${n.type}</span></button>`).join("");
+  const c = caretCoords(proseEl);
+  pop.style.left = Math.round(c.left) + "px";
+  pop.style.top = Math.round(c.top + 20) + "px";
+  pop.classList.add("on");
+  refreshIcons();
+  pop.querySelectorAll(".mitem").forEach(b => b.onmousedown = e => { e.preventDefault(); pickMention(+b.dataset.i); });
+}
+function moveMention(d) { mentionSel = (mentionSel + d + mentionItems.length) % mentionItems.length; renderMention(); }
+function pickMention(i) {
+  const n = mentionItems[i]; if (!n || !mentionRange) return;
+  const ref = `[[${n.name}]] `;
+  const v = proseEl.value;
+  proseEl.value = v.slice(0, mentionRange.start) + ref + v.slice(mentionRange.end);
+  const cur = mentionRange.start + ref.length;
+  closeMention();
+  proseEl.focus();
+  proseEl.setSelectionRange(cur, cur);
+  onEdit();   // mark dirty / live-save
+}
+function closeMention() { mentionRange = null; document.getElementById("mention").classList.remove("on"); }
+
+proseEl.addEventListener("input", updateMention);
+proseEl.addEventListener("keydown", e => {
+  if (!document.getElementById("mention").classList.contains("on")) return;
+  if (e.key === "ArrowDown") { e.preventDefault(); moveMention(1); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); moveMention(-1); }
+  else if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); pickMention(mentionSel); }
+  else if (e.key === "Escape") { e.preventDefault(); closeMention(); }
+});
+proseEl.addEventListener("blur", () => setTimeout(closeMention, 150));
+proseEl.addEventListener("scroll", () => mentionRange && closeMention());
+
+// caret pixel position inside a textarea (mirror-div technique)
+function caretCoords(ta) {
+  const div = document.createElement("div"), cs = getComputedStyle(ta);
+  ["fontFamily","fontSize","fontWeight","fontStyle","letterSpacing","textTransform","wordSpacing",
+   "paddingTop","paddingRight","paddingBottom","paddingLeft","borderTopWidth","borderRightWidth",
+   "borderBottomWidth","borderLeftWidth","lineHeight","boxSizing"].forEach(p => div.style[p] = cs[p]);
+  Object.assign(div.style, { position: "absolute", visibility: "hidden", whiteSpace: "pre-wrap",
+    wordWrap: "break-word", overflow: "hidden", width: ta.clientWidth + "px", top: "0", left: "0" });
+  div.textContent = ta.value.slice(0, ta.selectionStart);
+  const span = document.createElement("span"); span.textContent = "​"; div.appendChild(span);
+  document.body.appendChild(div);
+  const r = ta.getBoundingClientRect();
+  const out = { left: r.left + span.offsetLeft - ta.scrollLeft, top: r.top + span.offsetTop - ta.scrollTop };
+  document.body.removeChild(div);
+  return out;
+}
+
 // ── the modal (ours, in-theme — never the system prompt). The new-file body is
 // the default; askRename swaps in a raw body and restores after. ──────────────
-const NEWFILE_HTML = document.getElementById("modal").innerHTML;
-let modalKind = "note", modalPrefix = "";
-
+// generic frame (also used by askRename): set body + show
 function openModalRaw(html) {
   document.getElementById("modal").innerHTML = html;
   document.getElementById("shade").classList.add("on");
@@ -910,53 +1111,190 @@ function openModalRaw(html) {
 function closeModal() {
   document.getElementById("shade").classList.remove("on");
   document.getElementById("modal").classList.remove("on");
-  setTimeout(() => { document.getElementById("modal").innerHTML = NEWFILE_HTML; bindNewFileModal(); refreshIcons(); }, 220);
+  closePop();
 }
 document.getElementById("shade").onclick = () => closeModal();
 
-function openModal(kind) { openModalPrefixed(kind, ""); }
-function openModalPrefixed(kind, prefix) {
-  modalKind = kind; modalPrefix = prefix;
-  openModalRaw(NEWFILE_HTML);
-  bindNewFileModal();
-  document.querySelectorAll("#modal .kind").forEach(el =>
-    el.classList.toggle("sel", el.dataset.kind === kind));
-  const inp = document.getElementById("modalname");
-  inp.placeholder = prefix ? `name (inside ${prefix})` : "name (nest with /)";
-  inp.value = ""; setTimeout(() => inp.focus(), 60);
+// ══ NEW-IN-VAULT — a per-kind form (no re-picking): name · destination · type · tags · icon ══
+const KINDS = {
+  note:      { title: "document",  icon: "markdown", hasType: true,  ext: "" },
+  sketch:    { title: "sketch",    icon: "svg",      hasType: true,  ext: ".sketch.svg" },
+  folder:    { title: "folder",    icon: "folder",   hasType: false, ext: "" },
+  workspace: { title: "workspace", icon: "hash",     hasType: false, ext: "" }
+};
+const TYPES = {
+  program: { label: "Program", icon: "blocks",    desc: "Baked into the build — changes instantiate real structure." },
+  context: { label: "Context", icon: "book-open", desc: "Read-only reference — it informs, never instantiates." }
+};
+let lastFocusDir = "";     // new items default here — the last folder/workspace you touched
+let micnames = null;       // full icon list, lazy-loaded for the picker
+let mv = { kind: "note", dest: "", icon: "markdown", type: "program", tags: [], edit: false, origPath: null, name: "" };
+
+function showModal() {
+  renderModal();
+  document.getElementById("shade").classList.add("on");
+  document.getElementById("modal").classList.add("on");
+  setTimeout(() => { const i = document.getElementById("modalname"); if (i) { i.focus(); if (mv.edit) i.select(); } }, 60);
 }
-function bindNewFileModal() {
-  document.querySelectorAll("#modal .kind").forEach(el =>
-    el.onclick = () => {
-      modalKind = el.dataset.kind;
-      document.querySelectorAll("#modal .kind").forEach(k =>
-        k.classList.toggle("sel", k === el));
-    });
-  const cancel = document.getElementById("modalcancel");
-  if (cancel) cancel.onclick = () => closeModal();
-  const go = document.getElementById("modalgo");
-  if (go) go.onclick = createFromModal;
-  const inp = document.getElementById("modalname");
-  if (inp) inp.onkeydown = e => {
-    if (e.key === "Enter") createFromModal();
-    if (e.key === "Escape") closeModal();
+function openModal(kind) {
+  const k = KINDS[kind];
+  mv = { kind, dest: lastFocusDir, icon: k.icon, type: "program", tags: [], edit: false, origPath: null, name: "" };
+  showModal();
+}
+// folder context-menu path ("new document inside") — reuse with a preset destination
+function openModalPrefixed(kind, prefix) { openModal(kind); mv.dest = prefix.replace(/\/$/, ""); renderModal(); }
+
+// double-click / rename → open the SAME modal in EDIT mode (name + dest + type + tags + icon)
+function findNode(items, path) {
+  for (const n of items || []) { if (n.path === path) return n; const c = findNode(n.children, path); if (c) return c; }
+  return null;
+}
+function editItem(path) {
+  const node = findNode(vaultTree, path); if (!node) return;
+  const kind = node.type, meta = node.meta || {};
+  let name = path.slice(path.lastIndexOf("/") + 1);
+  if (kind === "sketch") name = name.replace(/\.sketch\.svg$/, "");
+  mv = { kind, dest: path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "",
+         icon: meta.icon || KINDS[kind].icon, type: meta.type || "program",
+         tags: [...(meta.tags || [])], edit: true, origPath: path, name };
+  showModal();
+}
+
+const destLabel = () => mv.dest ? mv.dest.split("/").join(" / ") : "vault root";
+
+function renderModal() {
+  const k = KINDS[mv.kind];
+  const typeRow = k.hasType ? `
+    <div class="typecards">${Object.entries(TYPES).map(([t, v]) =>
+      `<button class="tycard ${mv.type === t ? "sel" : ""}" data-type="${t}">
+         <i data-lucide="${v.icon}"></i>
+         <div><div class="tyt">${v.label}</div><div class="tyd">${v.desc}</div></div></button>`).join("")}</div>` : "";
+  document.getElementById("modal").innerHTML = `
+    <div class="mhd">
+      <button id="mIcon" class="iconbtn" title="choose an icon">${iconFor(mv.kind, mv.icon, 22)}</button>
+      <div class="mtitle">${mv.edit ? "Edit" : "New"} ${k.title}</div>
+    </div>
+    <button id="mDest" class="destbc" title="choose where it goes">
+      <i data-lucide="corner-down-right"></i><span>${esc(destLabel())}</span><i data-lucide="chevron-down"></i>
+    </button>
+    <input id="modalname" value="${esc(mv.name || "")}" placeholder="name${KINDS[mv.kind].ext ? "" : " (nest with /)"}" spellcheck="false">
+    ${typeRow}
+    <div class="mrow"><span class="ml">tags</span>
+      <div class="tagbox" id="mTagbox">
+        ${mv.tags.map(t => `<span class="tag">${esc(t)}<b data-rm="${esc(t)}">×</b></span>`).join("")}
+        <input id="mTagin" placeholder="${mv.tags.length ? "" : "add a tag…"}" spellcheck="false">
+      </div>
+    </div>
+    <div class="acts">
+      <button id="modalcancel">cancel</button>
+      <button class="go" id="modalgo">${mv.edit ? "save changes" : "create " + k.title}</button>
+    </div>`;
+  refreshIcons();
+  bindModal();
+}
+function bindModal() {
+  const $ = id => document.getElementById(id);
+  $("modalcancel").onclick = closeModal;
+  $("modalgo").onclick = createFromModal;
+  $("mIcon").onclick = e => { e.stopPropagation(); openIconPop(); };
+  $("mDest").onclick = e => { e.stopPropagation(); openDestPop(); };
+  const name = $("modalname");
+  name.onkeydown = e => { if (e.key === "Enter") createFromModal(); if (e.key === "Escape") closeModal(); };
+  document.querySelectorAll("#modal .tycard").forEach(b =>
+    b.onclick = () => { mv.type = b.dataset.type; mv.name = $("modalname").value; renderModal(); });
+  name.oninput = () => { mv.name = name.value; };   // preserve the typed name across re-renders
+  const ti = $("mTagin");
+  ti.onkeydown = e => {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      const v = ti.value.trim().replace(/^[#@]/, "");
+      if (v && !mv.tags.includes(v)) mv.tags.push(v);
+      renderModal(); setTimeout(() => $("mTagin")?.focus(), 0);
+    } else if (e.key === "Backspace" && !ti.value && mv.tags.length) {
+      mv.tags.pop(); renderModal(); setTimeout(() => $("mTagin")?.focus(), 0);
+    }
   };
+  document.querySelectorAll("#mTagbox b[data-rm]").forEach(b =>
+    b.onclick = () => { mv.tags = mv.tags.filter(t => t !== b.dataset.rm); renderModal(); });
 }
 function createFromModal() {
   const name = document.getElementById("modalname").value.trim();
   if (!name) return;
-  const full = modalPrefix + name;
-  const path = modalKind === "sketch" ? (full.endsWith(".sketch.svg") ? full : full + ".sketch.svg")
-             : full;   // documents: any name, extension optional (no ext = document)
-  fetch(`/notes/new?path=${encodeURIComponent(path)}&kind=${modalKind}`, { method: "POST", ...authed })
-    .then(() => loadTree())
-    .then(() => { closeModal(); if (modalKind !== "folder" && modalKind !== "workspace") openFile(path, modalKind); });
+  const k = KINDS[mv.kind];
+  const base = (mv.dest ? mv.dest + "/" : "") + name;
+  const path = k.ext && !base.endsWith(k.ext) ? base + k.ext : base;
+  const metaQ = `icon=${encodeURIComponent(mv.icon)}&type=${mv.type}&tags=${encodeURIComponent(mv.tags.join(","))}`;
+
+  if (mv.edit) {
+    const saveMeta = () => fetch(`/notes/meta?path=${encodeURIComponent(path)}&${metaQ}`, { method: "POST", ...authed });
+    const moved = path !== mv.origPath;
+    const step = moved
+      ? fetch(`/notes/rename?from=${encodeURIComponent(mv.origPath)}&to=${encodeURIComponent(path)}`, { method: "POST", ...authed }).then(saveMeta)
+      : saveMeta();
+    step.then(() => {
+      if (moved && buffers[mv.origPath]) { buffers[path] = buffers[mv.origPath]; delete buffers[mv.origPath]; persistBuffers(); }
+      if (open.path === mv.origPath) { open.path = path; document.getElementById("fname").textContent = fileLabel(path); }
+      return loadTree();
+    }).then(() => { closeModal(); draw(); });
+  } else {
+    fetch(`/notes/new?path=${encodeURIComponent(path)}&kind=${mv.kind}&${metaQ}`, { method: "POST", ...authed })
+      .then(() => loadTree())
+      .then(() => { closeModal(); if (mv.kind !== "folder" && mv.kind !== "workspace") openFile(path, mv.kind); });
+  }
 }
-bindNewFileModal();
 document.getElementById("newnote").onclick = () => openModal("note");
 document.getElementById("newsketch").onclick = () => openModal("sketch");
 document.getElementById("newfolder").onclick = () => openModal("folder");
 document.getElementById("newworkspace").onclick = () => openModal("workspace");
+
+// ── popups (destination + icon picker) share one floating element ──
+const popEl = () => document.getElementById("iconpop");
+function closePop() { const p = popEl(); p.className = ""; p.innerHTML = ""; }
+function positionPop(anchor) {
+  const p = popEl(), r = anchor.getBoundingClientRect();
+  p.style.left = Math.max(8, r.left) + "px";
+  p.style.top = (r.bottom + 6) + "px";
+}
+addEventListener("mousedown", e => {
+  if (popEl().className && !popEl().contains(e.target) && !e.target.closest("#mIcon,#mDest")) closePop();
+});
+
+function collectDests(items, acc, depth) {
+  for (const n of items || []) {
+    if (n.type === "folder" || n.type === "workspace") {
+      acc.push({ path: n.path, label: "  ".repeat(depth) + (n.type === "workspace" ? "# " : "") + n.name });
+      collectDests(n.children, acc, depth + 1);
+    }
+  }
+  return acc;
+}
+function openDestPop() {
+  const dests = [{ path: "", label: "vault root" }, ...collectDests(vaultTree, [], 0)];
+  const p = popEl(); p.className = "destpop on";
+  p.innerHTML = `<div class="dlist">${dests.map(d =>
+    `<button class="ditem ${d.path === mv.dest ? "sel" : ""}" data-dest="${esc(d.path)}">${esc(d.label)}</button>`).join("")}</div>`;
+  positionPop(document.getElementById("mDest"));
+  p.querySelectorAll(".ditem").forEach(b => b.onclick = () => { mv.dest = b.dataset.dest; closePop(); renderModal(); });
+}
+async function openIconPop() {
+  if (!micnames) micnames = await (await fetch("/micons.json")).json();
+  // file/type icons only — the folder icons aren't pickable (folders compose their own)
+  const pool = micnames.filter(n => n !== "folder" && !n.startsWith("folder-"));
+  const p = popEl(); p.className = "iconpicker on";
+  p.innerHTML = `<input class="isearch" id="isearch" placeholder="search ${pool.length} icons…" spellcheck="false"><div class="igrid"></div>`;
+  positionPop(document.getElementById("mIcon"));
+  const grid = p.querySelector(".igrid");
+  const render = q => {
+    const list = q ? pool.filter(n => n.includes(q.toLowerCase())) : pool;
+    grid.innerHTML = list.map(n =>
+      `<button class="icell ${n === mv.icon ? "sel" : ""}" data-ic="${n}" title="${n}"><img src="${micUrl(n)}" loading="lazy"></button>`).join("");
+    grid.querySelectorAll(".icell").forEach(b => b.onclick = () => { mv.icon = b.dataset.ic; closePop(); renderModal(); });
+  };
+  render("");
+  const s = document.getElementById("isearch");
+  s.oninput = () => render(s.value.trim());
+  setTimeout(() => s.focus(), 40);
+}
 
 // ── body undo / redo (the agent writes .work directly; every write is reversible) ──
 function applyUndoState(s) {
@@ -1506,7 +1844,7 @@ function askRename(current) {
   });
 }
 document.getElementById("fname").addEventListener("dblclick", () => {
-  if (open.path) renameNote(open.path, open.kind);
+  if (open.path && open.src !== "body") editItem(open.path);
 });
 
 function deleteNote(path) {

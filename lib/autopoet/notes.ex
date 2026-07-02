@@ -61,9 +61,9 @@ defmodule Autopoet.Notes do
             # a workspace is a folder marked with a .workspace file — a grouping (shown
             # with # in the tree, like the Nexus `workspaces=` subtree concept)
             type = if File.exists?(Path.join(a, ".workspace")), do: "workspace", else: "folder"
-            %{name: entry, path: r, type: type, children: build_tree(a, r)}
+            %{name: entry, path: r, type: type, meta: meta(r), children: build_tree(a, r)}
           else
-            %{name: entry, path: r, type: kind_of(a)}
+            %{name: entry, path: r, type: kind_of(a), meta: meta(r)}
           end
         end
 
@@ -133,6 +133,11 @@ defmodule Autopoet.Notes do
       # the diff-state follows the file loosely: drop the old hash (a future save
       # under the new name re-baselines)
       File.rm(Path.join(state_dir(), Base.url_encode64(from, padding: false)))
+      # metadata (type/icon/tags) follows the item to its new name
+      case File.read(meta_path(from)) do
+        {:ok, body} -> File.write!(meta_path(to), body); File.rm(meta_path(from))
+        _ -> :ok
+      end
       Autopoet.Log.puts("vault: renamed #{from} → #{to}")
       :ok
     else
@@ -146,6 +151,7 @@ defmodule Autopoet.Notes do
     if File.exists?(p) or File.dir?(p) do
       File.rm_rf!(p)
       File.rm(Path.join(state_dir(), Base.url_encode64(rel, padding: false)))
+      File.rm(meta_path(rel))
       Autopoet.Log.puts("vault: deleted #{rel}")
       :ok
     else
@@ -160,15 +166,68 @@ defmodule Autopoet.Notes do
     p = safe!(rel)
     File.mkdir_p!(Path.dirname(p))
     File.write!(p, content)
-    maybe_translate(rel, content)
+    # a "context" item is pure read-only reference — it never instantiates .work;
+    # everything else (default "literate") translates on change, the typeaway lane
+    if meta(rel)["type"] != "context", do: maybe_translate(rel, content)
     :ok
   end
 
-  @doc "Create an empty note or sketch (never overwrites)."
-  def create(rel, kind) do
+  @doc """
+  Create an empty note/sketch/folder/workspace (never overwrites). `meta` carries
+  the vault-item metadata chosen in the new-item modal: `type` (literate | context),
+  `icon` (a VS Code Material icon name), and `tags`.
+  """
+  def create(rel, kind, meta \\ %{}) do
     p = safe!(rel)
-    if File.exists?(p), do: {:error, :exists}, else: do_create(p, kind)
+
+    if File.exists?(p) do
+      {:error, :exists}
+    else
+      with :ok <- do_create(p, kind) do
+        if meta != %{}, do: set_meta(rel, meta)
+        :ok
+      end
+    end
   end
+
+  # ── per-item metadata (type / icon / tags) — a line-based sidecar in notes-state,
+  # NOT json: it's app metadata, kept out of the human's note content ─────────────
+  def meta_path(rel), do: Path.join(state_dir(), "meta-" <> Base.url_encode64(rel, padding: false))
+
+  @doc "Read an item's metadata: %{\"type\", \"icon\", \"tags\" => [..]} (empty defaults if unset)."
+  def meta(rel) do
+    case File.read(meta_path(rel)) do
+      {:ok, body} ->
+        kv =
+          for line <- String.split(body, "\n", trim: true),
+              [k, v] <- [String.split(line, ":", parts: 2)],
+              into: %{},
+              do: {String.trim(k), String.trim(v)}
+
+        %{
+          "type" => kv["type"],
+          "icon" => (kv["icon"] || "") |> nil_if_blank(),
+          "tags" => (kv["tags"] || "") |> String.split(",", trim: true) |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == ""))
+        }
+
+      _ ->
+        %{"type" => nil, "icon" => nil, "tags" => []}
+    end
+  end
+
+  @doc "Write an item's metadata sidecar."
+  def set_meta(rel, m) do
+    File.mkdir_p!(state_dir())
+    tags = m["tags"] || m[:tags] || []
+    body = "type: #{m["type"] || m[:type] || "program"}\n" <>
+             "icon: #{m["icon"] || m[:icon] || ""}\n" <>
+             "tags: #{Enum.join(tags, ", ")}\n"
+    File.write!(meta_path(rel), body)
+    :ok
+  end
+
+  defp nil_if_blank(""), do: nil
+  defp nil_if_blank(s), do: s
 
   defp do_create(p, "folder") do
     File.mkdir_p!(p)
