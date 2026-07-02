@@ -74,6 +74,38 @@ defmodule Autopoet.Control do
     end
   end
 
+  # ── body files (.work): the human is sovereign — direct edits from the UI
+  # pencil bypass no gate because the gate constrains the MACHINE, not you ────
+
+  get "/body/file" do
+    conn = fetch_query_params(conn)
+
+    case File.read(body_path!(conn.query_params["path"])) do
+      {:ok, content} -> text(conn, content)
+      _ -> send_resp(conn, 404, "no such file\n")
+    end
+  end
+
+  post "/body/save" do
+    authed!(conn, fn conn ->
+      {:ok, body, conn} = read_body(conn, length: 10_000_000)
+      p = body_path!(conn.query_params["path"])
+      File.mkdir_p!(Path.dirname(p))
+      File.write!(p, body)
+      Autopoet.Log.puts("body: human edited #{conn.query_params["path"]} directly")
+      text(conn, "saved\n")
+    end)
+  end
+
+  defp body_path!(rel) do
+    rel = to_string(rel)
+
+    if String.starts_with?(rel, "/") or String.contains?(rel, ".."),
+      do: raise(ArgumentError, "unsafe path: #{rel}")
+
+    Path.join(Nexus.Paths.data_dir(), rel)
+  end
+
   # ── chat: conversations with the autopoet ─────────────────────────────────
 
   get "/chat/sessions.json" do

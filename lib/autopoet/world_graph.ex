@@ -24,7 +24,8 @@ defmodule Autopoet.WorldGraph do
           id: "doc:#{rel}",
           label: Path.basename(rel, ".work"),
           type: if(guide?, do: "guide", else: "doc"),
-          detail: f |> File.read!() |> String.slice(0, 600)
+          path: rel,
+          detail: f |> File.read!() |> String.slice(0, 4000)
         }
       end
 

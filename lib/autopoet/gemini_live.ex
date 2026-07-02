@@ -42,6 +42,10 @@ defmodule Autopoet.GeminiLive do
   end
 
   @impl true
+  def handle_cast({:tool_response, responses}, state) do
+    {:noreply, push(state, %{toolResponse: %{functionResponses: responses}})}
+  end
+
   def handle_cast({:audio, b64}, state) do
     {:noreply,
      push(state, %{realtimeInput: %{audio: %{data: b64, mimeType: "audio/pcm;rate=16000"}}})}
@@ -89,27 +93,43 @@ defmodule Autopoet.GeminiLive do
 
   defp handle_response({:data, ref, data}, %{ref: ref} = state) do
     {:ok, websocket, frames} = Mint.WebSocket.decode(state.websocket, data)
-    Enum.each(frames, &handle_frame(&1, state.owner))
+    session = self()
+    Enum.each(frames, &handle_frame(&1, state.owner, session))
     %{state | websocket: websocket}
   end
 
   defp handle_response(_other, state), do: state
 
-  defp handle_frame({kind, data}, owner) when kind in [:text, :binary] do
+  defp handle_frame({kind, data}, owner, session) when kind in [:text, :binary] do
     case Jason.decode(data) do
-      {:ok, msg} -> route(msg, owner)
+      {:ok, msg} -> route(msg, owner, session)
       _ -> :ok
     end
   end
 
-  defp handle_frame({:close, _code, reason}, owner),
+  defp handle_frame({:close, _code, reason}, owner, _session),
     do: send(owner, {:live, {:closed, reason}})
 
-  defp handle_frame(_frame, _owner), do: :ok
+  defp handle_frame(_frame, _owner, _session), do: :ok
 
-  defp route(%{"setupComplete" => _}, owner), do: send(owner, {:live, :ready})
+  defp route(%{"setupComplete" => _}, owner, _session), do: send(owner, {:live, :ready})
 
-  defp route(%{"serverContent" => sc}, owner) do
+  # mid-conversation tool calls: run the read-only shell off-loop, answer back
+  defp route(%{"toolCall" => %{"functionCalls" => calls}}, owner, session) do
+    Task.start(fn ->
+      responses =
+        for call <- calls do
+          cmd = call["args"]["command"] || ""
+          send(owner, {:live, {:tool, cmd}})
+          {out, _ok} = Autopoet.VoiceTools.shell(cmd)
+          %{id: call["id"], name: call["name"], response: %{output: String.slice(out, 0, 8000)}}
+        end
+
+      GenServer.cast(session, {:tool_response, responses})
+    end)
+  end
+
+  defp route(%{"serverContent" => sc}, owner, _session) do
     for %{"inlineData" => %{"data" => b64}} <- List.wrap(sc["modelTurn"]["parts"]),
         do: send(owner, {:live, {:audio, b64}})
 
@@ -118,7 +138,7 @@ defmodule Autopoet.GeminiLive do
     if sc["turnComplete"], do: send(owner, {:live, :turn_complete})
   end
 
-  defp route(_msg, _owner), do: :ok
+  defp route(_msg, _owner, _session), do: :ok
 
   defp setup do
     %{
@@ -129,9 +149,58 @@ defmodule Autopoet.GeminiLive do
           speechConfig: %{voiceConfig: %{prebuiltVoiceConfig: %{voiceName: "Zephyr"}}}
         },
         outputAudioTranscription: %{},
-        systemInstruction: %{parts: [%{text: Autopoet.Chat.system_prompt()}]}
+        tools: [%{functionDeclarations: [shell_decl()]}],
+        systemInstruction: %{parts: [%{text: Autopoet.Chat.system_prompt() <> speech_style()}]}
       }
     }
+  end
+
+  defp shell_decl do
+    %{
+      name: "shell",
+      description: """
+      Read-only shell over your whole world, mounted at /work: your body pages
+      (/work/nexus), the human's notes (/work/notes), chats, proposals, traces.
+      Allowed: #{Enum.join(Autopoet.VoiceTools.allowlist(), ", ")} — pipes ok, no
+      redirects. Paths MUST be absolute under /work (there is no cwd). Use
+      grep -ri to search. ALWAYS look before saying you don't know something.
+      """,
+      parameters: %{
+        type: "OBJECT",
+        properties: %{
+          command: %{type: "STRING", description: "e.g. grep -ri deadline /work/notes"}
+        },
+        required: ["command"]
+      }
+    }
+  end
+
+  # this is a VOICE — text decorators must never be pronounced, and the body
+  # is anatomy, not files: speak at the level of what things DO
+  defp speech_style do
+    """
+
+    You are SPEAKING out loud, not writing. Say everything the way a person
+    says it in conversation: never pronounce file extensions (.md, .work,
+    .svg), dashes, slashes, colons, brackets, or [[ref]] markers — say
+    "the reading note", never "reading dot em dee". Turn kebab-case and
+    snake_case names into plain words ("deck designer", not "deck underscore
+    designer"). No markdown, no lists, no headings — just short natural
+    spoken sentences.
+
+    Your pages, hooks, and agents are your ANATOMY, not documents. Describe
+    them by what they do — "my deck designer builds slide decks when asked",
+    never by their syntax, format, or storage. Don't say "work file",
+    "workbook", or mention formats at all unless the human explicitly asks
+    how you're built. The human's notes are their words; your structures are
+    your behavior.
+
+    You have the shell tool over /work. When asked about anything you don't
+    already know — a note, a plan, a name, a date — LOOK IT UP with grep or
+    cat before answering. Never say you don't know without having looked.
+    Read what you find and answer in plain speech; never read raw syntax
+    aloud.
+    """
   end
 
   defp push(state, payload), do: push_frame(state, {:text, Jason.encode!(payload)}) || state

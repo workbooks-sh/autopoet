@@ -135,9 +135,20 @@
   @keyframes lnin { from { opacity:0; transform:translateY(3px); } }
 
   /* node details panel */
-  #panel { position:fixed; top:16px; right:16px; width:340px; max-height:66vh;
-    overflow:auto; background:#fff; border:1px solid #ddd; border-radius:10px;
+  #panel { position:fixed; bottom:44px; right:16px; width:340px; max-height:52vh;
+    overflow:auto; overscroll-behavior:contain;
+    background:#fff; border:1px solid #ddd; border-radius:10px;
     padding:14px; box-shadow:0 6px 24px rgba(0,0,0,.08); display:none; z-index:6; }
+  #panel .pencil { float:right; border:none; background:none; cursor:pointer;
+    color:#98a0ac; padding:3px; border-radius:6px; }
+  #panel .pencil:hover { color:#223; background:#f2f4f7; }
+  #panel .pencil svg.lucide { width:14px; height:14px; }
+
+  /* voice grounding: what the autopoet is talking about lights up */
+  .ground-ring { fill:none; stroke:#f2a33c; stroke-width:2.5; pointer-events:none;
+    animation:groundpulse 1.4s ease infinite; }
+  @keyframes groundpulse { 0%,100% { stroke-opacity:.95; } 50% { stroke-opacity:.25; } }
+  #tree .row.grounded { background:#fff3d6; box-shadow:inset 0 0 0 1px #f2a33c; }
   #panel h3 { margin:0 0 6px; font-size:13px; word-break:break-all; }
   #panel pre { white-space:pre-wrap; word-break:break-word; font-size:11px; color:#445; }
   #panel .tag { display:inline-block; padding:1px 8px; border-radius:99px;
@@ -700,24 +711,33 @@ try { buffers = JSON.parse(localStorage.getItem("ap-buffers") || "{}"); } catch 
 const dirtyCount = () => Object.keys(buffers).length;
 const persistBuffers = () => localStorage.setItem("ap-buffers", JSON.stringify(buffers));
 
-function markDirty(path, kind, content) {
-  const first = !buffers[path];
-  buffers[path] = { content, kind };
+function markDirty(key, kind, content) {
+  const first = !buffers[key];
+  buffers[key] = { content, kind };
   persistBuffers();
   if (first) updateDirtyUI(); else updatePill();
-  if (open.path === path) setDot("dirty");
+  if (openKey() === key) setDot("dirty");
 }
-function clearDirty(path) {
-  delete buffers[path];
+function clearDirty(key) {
+  delete buffers[key];
   persistBuffers();
   updateDirtyUI();
-  if (open.path === path) setDot("saved");
+  if (openKey() === key) setDot("saved");
 }
-async function saveOne(path) {
-  const b = buffers[path];
+// buffer keys: vault buffers are plain paths; body (.work) buffers ride a
+// "work:" prefix and save through /body/save (the human edits their organism
+// directly — the gate constrains the machine, not you)
+const openKey = () => open.path ? (open.src === "body" ? "work:" + open.path : open.path) : null;
+async function saveOne(key) {
+  const b = buffers[key];
   if (!b) return;
-  await fetch("/notes/save?path=" + encodeURIComponent(path), { method: "POST", body: b.content, ...authed });
-  clearDirty(path);
+  const body = key.startsWith("work:");
+  const url = body
+    ? "/body/save?path=" + encodeURIComponent(key.slice(5))
+    : "/notes/save?path=" + encodeURIComponent(key);
+  await fetch(url, { method: "POST", body: b.content, ...authed });
+  clearDirty(key);
+  if (body) draw();   // the organism changed — refresh the world
 }
 async function saveAll() {
   for (const path of Object.keys(buffers)) await saveOne(path);
@@ -740,7 +760,7 @@ async function openFile(path, kind) {
   const buffered = buffers[path];
   const content = buffered ? buffered.content
     : await (await fetch("/notes/file?path=" + encodeURIComponent(path))).text();
-  open = { path, kind };
+  open = { path, kind, src: "vault" };
   document.getElementById("fname").textContent = path;
   document.getElementById("app").classList.add("editing");
   document.getElementById("app").classList.toggle("sketching", kind === "sketch");
@@ -757,6 +777,22 @@ document.getElementById("closeed").onclick = () => {
   loadTree();
   relayout();
 };
+
+// open a BODY page (.work) in the editor — the pencil on a graph node
+async function openBody(path) {
+  if (commState === "chat") setComm(null);
+  const key = "work:" + path;
+  const buffered = buffers[key];
+  const content = buffered ? buffered.content
+    : await (await fetch("/body/file?path=" + encodeURIComponent(path))).text();
+  open = { path, kind: "note", src: "body" };
+  document.getElementById("fname").textContent = "⚙ " + path;
+  document.getElementById("app").classList.add("editing");
+  document.getElementById("app").classList.remove("sketching");
+  document.getElementById("prose").value = content;
+  setDot(buffered ? "dirty" : "saved");
+  relayout();
+}
 
 // ── command / live save modes ─────────────────────────────────────────────
 // command (default): edits wait; the toggle transforms into revert/save; ⌘S saves & translates.
@@ -777,10 +813,11 @@ document.getElementById("dorevert").onclick = () => revertAll();
 
 // revert: drop every unsaved buffer, restore the on-disk content of the open file
 async function revertAll() {
-  const wasOpen = open.path && buffers[open.path];
+  const wasOpen = open.path && buffers[openKey()];
   buffers = {}; persistBuffers();
   if (wasOpen) {
-    const content = await (await fetch("/notes/file?path=" + encodeURIComponent(open.path))).text();
+    const url = open.src === "body" ? "/body/file?path=" : "/notes/file?path=";
+    const content = await (await fetch(url + encodeURIComponent(open.path))).text();
     if (open.kind === "sketch") loadSketch(content); else document.getElementById("prose").value = content;
   }
   clearTimeout(saveTimer); saveTimer = null;
@@ -801,11 +838,11 @@ function setDot(cls) { document.getElementById("savedot").className = "dot " + c
 function onEdit() {
   if (!open.path) return;
   const content = open.kind === "sketch" ? serializeSketch() : document.getElementById("prose").value;
-  markDirty(open.path, open.kind, content);
+  markDirty(openKey(), open.kind, content);
   if (mode === "live") {
     clearTimeout(saveTimer);
-    const p = open.path;
-    saveTimer = setTimeout(() => saveOne(p), 900);
+    const k = openKey();
+    saveTimer = setTimeout(() => saveOne(k), 900);
   }
 }
 document.getElementById("prose").addEventListener("input", onEdit);
@@ -1066,6 +1103,7 @@ const svg = d3.select("#graph"), g = svg.append("g");
 const zoomB = d3.zoom().scaleExtent([0.25, 3]).on("zoom", e => g.attr("transform", e.transform));
 svg.call(zoomB);
 let worldData = { nodes: [], links: [] };
+let nodeSel = null;
 
 // infinite Figma-style sheet: the paper is geometry in world space
 const defs = svg.append("defs");
@@ -1158,7 +1196,7 @@ async function draw() {
     .attr("stroke", l => l.kind === "ref" ? "#b8c4d0" : "#e2e6ea")
     .attr("stroke-width", l => l.kind === "ref" ? 1.6 : 1);
 
-  const node = g.append("g").selectAll("g").data(data.nodes).join("g")
+  const node = nodeSel = g.append("g").selectAll("g").data(data.nodes).join("g")
     .style("cursor", "pointer")
     .call(d3.drag()
       .on("start", (e, d) => { if (!e.active) sim.alphaTarget(0.25).restart(); d.fx = d.x; d.fy = d.y; })
@@ -1221,7 +1259,9 @@ async function draw() {
 // ── node details panel ────────────────────────────────────────────────────
 const panel = document.getElementById("panel");
 function showPanel(d) {
-  let html = `<h3>${esc(d.label)}</h3><span class="tag" style="background:${color(d)}">${d.type}${d.status ? " · " + d.status : ""}</span>`;
+  let html = "";
+  if (d.path) html += `<button class="pencil" onclick="openBody('${esc(d.path)}')" title="edit in the editor"><i data-lucide="pencil"></i></button>`;
+  html += `<h3>${esc(d.label)}</h3><span class="tag" style="background:${color(d)}">${d.type}${d.status ? " · " + d.status : ""}</span>`;
   if (d.type === "proposal" && d.status === "pending") {
     const id = d.id.slice(5);
     html += `<div style="margin-bottom:8px">
@@ -1234,6 +1274,7 @@ function showPanel(d) {
   }
   html += `<pre>${esc(d.detail || "")}</pre>`;
   panel.innerHTML = html; panel.style.display = "block";
+  refreshIcons();
 }
 document.addEventListener("keydown", e => { if (e.key === "Escape") panel.style.display = "none"; });
 svg.on("click", e => { if (e.target.id === "graph") panel.style.display = "none"; });
@@ -1805,15 +1846,21 @@ async function startVoice() {
     const m = JSON.parse(ev.data);
     if (m.type === "ready") { startMic(); showCaption("voice link up — say something"); }
     else if (m.type === "audio") queueLiveAudio(m.data);
-    else if (m.type === "caption") { live.caption += m.text; showCaption(live.caption); }
+    else if (m.type === "caption") {
+      live.caption += m.text;
+      showCaption(live.caption);
+      groundFromCaption(m.text);   // light up what it's talking about
+    }
     else if (m.type === "turn_complete") { live.caption = ""; setTimeout(() =>
       document.getElementById("callcaption").classList.remove("on"), 1600); }
     else if (m.type === "interrupted") flushLiveAudio();
+    else if (m.type === "tool") showCaption("⌕ " + m.cmd);   // it's looking something up
   };
   ws.onclose = () => { if (commState === "voice" && voiceMode === "live") showCaption("voice link dropped"); };
 }
 function stopVoice() {
   stopVoicePoll();
+  clearGrounding();
   if (voiceMode === "live") {
     try { live.ws?.close(); } catch (_) {}
     flushLiveAudio();
@@ -1881,9 +1928,17 @@ async function startMic() {
   const srcNode = live.micCtx.createMediaStreamSource(live.mic);
   const proc = live.micCtx.createScriptProcessor(4096, 1, 1);
   const ratio = live.micCtx.sampleRate / 16000;
+  let speechFrames = 0;
   proc.onaudioprocess = e => {
     if (!live.micOn || !live.ws || live.ws.readyState !== 1) return;
     const inp = e.inputBuffer.getChannelData(0);
+    // the human speaking clears the grounding highlights (folders stay open)
+    if (grounded.size) {
+      let s = 0;
+      for (let i = 0; i < inp.length; i += 16) s += inp[i] * inp[i];
+      speechFrames = Math.sqrt(s / (inp.length / 16)) > 0.03 ? speechFrames + 1 : 0;
+      if (speechFrames >= 3) { clearGrounding(); speechFrames = 0; }
+    }
     const out = new Int16Array(Math.floor(inp.length / ratio));
     for (let i = 0; i < out.length; i++) {
       // average the group — cheap anti-alias for the downsample
@@ -1985,6 +2040,49 @@ function stopVoicePoll() {
   document.getElementById("callcaption").classList.remove("on");
 }
 
+// ── voice grounding: highlight what the autopoet mentions; clear when the
+// human starts talking (folders it opened stay open) ────────────────────────
+const grounded = new Set();
+const escRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const nameRe = name => new RegExp("\\b" + escRe(name).replace(/[_-]/g, "[ _-]?") + "\\b");
+
+function groundFromCaption(chunk) {
+  const t = chunk.toLowerCase();
+  worldData.nodes.forEach(n => {
+    const name = (n.label || "").toLowerCase();
+    if (name.length >= 4 && !grounded.has(n.id) && nameRe(name).test(t)) groundNode(n.id);
+  });
+  document.querySelectorAll("#tree .row[data-kind]").forEach(el => {
+    const base = el.dataset.path.split("/").pop().replace(/\.(md|sketch\.svg|svg)$/i, "").toLowerCase();
+    if (base.length >= 4 && !grounded.has("t:" + el.dataset.path) && nameRe(base).test(t))
+      groundTree(el.dataset.path);
+  });
+}
+function groundNode(id) {
+  grounded.add(id);
+  if (!nodeSel) return;
+  nodeSel.filter(d => d.id === id).each(function (d) {
+    d3.select(this).append("circle").attr("class", "ground-ring").attr("r", radius(d) + 9);
+  });
+}
+async function groundTree(path) {
+  grounded.add("t:" + path);
+  // open the enclosing folders — these deliberately STAY open after clearing
+  const parts = path.split("/");
+  let prefix = "", changed = false;
+  for (let i = 0; i < parts.length - 1; i++) {
+    prefix = prefix ? prefix + "/" + parts[i] : parts[i];
+    if (closedFolders.has(prefix)) { closedFolders.delete(prefix); changed = true; }
+  }
+  if (changed) { persistFolders(); await loadTree(); }
+  document.querySelector(`#tree .row[data-path="${CSS.escape(path)}"]`)?.classList.add("grounded");
+}
+function clearGrounding() {
+  grounded.clear();
+  g.selectAll(".ground-ring").remove();
+  document.querySelectorAll("#tree .row.grounded").forEach(el => el.classList.remove("grounded"));
+}
+
 // typed push-to-talk: in a live call it's a text turn on the socket; in local
 // mode it's planner → say
 let voiceBusy = false;
@@ -1995,6 +2093,7 @@ document.getElementById("callin").addEventListener("keydown", async e => {
   inp.value = "";
   if (voiceMode === "live" && live.ws?.readyState === 1) {
     live.caption = "";
+    clearGrounding();   // typed input counts as the human talking
     live.ws.send(JSON.stringify({ type: "text", text: msg }));
     return;
   }

@@ -49,6 +49,7 @@ defmodule Autopoet.VoiceSock do
   def handle_info({:live, {:audio, b64}}, state), do: push(%{type: "audio", data: b64, rate: 24_000}, state)
   def handle_info({:live, {:caption, text}}, state), do: push(%{type: "caption", text: text}, state)
   def handle_info({:live, :turn_complete}, state), do: push(%{type: "turn_complete"}, state)
+  def handle_info({:live, {:tool, cmd}}, state), do: push(%{type: "tool", cmd: cmd}, state)
   def handle_info({:live, :interrupted}, state), do: push(%{type: "interrupted"}, state)
 
   def handle_info({:live, {:closed, reason}}, state) do
