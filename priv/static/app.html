@@ -4416,6 +4416,89 @@ const SLIDES = [
       gsap.from(comp.querySelectorAll(".fxline"), { width: 0, duration: .45, delay: 2.5, stagger: .15, ease: "power2.out" });
       gsap.from(comp.querySelector(".fxcompbtn"), { scale: 0, duration: .45, delay: 2.85, ease: "back.out(3)" });
     } },
+  { title: "the map is the territory", mood: "neutral",
+    sub: "this is where you'll live: every node is a real running thing — pages, rules, agents — grouped into living clusters with membranes. not a picture of your notes; the thing itself.",
+    fx(fx) {
+      // the real interface in miniature: live physics, a breathing cluster
+      // membrane with its badge, everything orbiting the machine — not a mural
+      const holder = fxEl(`<div style="position:absolute;inset:0"></div>`);
+      holder.innerHTML = `<svg viewBox="0 0 480 230" width="480" height="230" fill="none"></svg>`;
+      fx.append(holder);
+      const svg = d3.select(holder.querySelector("svg"));
+      const hullLayer = svg.append("g");
+      const linkLayer = svg.append("g");
+      const nodeLayer = svg.append("g");
+      const badgeLayer = svg.append("g");
+      const nodes = [
+        { id: "self", fx: 240, fy: 115, x: 240, y: 115 },
+        { id: "launch page", c: "#8e7cc3", cl: 1, x: 350, y: 120 },
+        { id: "pricing", c: "#8e7cc3", cl: 1, x: 390, y: 150 },
+        { id: "hero copy", c: "#8e7cc3", cl: 1, x: 360, y: 180 },
+        { id: "changelog", c: "#8e7cc3", cl: 1, x: 410, y: 110 },
+        { id: "rules.work", c: "#c9a04e", lab: 1, x: 110, y: 60 },
+        { id: "sketch", c: "#6aa84f", x: 80, y: 130 },
+        { id: "research", c: "#d96ba0", lab: 1, x: 130, y: 190 },
+        { id: "ledger", c: "#2aa198", x: 60, y: 90 },
+        { id: "deck agent", c: "#4a90d9", x: 150, y: 30 }
+      ];
+      const links = nodes.slice(1).map(n => ({ source: "self", target: n.id }));
+      const CL = [368, 148];
+      const sim = d3.forceSimulation(nodes)
+        .force("link", d3.forceLink(links).id(d => d.id).distance(d => d.target.cl ? 125 : 92).strength(.15))
+        .force("charge", d3.forceManyBody().strength(-55).distanceMax(150))
+        .force("collide", d3.forceCollide(d => d.id === "self" ? 64 : 15))
+        .force("cluster", a => {
+          for (const n of nodes) {
+            if (n.cl) { n.vx += (CL[0] - n.x) * a * .16; n.vy += (CL[1] - n.y) * a * .16; }
+            if (n.id !== "self") { n.vx += (Math.random() - .5) * .18; n.vy += (Math.random() - .5) * .18; }
+          }
+        })
+        .alpha(.09).alphaDecay(0).velocityDecay(.5);
+      const line = linkLayer.selectAll("line").data(links).join("line")
+        .attr("stroke", "#e2e6ea").attr("stroke-width", 1);
+      const dot = nodeLayer.selectAll("circle").data(nodes.slice(1)).join("circle")
+        .attr("r", 7).attr("fill", d => d.c);
+      const lab = nodeLayer.selectAll("text").data(nodes.slice(1).filter(d => d.lab)).join("text")
+        .attr("font-size", 7.5).attr("font-family", "ui-monospace,monospace").attr("fill", "#9aa2ad")
+        .attr("text-anchor", "middle").text(d => d.id);
+      const hull = hullLayer.append("path")
+        .attr("fill", "#8e7cc3").attr("fill-opacity", .07)
+        .attr("stroke", "#8e7cc3").attr("stroke-opacity", .35)
+        .attr("stroke-width", 1.4).attr("stroke-linejoin", "round");
+      const pill = badgeLayer.append("g");
+      pill.append("rect").attr("width", 52) .attr("height", 15).attr("rx", 7.5).attr("fill", "#8e7cc3");
+      pill.append("text").attr("x", 26).attr("y", 10.5).attr("text-anchor", "middle")
+        .attr("font-size", 8).attr("font-family", "ui-monospace,monospace")
+        .attr("font-weight", 600).attr("fill", "#fff").text("# launch");
+      sim.on("tick", () => {
+        line.attr("x1", d => d.source.x).attr("y1", d => d.source.y)
+            .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+        dot.attr("cx", d => d.x).attr("cy", d => d.y);
+        lab.attr("x", d => d.x).attr("y", d => d.y + 17);
+        const pts = nodes.filter(n => n.cl).map(n => [n.x, n.y]);
+        const [cx, cy] = [d3.mean(pts, p => p[0]), d3.mean(pts, p => p[1])];
+        const off = (d3.polygonHull(pts) || pts).map(([x, y]) => {
+          const dx = x - cx, dy = y - cy, L = Math.hypot(dx, dy) || 1;
+          return [x + dx / L * 22, y + dy / L * 22];
+        });
+        // rounded membrane corners, like the real thing
+        const n = off.length;
+        let d = "";
+        for (let i = 0; i < n; i++) {
+          const p0 = off[(i + n - 1) % n], p1 = off[i], p2 = off[(i + 1) % n];
+          const l1 = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) || 1, l2 = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) || 1;
+          const r = Math.min(14, l1 / 2, l2 / 2);
+          const a = [p1[0] - (p1[0] - p0[0]) / l1 * r, p1[1] - (p1[1] - p0[1]) / l1 * r];
+          const b = [p1[0] + (p2[0] - p1[0]) / l2 * r, p1[1] + (p2[1] - p1[1]) / l2 * r];
+          d += (i ? "L" : "M") + a.map(v => v.toFixed(1)) + " Q" + p1.map(v => v.toFixed(1)) + " " + b.map(v => v.toFixed(1)) + " ";
+        }
+        hull.attr("d", d + "Z");
+        const top = off.reduce((a, p) => p[1] < a[1] ? p : a, off[0]);
+        pill.attr("transform", `translate(${top[0] - 26},${top[1] - 22})`);
+      });
+      gsap.from(holder, { autoAlpha: 0, duration: .8, delay: .2 });
+      return () => sim.stop();
+    } },
   { title: "but sure, you can chat", mood: "happy",
     sub: "chat and voice are right there too — real tool calls and all. (yes, after everything you just saw. some days you want to talk.)",
     fx(fx) {
