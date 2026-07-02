@@ -1657,14 +1657,15 @@ async function createFace(mount, opts = {}) {
   const hov = opts.hoverTarget || svg;
   hov.addEventListener("mouseenter", () => setM("hopeful"));
   hov.addEventListener("mouseleave", () => { if (!squint) setM("neutral"); });
-  // click: a playful squint + zigzag (confused) mouth, then relax
+  // click: a quick "click-in" blip — a couple frames of squint + zigzag (confused)
+  // mouth to acknowledge the click, then straight back (not held)
   const clk = opts.clickTarget || svg;
   clk.addEventListener("click", () => {
     squint = true;
     const e = el("eyes"); if (e) e.style.transform = "scaleY(0.42)";
     setM("confused");
     clearTimeout(svg._react);
-    svg._react = setTimeout(() => { squint = false; const e2 = el("eyes"); if (e2) e2.style.transform = "scaleY(1)"; setM("neutral"); }, 1200);
+    svg._react = setTimeout(() => { squint = false; const e2 = el("eyes"); if (e2) e2.style.transform = "scaleY(1)"; setM("neutral"); }, 160);
   });
   return { svg, setMouth: setM, el };
 }

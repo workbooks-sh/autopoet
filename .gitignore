@@ -27,3 +27,4 @@ autopoet-*.tar
 .env
 /compilers
 /kits
+.claude/worktrees/
