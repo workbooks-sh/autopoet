@@ -779,9 +779,9 @@
   .oauthbtn svg { flex:none; }
   /* onboarding steps (the cold-start flow after sign UP) */
   #obsteps { display:none; flex-direction:column; align-items:flex-start; gap:16px; max-width:460px; padding:40px; text-align:left; }
-  #obsteps .obstepgo { font:12.5px ui-monospace,monospace; padding:9px 18px; border-radius:10px;
+  .obstepgo { font:12.5px ui-monospace,monospace; padding:9px 18px; border-radius:10px;
     border:1px solid #2f6fdd; background:#2f6fdd; color:#fff; cursor:pointer; -webkit-app-region:no-drag; }
-  #obsteps .obstepgo:hover { background:#245cc0; }
+  .obstepgo:hover { background:#245cc0; }
   .obsface { width:72px; height:72px; border-radius:16px; border:1px solid rgba(0,0,0,.12);
     background:#fff; overflow:hidden; }
   .obinput { font:13px ui-monospace,SFMono-Regular,Menlo,monospace; color:#1c2230;
@@ -859,8 +859,25 @@
   .fxline { height:7px; border-radius:4px; background:#dfe4ea; }
   .fxcompbtn { position:absolute; right:11px; bottom:11px; font:600 9.5px ui-monospace,monospace;
     color:#fff; background:#8e7cc3; padding:4px 11px; border-radius:7px; }
-  .fxvoice { display:flex; align-items:center; gap:3px; height:26px; }
+  /* mini chat/voice panels — bubbles + dashed tool-call rows, waveform docked */
+  .fxchat { position:absolute; width:152px; display:flex; flex-direction:column; gap:6px;
+    background:#fff; border:1px solid #e0e4ea; border-radius:12px; padding:10px;
+    box-shadow:0 4px 14px rgba(25,35,55,.08); }
+  .fxmsg { font:9.5px/1.4 ui-monospace,monospace; padding:4px 8px; border-radius:8px;
+    color:#3a4250; max-width:92%; }
+  .fxmsg.user { align-self:flex-end; background:#eef1f5; }
+  .fxmsg.bot { align-self:flex-start; background:#f4f1fb; border:1px solid #e6ddf6; }
+  .fxtool { display:flex; align-items:center; gap:5px; font:9px ui-monospace,monospace;
+    color:#8e7cc3; background:#f9f8fd; border:1px dashed #d9c9f0; border-radius:7px; padding:3px 7px; }
+  .fxtool svg { width:10px; height:10px; }
+  .fxvoice { display:flex; align-items:center; justify-content:center; gap:3px; height:24px;
+    background:#f7f5fc; border-radius:8px; padding:0 8px; }
   .fxvoice .vb { width:3px; height:9px; background:#8e7cc3; border-radius:2px; display:block; }
+  .fxgate { display:flex; gap:12px; justify-content:center; font:600 9.5px ui-monospace,monospace; }
+  .fxgate .fxok { color:#6aa84f; display:inline-block; }
+  .fxgate .fxno { color:#c0392b; }
+  /* prose spans the parser lights up, each in its node's color */
+  .astp { border-radius:4px; padding:0 2px; border-bottom:2px solid transparent; }
   @keyframes fxblink { 50% { opacity:0; } }
 </style>
 
@@ -4088,7 +4105,7 @@ const SLIDES = [
     sub: "your vault holds documents — thoughts, plans, rules. it is the source of truth, and it is yours: the autopoet never edits it.",
     fx(fx) {
       // left: the note being written; right: what comes OUT — real code files
-      const card = fxEl(`<div class="fxcard" style="left:2%;top:25%;width:138px;height:76px"><span id="fxtype"></span><span class="fxcaret"></span></div>`);
+      const card = fxEl(`<div class="fxcard" style="left:2%;top:22%;width:146px;min-height:78px;white-space:normal"><span id="fxtype"></span><span class="fxcaret"></span></div>`);
       fx.append(card);
       fxIn(card);
       const files = [
@@ -4099,10 +4116,10 @@ const SLIDES = [
         `<div class="fxchip fxfile" style="right:5%;top:${26 + k * 21}%">` +
         `<img src="/static/micons/${icon}.svg" width="13" height="13" alt="">${name}</div>`));
       files.forEach(f => fx.append(f));
-      const text = "plan: launch page\ntodo: hero copy\ntone: quiet, warm";
+      const text = "the landing page should feel quiet and warm — hero first, pricing when it's ready.";
       const span = card.querySelector("#fxtype");
       let i = 0;
-      const t = setInterval(() => { span.textContent = text.slice(0, ++i); if (i >= text.length) clearInterval(t); }, 42);
+      const t = setInterval(() => { span.textContent = text.slice(0, ++i); if (i >= text.length) clearInterval(t); }, 32);
       // files land as the words land — output trailing the source
       gsap.from(files, { x: -26, autoAlpha: 0, scale: .7, duration: .55, delay: 1.1, stagger: .5, ease: "back.out(2)" });
       gsap.to(files, { y: "-=4", duration: 2.2, yoyo: true, repeat: -1, ease: "sine.inOut", stagger: .35, delay: 2.8 });
@@ -4141,77 +4158,127 @@ const SLIDES = [
       gsap.from(comp.querySelector(".fxcompbtn"), { scale: 0, duration: .45, delay: 2.85, ease: "back.out(3)" });
     } },
   { title: "it becomes real", mood: "superHappy",
-    sub: "saved words translate into living structure — pages, todos, rules. programs run; context informs.",
+    sub: "you write prose, not config — it dissects the meaning and each piece becomes living structure.",
     fx(fx) {
+      // LEFT: a real paragraph of natural language, parsed before your eyes —
+      // each span lights in the color of the node it becomes
+      const COL = ["#8e7cc3", "#6aa84f", "#c9a04e"];
+      const doc = fxEl(`<div class="fxcard" style="left:1%;top:18%;width:152px;white-space:normal">` +
+        `<span class="astp">Build me a quiet landing page.</span> ` +
+        `<span class="astp">Every Friday, remind me to ship the changelog.</span> ` +
+        `<span class="astp">And keep the tone warm.</span></div>`);
+      fx.append(doc);
+      fxIn(doc);
       const wires = fxEl(`<div style="position:absolute;inset:0"></div>`);
       wires.innerHTML = `<svg viewBox="0 0 480 230" width="480" height="230" fill="none">
-        <path class="fxlink" d="M298 115 C332 115 332 60 366 60" stroke="#d9c9f0" stroke-width="1.6"/>
-        <path class="fxlink" d="M298 115 C338 115 338 118 374 118" stroke="#d9c9f0" stroke-width="1.6"/>
-        <path class="fxlink" d="M298 115 C332 115 332 172 362 172" stroke="#d9c9f0" stroke-width="1.6"/>
+        <path class="fxlink" d="M298 115 C332 115 332 60 366 60" stroke="#8e7cc3" stroke-opacity=".45" stroke-width="1.6"/>
+        <path class="fxlink" d="M298 115 C338 115 338 118 374 118" stroke="#6aa84f" stroke-opacity=".45" stroke-width="1.6"/>
+        <path class="fxlink" d="M298 115 C332 115 332 172 362 172" stroke="#c9a04e" stroke-opacity=".45" stroke-width="1.6"/>
       </svg>`;
       fx.append(wires);
-      const mk = (top, left, bg) => fxEl(`<div class="fxnode" style="top:${top}px;left:${left}px;background:${bg}"></div>`);
-      const nodes = [mk(53, 366, "#8e7cc3"), mk(111, 374, "#6aa84f"), mk(165, 362, "#c9a04e")];
+      // wire endpoints are circle CENTERS — offset the 14px dots by half their size
+      const mk = (cy, cx, bg) => fxEl(`<div class="fxnode" style="top:${cy - 7}px;left:${cx - 7}px;background:${bg}"></div>`);
+      const nodes = [mk(60, 366, COL[0]), mk(118, 374, COL[1]), mk(172, 362, COL[2])];
       nodes.forEach(n => fx.append(n));
-      const note = fxEl(`<div class="fxchip" style="left:7%;top:44%">launch-page.md</div>`);
-      fx.append(note);
-      fxIn(note);
-      wires.querySelectorAll(".fxlink").forEach((p, k) => {
-        const L = p.getTotalLength();
+      // parse sweep: sentence k highlights → its wire draws → its node pops
+      const spans = doc.querySelectorAll(".astp");
+      const links = wires.querySelectorAll(".fxlink");
+      spans.forEach((sp, k) => {
+        const d = 1.0 + k * .75;
+        gsap.to(sp, { backgroundColor: COL[k] + "29", borderBottomColor: COL[k], duration: .4, delay: d });
+        const p = links[k], L = p.getTotalLength();
         p.style.strokeDasharray = L; p.style.strokeDashoffset = L;
-        gsap.to(p, { strokeDashoffset: 0, duration: .9, delay: .5 + k * .18, ease: "power2.out" });
+        gsap.to(p, { strokeDashoffset: 0, duration: .7, delay: d + .25, ease: "power2.out" });
+        gsap.from(nodes[k], { scale: 0, duration: .5, delay: d + .55, ease: "back.out(3)" });
       });
-      gsap.from(nodes, { scale: 0, duration: .5, delay: .65, stagger: .18, ease: "back.out(3)" });
-      gsap.to(nodes, { y: "-=5", duration: 2, yoyo: true, repeat: -1, ease: "sine.inOut", stagger: .3, delay: 1.4 });
-      gsap.to(note, { x: 74, autoAlpha: 0, duration: 1.0, delay: 1.1, ease: "power2.in" });
+      gsap.to(nodes, { y: "-=5", duration: 2, yoyo: true, repeat: -1, ease: "sine.inOut", stagger: .3, delay: 3.6 });
     } },
   { title: "a living document", mood: "neutral",
     sub: "edit a note and the diff flows through — the output updates in place. not a chat: a document that stays true.",
     fx(fx) {
       // the note gets EDITED — old line struck out, new line typed in…
-      const doc = fxEl(`<div class="fxcard" style="left:2%;top:24%;width:142px;height:80px">plan: launch page\n<span id="fxold">tone: quiet, warm</span>\n<span id="fxnew" style="color:#6aa84f"></span></div>`);
+      const doc = fxEl(`<div class="fxcard" style="left:2%;top:24%;width:146px;min-height:70px;white-space:normal">the hero copy should feel <span id="fxold">quiet and warm</span><span id="fxnew" style="color:#6aa84f;font-weight:600"></span>.</div>`);
       fx.append(doc);
       fxIn(doc);
-      // …and the OUTPUT updates in place, no rebuild, no conversation
-      const out = fxEl(`<div class="fxcard fxfile" style="right:4%;top:30%;width:130px;flex-direction:column;align-items:flex-start;gap:8px">
-        <div class="fxfile" style="position:static"><img src="/static/micons/svelte.svg" width="13" height="13" alt="">launch/page.svelte</div>
-        <div class="fxline" id="fxoutbar" style="width:38px"></div>
+      // …and the REAL component updates in place, no rebuild, no conversation
+      const comp = fxEl(`<div class="fxcomp" style="right:3%;top:26%">
+        <div class="fxcompav"></div>
+        <div class="fxcomplines"><div class="fxline" style="width:62px"></div><div class="fxline" style="width:44px"></div></div>
+        <div class="fxcompbtn">go</div>
       </div>`);
-      fx.append(out);
-      fxIn(out, .25);
+      fx.append(comp);
+      fxIn(comp, .25);
       const calls = [];
       calls.push(gsap.delayedCall(1.0, () => {
         const o = doc.querySelector("#fxold");
         if (o) { o.style.textDecoration = "line-through"; o.style.color = "#c0392b"; }
       }));
-      const text = "tone: bold.";
+      const text = "bold";
       const span = doc.querySelector("#fxnew");
       let i = 0, t = null;
       calls.push(gsap.delayedCall(1.4, () => {
-        t = setInterval(() => { span.textContent = "+ " + text.slice(0, ++i); if (i >= text.length) clearInterval(t); }, 55);
+        t = setInterval(() => { span.textContent = " " + text.slice(0, ++i); if (i >= text.length) clearInterval(t); }, 70);
       }));
-      // the diff travels: note → face → output
+      // the diff travels: note → THROUGH the face → component
       const dot = fxEl(`<div class="fxnode" style="width:9px;height:9px;left:31%;top:47%;background:#6aa84f"></div>`);
       fx.append(dot);
       gsap.set(dot, { autoAlpha: 0 });
       gsap.to(dot, { autoAlpha: 1, duration: .2, delay: 2.5 });
       gsap.to(dot, { left: "64%", duration: .9, delay: 2.6, ease: "power1.inOut" });
       gsap.to(dot, { autoAlpha: 0, duration: .2, delay: 3.4 });
-      gsap.to(out.querySelector("#fxoutbar"), { width: 74, background: "#6aa84f", duration: .5, delay: 3.4, ease: "power2.out" });
-      gsap.fromTo(out, { scale: 1 }, { scale: 1.06, duration: .22, delay: 3.4, yoyo: true, repeat: 1, ease: "sine.inOut" });
+      // the orb spooks it mid-pass — a quick :O then back to business
+      calls.push(gsap.delayedCall(2.85, () => {
+        const m = _slideFaceApi && _slideFaceApi.el("mouth");
+        if (m) m.innerHTML = `<circle cx="40.5" cy="49" r="4.2" fill="white" stroke="black" stroke-width="2"/>`;
+      }));
+      calls.push(gsap.delayedCall(3.4, () => _slideFaceApi && _slideFaceApi.setMouth("neutral")));
+      // tone: bold. — and the component IS bolder: heavier text, shouting button
+      gsap.to(comp.querySelectorAll(".fxline"), { background: "#57627a", height: 9, duration: .45, delay: 3.5, ease: "power2.out" });
+      gsap.to(comp.querySelector(".fxcompbtn"), { background: "#1c2230", scale: 1.12, duration: .4, delay: 3.5, ease: "back.out(2)" });
+      calls.push(gsap.delayedCall(3.55, () => { const b = comp.querySelector(".fxcompbtn"); if (b) b.textContent = "GO"; }));
+      gsap.fromTo(comp, { scale: 1 }, { scale: 1.05, duration: .22, delay: 3.45, yoyo: true, repeat: 1, ease: "sine.inOut" });
       return () => { if (t) clearInterval(t); calls.forEach(c => c.kill()); };
     } },
   { title: "but sure, you can chat", mood: "happy",
-    sub: "chat and voice are right there too. (yes — after all that. some days you just want to talk.)",
+    sub: "chat and voice are right there too — real tool calls and all. (yes, after everything you just saw. some days you want to talk.)",
     fx(fx) {
-      const b1 = fxEl(`<div class="fxchip" style="left:5%;top:26%">“add a pricing page?”</div>`);
-      const b2 = fxEl(`<div class="fxchip" style="left:3%;top:47%;background:#f4f1fb;border-color:#d9c9f0">done — on the graph</div>`);
-      const voice = fxEl(`<div class="fxchip fxvoice" style="right:8%;top:38%">` +
-        `<span class="vb"></span><span class="vb"></span><span class="vb"></span><span class="vb"></span><span class="vb"></span></div>`);
-      fx.append(b1, b2, voice);
-      fxIn(b1, .2); fxIn(b2, .9); fxIn(voice, .5);
+      // LEFT: chat with visible tool calls…
+      const chat = fxEl(`<div class="fxchat" style="left:1%;top:12%">
+        <div class="fxmsg user">add a pricing page?</div>
+        <div class="fxtool"><i data-lucide="wrench"></i>write: pricing.work</div>
+        <div class="fxtool"><i data-lucide="git-branch"></i>link: nav → pricing</div>
+        <div class="fxmsg bot">done — on the graph</div>
+      </div>`);
+      // …RIGHT: voice — waveform docked in its own panel, same tool-call shape
+      const voice = fxEl(`<div class="fxchat" style="right:1%;top:20%">
+        <div class="fxvoice"><span class="vb"></span><span class="vb"></span><span class="vb"></span><span class="vb"></span><span class="vb"></span><span class="vb"></span><span class="vb"></span></div>
+        <div class="fxmsg user">“make the hero bolder”</div>
+        <div class="fxtool"><i data-lucide="pencil"></i>edit: hero.ts</div>
+      </div>`);
+      fx.append(chat, voice);
+      refreshIcons();
+      gsap.from(chat.children, { autoAlpha: 0, y: 8, duration: .4, stagger: .5, delay: .3, ease: "power2.out" });
+      gsap.from(voice.children, { autoAlpha: 0, y: 8, duration: .4, stagger: .5, delay: 1.0, ease: "power2.out" });
       gsap.to(voice.querySelectorAll(".vb"), { scaleY: () => 0.5 + Math.random() * 2.4, duration: .28,
-        yoyo: true, repeat: -1, repeatRefresh: true, stagger: .07, ease: "sine.inOut", delay: 1.1 });
+        yoyo: true, repeat: -1, repeatRefresh: true, stagger: .07, ease: "sine.inOut", delay: 1.2 });
+      // and the face TALKS along — the REAL voice mouth-sync (viseme chart +
+      // playhead classifier, 50ms cadence), driven by a scripted line + envelope
+      const line = "done. I wrote the pricing page and linked it into the nav for you.";
+      const t0 = performance.now(), dur = 4600;
+      let lastV = null;
+      const talk = setInterval(() => {
+        const m = _slideFaceApi && _slideFaceApi.el("mouth");
+        if (!m) return;
+        const frac = ((performance.now() - t0) % dur) / dur;
+        // synthetic speech envelope: syllable pulses + a rest at the loop seam
+        const amp = frac > .9 ? 0 : .3 + .5 * Math.abs(Math.sin(frac * Math.PI * 16)) * (.6 + Math.random() * .4);
+        const v = visemeAt(line, frac, amp);
+        if (v === lastV) return;
+        lastV = v;
+        if (v === "X") _slideFaceApi.setMouth("happy");
+        else m.innerHTML = VISEMES[v];
+      }, 50);
+      return () => clearInterval(talk);
     } },
   { title: "it improves itself", mood: "neutral",
     sub: "the autopoet tends its own body — it writes structure, files its own issues, and keeps a full undo history.",
@@ -4228,10 +4295,21 @@ const SLIDES = [
   { title: "you hold the gate", mood: "happy",
     sub: "when it thinks YOUR notes should change, it asks. approve or reject — every single time.",
     fx(fx) {
-      const prop = fxEl(`<div class="fxcard" style="left:135px;bottom:4%;width:210px;white-space:normal;text-align:center">proposal → edit welcome.md<div style="margin-top:7px"><span id="fxok" style="color:#6aa84f;display:inline-block">✓ accept</span>&nbsp;&nbsp;&nbsp;<span style="color:#c0392b">✗ reject</span></div></div>`);
-      fx.append(prop);
+      // LEFT: the proposal, shaped like the chat panels; RIGHT: the vault file it targets
+      const prop = fxEl(`<div class="fxchat" style="left:1%;top:22%;width:148px">
+        <div class="fxtool"><i data-lucide="git-pull-request"></i>proposal #7</div>
+        <div class="fxmsg bot">edit welcome.md — “tighten the intro”</div>
+        <div class="fxgate"><span class="fxok">✓ accept</span><span class="fxno">✗ reject</span></div>
+      </div>`);
+      const target = fxEl(`<div class="fxchip fxfile" style="right:7%;top:44%">` +
+        `<img src="/static/micons/markdown.svg" width="13" height="13" alt="">welcome.md</div>`);
+      fx.append(prop, target);
+      refreshIcons();
       fxIn(prop, .2);
-      gsap.to(prop.querySelector("#fxok"), { scale: 1.18, duration: .55, yoyo: true, repeat: -1, repeatDelay: 1.1, ease: "sine.inOut", delay: 1 });
+      fxIn(target, .55);
+      gsap.to(prop.querySelector(".fxok"), { scale: 1.15, duration: .5, yoyo: true, repeat: -1, repeatDelay: 1.2, ease: "sine.inOut", delay: 1 });
+      // acceptance is the ONLY door into the vault — the target glows with it
+      gsap.to(target, { boxShadow: "0 0 0 3px rgba(106,168,79,.28)", duration: .5, yoyo: true, repeat: -1, repeatDelay: 1.7, ease: "sine.inOut", delay: 1.35 });
     } }
 ];
 let _slideFaceApi = null, _slideIdx = -1, _slideCleanup = null, _slidesKeyed = false;
