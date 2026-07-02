@@ -617,6 +617,22 @@
   #footpop .fp-envadd:hover { border-color:#c7d0e0; color:#223; }
   #footpop .fp-note { font:10.5px ui-monospace,monospace; color:#b3bac4; padding:2px 10px 6px; }
 
+  /* filter · views popup (top-right, under the filter icon) */
+  #filterpop { position:fixed; z-index:40; display:none; background:#fff; border:1px solid var(--line);
+    border-radius:12px; box-shadow:0 14px 40px rgba(25,35,55,.16); padding:6px; min-width:206px; }
+  #filterpop.on { display:block; }
+  #filterpop .flt-title { font-size:11px; letter-spacing:.05em; text-transform:uppercase; color:#98a0ac; padding:6px 9px 4px; }
+  #filterpop .flt-row { display:flex; align-items:center; gap:9px; padding:6px 9px; border-radius:8px; cursor:pointer; }
+  #filterpop .flt-row:hover { background:#f2f4f7; }
+  #filterpop .flt-row input { accent-color:#5b8cc9; cursor:pointer; }
+  #filterpop .flt-sw { width:10px; height:10px; border-radius:3px; flex:none; }
+  #filterpop .flt-l { flex:1; font-size:12.5px; color:#3a4250; text-transform:capitalize; }
+  #filterpop .flt-n { font:10px ui-monospace,monospace; color:#b3bac4; }
+  #filterpop .flt-sep { height:1px; background:#ececec; margin:5px 2px; }
+  #filterpop .flt-all { font:inherit; font-size:12px; color:#67707c; border:none; background:none; cursor:pointer; padding:6px 9px; border-radius:8px; width:100%; text-align:left; }
+  #filterpop .flt-all:hover { background:#f2f4f7; color:#223; }
+  #filterpop .flt-note { font:10.5px ui-monospace,monospace; color:#c7ccd4; padding:4px 9px 3px; }
+
   /* ── onboarding / sign-in (a pre-app screen; plain white, centered) ── */
   #onboard { position:fixed; inset:0; z-index:60; background:#fff; display:flex;
     align-items:center; justify-content:center; -webkit-app-region:drag; }
@@ -768,9 +784,11 @@
     <div id="canvasbar">
       <div class="cb" id="cb-search"><i data-lucide="search"></i><input id="searchin"
         placeholder="search the world…" spellcheck="false"><span class="tip">search the world</span></div>
+      <div class="cb" id="cb-filter"><i data-lucide="sliders-horizontal"></i><span class="tip">filter · views</span></div>
       <div class="cb" id="cb-bell"><i data-lucide="bell"></i><span class="bdg" id="bellbdg" style="display:none"></span><span class="tip">notifications</span></div>
     </div>
     <div id="searchpop"><div class="res" id="searchres"></div></div>
+    <div id="filterpop"></div>
     <div id="notif">
       <div class="nh">NOTIFICATIONS</div>
       <div class="body" id="notifbody"></div>
@@ -1647,7 +1665,7 @@ const svg = d3.select("#graph"), g = svg.append("g");
 const zoomB = d3.zoom().scaleExtent([0.25, 3]).on("zoom", e => g.attr("transform", e.transform));
 svg.call(zoomB);
 let worldData = { nodes: [], links: [] };
-let nodeSel = null;
+let nodeSel = null, linkSel = null;
 
 // infinite Figma-style sheet: the paper is geometry in world space
 const defs = svg.append("defs");
@@ -1753,7 +1771,7 @@ async function draw() {
   const self = data.nodes.find(n => n.id === "self");
   self.fx = W / 2; self.fy = H / 2;
 
-  const link = g.append("g").selectAll("line").data(data.links).join("line")
+  const link = linkSel = g.append("g").selectAll("line").data(data.links).join("line")
     .attr("stroke", l => l.kind === "ref" ? "#b8c4d0" : "#e2e6ea")
     .attr("stroke-width", l => l.kind === "ref" ? 1.6 : 1);
 
@@ -1808,6 +1826,8 @@ async function draw() {
         .attr("x2", l => l.target.x).attr("y2", l => l.target.y);
     node.attr("transform", d => `translate(${d.x},${d.y})`);
   });
+
+  applyFilter();   // re-apply any active type filter to the fresh selection
 }
 
 // ── node details panel ────────────────────────────────────────────────────
@@ -2076,6 +2096,46 @@ document.getElementById("cb-bell").onclick = () => {
 };
 
 function clearSearchDim() { g.selectAll("g > g").attr("opacity", 1); }
+
+// ── filter · views: show/hide node types on the canvas ──
+let activeTypes = null;   // null = all shown; else a Set of visible type keys
+const typeSwatch = t => t === "proposal" ? COLORS.proposal.pending : (COLORS[t] || "#888");
+const typeLabel = t => t === "self" ? "autopoet" : t;
+function presentTypes() {
+  const m = new Map();
+  (worldData.nodes || []).forEach(n => m.set(n.type, (m.get(n.type) || 0) + 1));
+  return [...m.entries()];
+}
+function applyFilter() {
+  if (!nodeSel) return;
+  const on = t => !activeTypes || activeTypes.has(t);
+  nodeSel.attr("opacity", d => on(d.type) ? 1 : 0.05).style("pointer-events", d => on(d.type) ? "all" : "none");
+  if (linkSel) linkSel.attr("opacity", l => (on((l.source || {}).type) && on((l.target || {}).type)) ? 1 : 0.04);
+}
+function closeFilterPop() { document.getElementById("filterpop").classList.remove("on"); }
+function openFilterPop() {
+  const p = document.getElementById("filterpop");
+  if (p.classList.contains("on")) return closeFilterPop();
+  if (!activeTypes) activeTypes = new Set(presentTypes().map(([t]) => t));
+  p.innerHTML = `<div class="flt-title">show</div>${presentTypes().map(([t, n]) =>
+    `<label class="flt-row"><input type="checkbox" data-t="${t}" ${activeTypes.has(t) ? "checked" : ""}>
+       <span class="flt-sw" style="background:${typeSwatch(t)}"></span>
+       <span class="flt-l">${esc(typeLabel(t))}</span><span class="flt-n">${n}</span></label>`).join("")}
+    <div class="flt-sep"></div><button class="flt-all" id="flt-all">reset · show all</button>
+    <div class="flt-note">// views &amp; grouping — coming</div>`;
+  p.classList.add("on");
+  const r = document.getElementById("cb-filter").getBoundingClientRect();
+  p.style.top = (r.bottom + 8) + "px"; p.style.right = (innerWidth - r.right) + "px"; p.style.left = "auto";
+  p.querySelectorAll("input[type=checkbox]").forEach(cb => cb.onchange = () => {
+    cb.checked ? activeTypes.add(cb.dataset.t) : activeTypes.delete(cb.dataset.t); applyFilter();
+  });
+  document.getElementById("flt-all").onclick = () => { activeTypes = new Set(presentTypes().map(([t]) => t)); applyFilter(); closeFilterPop(); };
+}
+document.getElementById("cb-filter").onclick = e => { e.stopPropagation(); collapseSearch(); openFilterPop(); };
+addEventListener("mousedown", e => {
+  const p = document.getElementById("filterpop");
+  if (p.classList.contains("on") && !p.contains(e.target) && !e.target.closest("#cb-filter")) closeFilterPop();
+});
 document.getElementById("searchin").addEventListener("input", e => {
   const q = e.target.value.trim().toLowerCase();
   const res = document.getElementById("searchres");
