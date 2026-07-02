@@ -17,13 +17,17 @@ defmodule Autopoet.Notes do
   def dir, do: Path.join([Autopoet.Discovery.home(), "data", "notes"])
   def state_dir, do: Path.join([Autopoet.Discovery.home(), "data", "notes-state"])
 
-  @doc "Seed the vault with a welcome note (never overwrites)."
+  @doc """
+  Seed the vault with a welcome note — ONLY into a truly empty vault. (Checking
+  just the root path re-created welcome.md after the human moved it into a
+  folder; the vault is theirs to arrange.)
+  """
   def seed do
     File.mkdir_p!(dir())
     File.mkdir_p!(state_dir())
     welcome = Path.join(dir(), "welcome.md")
 
-    unless File.exists?(welcome) do
+    if Path.wildcard(Path.join(dir(), "**/*")) == [] do
       File.write!(welcome, """
       Welcome to your vault.
 
