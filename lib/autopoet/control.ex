@@ -22,6 +22,28 @@ defmodule Autopoet.Control do
   plug :dispatch
 
   get "/" do
+    html =
+      [:code.priv_dir(:autopoet), "static", "app.html"]
+      |> Path.join()
+      |> File.read!()
+      |> String.replace("__TOKEN__", Autopoet.Discovery.token())
+
+    conn |> put_resp_content_type("text/html") |> send_resp(200, html)
+  end
+
+  get "/static/d3.v7.min.js" do
+    js = [:code.priv_dir(:autopoet), "static", "d3.v7.min.js"] |> Path.join() |> File.read!()
+    conn |> put_resp_content_type("application/javascript") |> send_resp(200, js)
+  end
+
+  get "/graph.json" do
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(200, Jason.encode!(Autopoet.WorldGraph.payload()))
+  end
+
+  # the previous log-page (kept at /plain for curl-friendly debugging)
+  get "/plain" do
     conn |> put_resp_content_type("text/html") |> send_resp(200, page())
   end
 
