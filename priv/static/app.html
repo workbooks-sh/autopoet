@@ -849,6 +849,7 @@
     vertical-align:-1px; animation:fxblink 1s steps(1) infinite; }
   .fxfile { display:flex; align-items:center; gap:6px; }
   .fxfile img { display:block; }
+  .fxchip svg { width:11px; height:11px; vertical-align:-2px; }
   /* the "implemented component" — real HTML/CSS mirroring the sketch's wireframe */
   .fxcomp { position:absolute; right:3%; top:24%; width:132px; height:92px; background:#fff;
     border:1px solid #e0e4ea; border-radius:12px; box-shadow:0 4px 14px rgba(25,35,55,.09);
@@ -4188,13 +4189,19 @@ const SLIDES = [
       cycle(EVO_MOUTHS[0]);
       return () => { alive = false; pending.forEach(c => c.kill()); };
     } },
-  { title: "write plain words", mood: "neutral",
-    sub: "your vault holds documents — thoughts, plans, rules. it is the source of truth, and it is yours: the autopoet never edits it.",
+  { title: "your words are bond", mood: "neutral",
+    sub: "the machine may rewrite all of itself — never this. your plain text is the law it evolves under. not a prompt. not a skill. bond.",
     fx(fx) {
-      // left: the note being written; right: what comes OUT — real code files
+      // left: the note being written — then SEALED; right: what comes OUT — real code
       const card = fxEl(`<div class="fxcard" style="left:2%;top:22%;width:146px;min-height:78px;white-space:normal"><span id="fxtype"></span><span class="fxcaret"></span></div>`);
-      fx.append(card);
+      const seal = fxEl(`<div class="fxchip" style="left:4%;top:74%"><i data-lucide="lock"></i>&nbsp;it reads. it never writes.</div>`);
+      fx.append(card, seal);
       fxIn(card);
+      refreshIcons();
+      gsap.set(seal, { autoAlpha: 0 });
+      // the seal lands as the last word does — the ink darkens, the lock arrives
+      gsap.to(card, { borderColor: "#1c2230", duration: .5, delay: 3.0 });
+      gsap.to(seal, { autoAlpha: 1, y: -4, duration: .5, delay: 3.1, ease: "power2.out" });
       const files = [
         ["svelte", "launch/page.svelte"],
         ["typescript", "hero.ts"],
