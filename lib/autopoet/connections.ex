@@ -50,8 +50,10 @@ defmodule Autopoet.Connections do
   @doc "Is a provider connected (a decryptable token exists)?"
   def connected?(provider), do: get(provider) != nil
 
+  @providers ~w(github google cloudflare openrouter polar stripe)
+
   @doc "All connected providers, for the state endpoint."
-  def all, do: for(p <- ~w(github google cloudflare), connected?(p), do: p)
+  def all, do: for(p <- @providers, connected?(p), do: p)
 
   @doc "Drop a provider's token."
   def delete(provider), do: File.rm(tok_path(provider!(provider)))
@@ -85,6 +87,6 @@ defmodule Autopoet.Connections do
 
   defp tok_path(p), do: Path.join(dir(), "#{p}.tok")
 
-  defp provider!(p) when p in ~w(github google cloudflare), do: p
+  defp provider!(p) when p in @providers, do: p
   defp provider!(p), do: raise(ArgumentError, "unknown provider: #{inspect(p)}")
 end

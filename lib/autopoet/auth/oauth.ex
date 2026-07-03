@@ -67,6 +67,42 @@ defmodule Autopoet.Auth.OAuth do
       scope: "user-details.read account-settings.read zone.read dns.read account-analytics.read",
       id_key: "CLOUDFLARE_OAUTH_CLIENT_ID",
       secret_key: "CLOUDFLARE_OAUTH_CLIENT_SECRET"
+    },
+    # OpenRouter — pure PKCE, ZERO registration: the callback_url IS the app
+    # identity (no client_id, no secret). The exchange is a JSON POST that
+    # returns a user-owned inference `key`, not an access_token. So the agent
+    # can use OpenRouter for AI, not only Cloudflare AI Gateway.
+    "openrouter" => %{
+      style: :openrouter,
+      authorize: "https://openrouter.ai/auth",
+      token: "https://openrouter.ai/api/v1/auth/keys"
+    },
+    # Polar.sh — a desktop app is a PUBLIC client: PKCE (S256), no secret. Lets
+    # the agent set up monetization (products, checkout links, orders).
+    "polar" => %{
+      pkce: true,
+      authorize: "https://polar.sh/oauth2/authorize",
+      token: "https://api.polar.sh/v1/oauth2/token",
+      id_key: "POLAR_OAUTH_CLIENT_ID",
+      scope_env: "POLAR_OAUTH_SCOPE",
+      scope:
+        "openid profile email organizations:read " <>
+          "products:read products:write checkouts:write checkout_links:read " <>
+          "checkout_links:write orders:read subscriptions:read subscriptions:write " <>
+          "benefits:read benefits:write customers:read customers:write"
+    },
+    # Stripe Connect (Standard) — confidential: the platform SECRET key is the
+    # client secret and the exchange is HTTP-Basic, so it runs server-side. We
+    # store the connected account id (acct_…), then act via the Stripe-Account
+    # header. This is the agent literally being able to move money.
+    "stripe" => %{
+      style: :stripe,
+      authorize: "https://connect.stripe.com/oauth/authorize",
+      token: "https://connect.stripe.com/oauth/token",
+      id_key: "STRIPE_CONNECT_CLIENT_ID",
+      secret_key: "STRIPE_SECRET_KEY",
+      scope_env: "STRIPE_OAUTH_SCOPE",
+      scope: "read_write"
     }
   }
 
@@ -75,7 +111,11 @@ defmodule Autopoet.Auth.OAuth do
 
   @doc "Which connect providers can actually run (creds present)?"
   def configured do
-    oauth = for {name, cfg} <- @providers, is_binary(Nexus.Secrets.get(cfg.id_key)), do: name
+    oauth =
+      for {name, cfg} <- @providers,
+          # openrouter needs no creds; everything else needs its client id present
+          cfg[:style] == :openrouter or is_binary(Nexus.Secrets.get(cfg[:id_key])),
+          do: name
 
     # cloudflare also works via the legacy pasted API token, even without OAuth creds
     if "cloudflare" in oauth or is_binary(Nexus.Secrets.get("CLOUDFLARE_API_TOKEN")),
@@ -94,28 +134,62 @@ defmodule Autopoet.Auth.OAuth do
 
   @doc "Build the authorize URL + remember its state. nil if the provider isn't configured."
   def authorize_url(conn, provider) do
-    with cfg when not is_nil(cfg) <- @providers[provider],
-         id when is_binary(id) <- Nexus.Secrets.get(cfg.id_key) do
-      state = Base.url_encode64(:crypto.strong_rand_bytes(18), padding: false)
-      remember_state(state)
+    case @providers[provider] do
+      nil -> nil
+      %{style: :openrouter} = cfg -> openrouter_authorize(conn, provider, cfg)
+      cfg -> standard_authorize(conn, provider, cfg)
+    end
+  end
+
+  # OpenRouter: no client_id/scope/response_type; callback_url carries our state
+  # so it survives the round trip (OpenRouter echoes back only `code`).
+  defp openrouter_authorize(conn, provider, cfg) do
+    state = gen_state()
+    {verifier, challenge} = pkce_pair()
+    remember_state(state, verifier)
+    callback = redirect_uri(conn, provider) <> "?state=" <> state
+
+    cfg.authorize <>
+      "?" <>
+      URI.encode_query(%{
+        "callback_url" => callback,
+        "code_challenge" => challenge,
+        "code_challenge_method" => "S256"
+      })
+  end
+
+  defp standard_authorize(conn, provider, cfg) do
+    if is_binary(Nexus.Secrets.get(cfg[:id_key])) do
+      state = gen_state()
+
+      {verifier, pkce_params} =
+        if cfg[:pkce] do
+          {v, c} = pkce_pair()
+          {v, %{"code_challenge" => c, "code_challenge_method" => "S256"}}
+        else
+          {nil, %{}}
+        end
+
+      remember_state(state, verifier)
 
       cfg.authorize <>
         "?" <>
         URI.encode_query(
           %{
-            "client_id" => id,
+            "client_id" => Nexus.Secrets.get(cfg.id_key),
             "redirect_uri" => redirect_uri(conn, provider),
             "scope" => (cfg[:scope_env] && System.get_env(cfg.scope_env)) || cfg.scope,
             "state" => state,
             # GitHub defaults to code; Google REQUIRES it explicitly
             "response_type" => "code"
           }
+          |> Map.merge(pkce_params)
           |> Map.merge(extra(provider))
         )
-    else
-      _ -> nil
     end
   end
+
+  defp gen_state, do: Base.url_encode64(:crypto.strong_rand_bytes(18), padding: false)
 
   @doc "GET /auth/:provider/login — 302 to the provider (dev / same-browser path)."
   def login(conn, provider) do
@@ -163,6 +237,55 @@ defmodule Autopoet.Auth.OAuth do
       _ ->
         Autopoet.Log.puts("oauth: #{provider} callback refused")
         close_tab(conn, provider, :error)
+    end
+  end
+
+  # OpenRouter: JSON POST, returns a user-owned inference key (not access_token)
+  defp exchange(_provider, %{style: :openrouter} = cfg, code, _redirect, verifier) do
+    body = Jason.encode!(%{"code" => code, "code_verifier" => verifier, "code_challenge_method" => "S256"})
+    headers = [{~c"accept", ~c"application/json"}, {~c"content-type", ~c"application/json"}]
+    :inets.start()
+    :ssl.start()
+
+    case :httpc.request(:post, {String.to_charlist(cfg.token), headers, ~c"application/json", String.to_charlist(body)}, [timeout: 15_000], body_format: :binary) do
+      {:ok, {{_, 200, _}, _, resp}} ->
+        case Jason.decode(to_string(resp)) do
+          {:ok, %{"key" => key}} when is_binary(key) -> {:ok, key}
+          _ -> {:error, :no_key}
+        end
+
+      other ->
+        Logger.warning("openrouter exchange: #{inspect(other)}")
+        {:error, :exchange_failed}
+    end
+  end
+
+  # Stripe Connect: HTTP-Basic (platform secret key as the user), store the
+  # connected account id (acct_…) — the agent then acts via the Stripe-Account header
+  defp exchange(_provider, %{style: :stripe} = cfg, code, _redirect, _verifier) do
+    secret = Nexus.Secrets.get(cfg.secret_key)
+    form = URI.encode_query(%{"grant_type" => "authorization_code", "code" => code})
+    basic = Base.encode64(secret <> ":")
+
+    headers = [
+      {~c"accept", ~c"application/json"},
+      {~c"authorization", String.to_charlist("Basic " <> basic)},
+      {~c"content-type", ~c"application/x-www-form-urlencoded"}
+    ]
+
+    :inets.start()
+    :ssl.start()
+
+    case :httpc.request(:post, {String.to_charlist(cfg.token), headers, ~c"application/x-www-form-urlencoded", String.to_charlist(form)}, [timeout: 15_000], body_format: :binary) do
+      {:ok, {{_, 200, _}, _, resp}} ->
+        case Jason.decode(to_string(resp)) do
+          {:ok, %{"stripe_user_id" => acct}} when is_binary(acct) -> {:ok, acct}
+          _ -> {:error, :no_account}
+        end
+
+      other ->
+        Logger.warning("stripe exchange: #{inspect(other)}")
+        {:error, :exchange_failed}
     end
   end
 
