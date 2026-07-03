@@ -35,13 +35,14 @@ defmodule Autopoet.Auth.OAuth do
     "google" => %{
       authorize: "https://accounts.google.com/o/oauth2/v2/auth",
       token: "https://oauth2.googleapis.com/token",
-      # env-overridable (GOOGLE_OAUTH_SCOPE) so the suite can grow without a
-      # recompile. Each scope requested must be added to the OAuth consent
-      # screen AND its API enabled in the project, or Google rejects it.
+      # scope resolved at RUNTIME via scope_env (a @module_attribute would bake
+      # System.get_env at COMPILE time — the bug that ignored the env override).
+      # Each scope requested must be added to the OAuth consent screen AND its
+      # API enabled in the project, or Google rejects it.
+      scope_env: "GOOGLE_OAUTH_SCOPE",
       scope:
-        System.get_env("GOOGLE_OAUTH_SCOPE") ||
-          "https://www.googleapis.com/auth/drive.readonly " <>
-            "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/drive.readonly " <>
+          "https://www.googleapis.com/auth/userinfo.email",
       id_key: "GOOGLE_OAUTH_CLIENT_ID",
       secret_key: "GOOGLE_OAUTH_CLIENT_SECRET"
     },
@@ -62,9 +63,8 @@ defmodule Autopoet.Auth.OAuth do
       # the confirmed-valid set (reaches consent). Pages/offline_access are on
       # the client but under scope strings we haven't nailed — resolve them
       # authoritatively from the account once connected, then append here.
-      scope:
-        System.get_env("CLOUDFLARE_OAUTH_SCOPE") ||
-          "user-details.read account-settings.read zone.read dns.read account-analytics.read",
+      scope_env: "CLOUDFLARE_OAUTH_SCOPE",
+      scope: "user-details.read account-settings.read zone.read dns.read account-analytics.read",
       id_key: "CLOUDFLARE_OAUTH_CLIENT_ID",
       secret_key: "CLOUDFLARE_OAUTH_CLIENT_SECRET"
     }
@@ -105,7 +105,7 @@ defmodule Autopoet.Auth.OAuth do
           %{
             "client_id" => id,
             "redirect_uri" => redirect_uri(conn, provider),
-            "scope" => cfg.scope,
+            "scope" => (cfg[:scope_env] && System.get_env(cfg.scope_env)) || cfg.scope,
             "state" => state,
             # GitHub defaults to code; Google REQUIRES it explicitly
             "response_type" => "code"
