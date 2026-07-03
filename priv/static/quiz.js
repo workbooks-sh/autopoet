@@ -1064,6 +1064,9 @@
     const body = root.querySelector(".qzbody");
     const plan = planFor(state);
     plan.forEach(([k, v]) => save(`plan.${k}`, v));
+    // the reading time on this screen is free compute: the intake agent starts
+    // building the world NOW (marker-guarded server-side; onboarding/done retries)
+    if (hooks.post) setTimeout(() => hooks.post("/intake/start"), 400);
     const build = () => {
       destroyAnims();
       body.innerHTML = `
@@ -1076,7 +1079,8 @@
         <div class="qzplan">
           ${plan.map(([k, v]) => `<div class="qzplanrow${k === "firstrun" ? " run" : ""}"><b>${k.replace(/\.\d+$/, "")}</b><span>${v}</span></div>`).join("")}
         </div>
-        <div class="qznav"><button class="qzgo" id="qzenter">enter autopoet — watch it run</button></div>`;
+        <div class="qznav"><button class="qzgo" id="qzenter">enter autopoet — watch it run</button></div>
+        <div class="qzmeta">the autopoet is already building this — enter whenever.</div>`;
       body.querySelector("#qzenter").onclick = () => hooks.onDone && hooks.onDone();
       initLotties(body);
       gsap.fromTo(body, { x: 26, autoAlpha: 0 }, { x: 0, autoAlpha: 1, duration: .4, ease: "power2.out" });

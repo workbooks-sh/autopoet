@@ -59,6 +59,12 @@ defmodule Autopoet.Control do
     conn |> put_resp_content_type("application/javascript") |> send_resp(200, js)
   end
 
+  # the proposal-first entry overlay (Lane D) — its own file, like the quiz
+  get "/static/intake.js" do
+    js = [:code.priv_dir(:autopoet), "static", "intake.js"] |> Path.join() |> File.read!()
+    conn |> put_resp_content_type("application/javascript") |> send_resp(200, js)
+  end
+
   get "/static/perfect-freehand.mjs" do
     js = [:code.priv_dir(:autopoet), "static", "perfect-freehand.mjs"] |> Path.join() |> File.read!()
     conn |> put_resp_content_type("text/javascript") |> send_resp(200, js)
@@ -272,7 +278,26 @@ defmodule Autopoet.Control do
   end
 
   post "/auth/onboarding/done" do
-    authed!(conn, fn conn -> Autopoet.Auth.complete_onboarding(); text(conn, "app\n") end)
+    authed!(conn, fn conn ->
+      Autopoet.Auth.complete_onboarding()
+      # belt-and-suspenders: the quiz finale already kicks the intake; if the
+      # user sprinted past it, this is the last safe moment (marker-guarded)
+      Autopoet.Intake.start()
+      text(conn, "app\n")
+    end)
+  end
+
+  # ── the intake agent: builds the first world while the finale is on screen ──
+  post "/intake/start" do
+    authed!(conn, fn conn -> text(conn, "#{Autopoet.Intake.start()}\n") end)
+  end
+
+  # the pending first proposal, if any: line 1 = id, rest = the brief (plain text)
+  get "/intake/proposal" do
+    case Autopoet.Intake.pending_proposal() do
+      nil -> send_resp(conn, 404, "none\n")
+      {id, brief} -> text(conn, id <> "\n" <> brief)
+    end
   end
 
   post "/auth/signout" do

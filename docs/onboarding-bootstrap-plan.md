@@ -183,3 +183,41 @@ canned task comes from the plan.firstrun line (bootstrap-planner mapping).
    thin GitHub/Cloudflare/Drive clients.
 6. **M6** corpus maintenance: industry corpus shipped as data
    (`quiz-corpus.js`), periodically regenerated.
+
+## 7. Lane E (Lane ∞) — the evaluation suite
+
+The intake profiles are not just onboarding artifacts; they are EVALUATION
+SEEDS. Every golden persona (the six from the design round, plus every real
+profile shape the quiz can emit) defines a reproducible autopoet environment:
+answers + notes + plan.* in, a whole world out. That makes the full agent
+system benchmarkable end to end — and it is how the promises the onboarding
+MAKES (a darwin gödel machine, it improves itself, nothing is lost) get
+VALIDATED instead of stubbed or inferred.
+
+The loop (runs ad nauseam, wall-clock bounded per run, never turn-capped):
+
+1. **Seed** — pick a persona profile; stand up a fresh autopoet home
+   (isolated `AUTOPOET_HOME`, the same trick the test env uses) with the
+   likely integrations for that persona stubbed or live (the plan.connect
+   line already names them).
+2. **Intake** — run Lanes A–D; assert the invariants (world parses, agents
+   register, exactly one pending proposal, brief promises only what exists).
+3. **Live** — accept the proposal, arm the rules, and let the heartbeat run:
+   cycles sense → propose → gate → learn (`Nexus.Autopoet.Knowledge`), limbs
+   take tasks, failures file requests. Feed it synthetic events matching the
+   persona (orders landing, emails arriving, files appearing).
+4. **Score** — per run: proposal acceptance-worthiness (does the Eval gate
+   pass its own output), rule-arming success, request→resolution latency,
+   knowledge.work growth, hebb/surprise signal movement
+   (`Autopoet.Shadow.Hebb` / `.Surprise` — the ML concepts made measurable),
+   and world-integrity invariants (undo always works, no vault writes outside
+   accepted proposals, grants never widen).
+5. **Select** — the darwin gödel part, made real: run variant configurations
+   (prompt variants, model variants, policy defaults) against the same seeds;
+   keep what scores better; the evolution vignette in the onboarding deck
+   stops being a metaphor.
+
+Fix/repair/build elasticity: every failure the loop surfaces is filed via the
+existing `request self` channel — the eval harness drains those into bd
+issues, so the loop's output is a continuously replenished work queue against
+the real system. This lane starts ONLY after A–D ship; A–D are its substrate.

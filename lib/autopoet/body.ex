@@ -30,7 +30,11 @@ defmodule Autopoet.Body do
     else
       hid = snapshot(rels)
 
-      for {rel, content} <- writes, do: File.write!(safe!(rel), content)
+      for {rel, content} <- writes do
+        p = safe!(rel)
+        File.mkdir_p!(Path.dirname(p))
+        File.write!(p, content)
+      end
 
       for {rel, added} <- appends do
         p = safe!(rel)
