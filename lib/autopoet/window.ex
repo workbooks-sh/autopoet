@@ -28,6 +28,17 @@ defmodule Autopoet.Window do
   @wx_resize_border 0x0040
   @wx_default_frame_style 0x0009_09FF
 
+  # WKWebView swallows every mouse event inside it — `-webkit-app-region:drag` in
+  # the page's CSS has NO effect there (that hookup is a Chromium/Electron thing;
+  # WKWebView has no native equivalent, confirmed against real-world WKWebView
+  # custom-chrome writeups). So dragging can't be a CSS/HTML affair at all in
+  # frameless mode: it's this thin NATIVE wx panel instead, layered on top of the
+  # webview across the very top of the frame, driven by plain mouse-capture +
+  # Move() — the standard wxWidgets frameless-window-drag recipe. Sized to 7px so
+  # it tucks under the real controls that start a few px down (#toprow at 7px,
+  # #canvasbar at 12px in app.html) without covering any of them.
+  @drag_strip_height 7
+
   def frameless?, do: System.get_env("AUTOPOET_FRAMELESS") in ~w(1 true)
 
   @impl true
@@ -38,12 +49,27 @@ defmodule Autopoet.Window do
     :wxWindow.setBackgroundColour(frame, {251, 251, 249, 255})
 
     view = attach_view(frame)
+    drag = if frameless?(), do: attach_drag_strip(frame)
+
+    # A frame with exactly one child auto-fills it with no sizer needed — that's
+    # what attach_view relied on. The drag strip is a SECOND child, which forfeits
+    # that implicit behavior (confirmed empirically: the webview silently
+    # collapsed to ~0 size, rendering a blank window). So once there's a drag
+    # strip, the content view's geometry has to be driven explicitly.
+    if drag, do: resize_content(frame, view)
 
     :wxFrame.connect(frame, :close_window)
+    if drag, do: :wxFrame.connect(frame, :size)
     :wxTopLevelWindow.maximize(frame)
     :wxFrame.show(frame)
 
-    {:ok, %{frame: frame, view: view}}
+    {:ok, %{frame: frame, view: view, drag: drag, drag_offset: nil}}
+  end
+
+  defp resize_content(frame, view) do
+    {w, h} = :wxWindow.getClientSize(frame)
+    content = elem(view, 1)
+    :wxWindow.setSize(content, {0, 0, w, h})
   end
 
   @doc "Window control from the page's custom chrome (frameless mode)."
@@ -66,6 +92,20 @@ defmodule Autopoet.Window do
       {:text, text}
   end
 
+  # The real drag surface (see @drag_strip_height) — a bare wx panel, no sizer,
+  # manually kept in sync with the frame's width on resize (handle_info for the
+  # frame's :size event, below).
+  defp attach_drag_strip(frame) do
+    {w, _h} = :wxWindow.getSize(frame)
+    panel = :wxPanel.new(frame, pos: {0, 0}, size: {w, @drag_strip_height})
+    :wxWindow.setBackgroundColour(panel, {251, 251, 249, 255})
+    :wxWindow.connect(panel, :left_down)
+    :wxWindow.connect(panel, :left_up)
+    :wxWindow.connect(panel, :motion)
+    :wxWindow.connect(panel, :mouse_capture_lost)
+    panel
+  end
+
   @impl true
   def handle_info({:autopoet_log, line}, %{view: {:text, text}} = s) do
     :wxTextCtrl.appendText(text, ~c"#{line}\n")
@@ -76,6 +116,51 @@ defmodule Autopoet.Window do
     Autopoet.Log.puts("window closed — halting BEAM (kill switch)")
     :wxFrame.destroy(s.frame)
     :init.stop()
+    {:noreply, s}
+  end
+
+  # Frameless-drag: left_down on the drag strip remembers the click's position
+  # relative to the strip; every motion event while the button is down re-derives
+  # the frame's screen position from that fixed offset and the mouse's CURRENT
+  # screen position, and moves the frame there directly. `%{drag: obj}` on the
+  # state pattern scopes this to events from OUR panel only.
+  def handle_info(
+        {:wx, _id, obj, _user, {:wxMouse, :left_down, x, y, _, _, _, _, _, _, _, _, _, _}},
+        %{drag: obj} = s
+      ) do
+    :wxWindow.captureMouse(obj)
+    {:noreply, %{s | drag_offset: {x, y}}}
+  end
+
+  def handle_info(
+        {:wx, _id, obj, _user, {:wxMouse, :motion, x, y, true, _, _, _, _, _, _, _, _, _}},
+        %{drag: obj, drag_offset: {ox, oy}} = s
+      ) do
+    {sx, sy} = :wxWindow.clientToScreen(obj, {x, y})
+    :wxWindow.move(s.frame, {sx - ox, sy - oy})
+    {:noreply, s}
+  end
+
+  def handle_info(
+        {:wx, _id, obj, _user, {:wxMouse, :left_up, _x, _y, _, _, _, _, _, _, _, _, _, _}},
+        %{drag: obj} = s
+      ) do
+    if s.drag_offset, do: :wxWindow.releaseMouse(obj)
+    {:noreply, %{s | drag_offset: nil}}
+  end
+
+  def handle_info({:wx, _id, obj, _user, {:wxMouseCaptureLost, :mouse_capture_lost}}, %{drag: obj} = s) do
+    {:noreply, %{s | drag_offset: nil}}
+  end
+
+  # Keep the drag strip spanning the full width, and the content view filling
+  # the rest, across every resize (see resize_content/2 above for why the
+  # content view needs this explicitly once it's no longer the frame's only
+  # child).
+  def handle_info({:wx, _id, obj, _user, {:wxSize, :size, {w, _h}, _rect}}, %{frame: obj, drag: drag} = s)
+      when not is_nil(drag) do
+    :wxWindow.setSize(drag, {w, @drag_strip_height})
+    resize_content(s.frame, s.view)
     {:noreply, s}
   end
 
