@@ -197,11 +197,15 @@ defmodule Autopoet.Control do
   get "/auth/state.json" do
     s = Autopoet.Auth.state()
 
+    # real, token-backed connections are the source of truth; the session's
+    # stub map only carries providers connected before real OAuth existed
+    real = Map.new(Autopoet.Connections.all(), &{&1, true})
+
     body = %{
       authenticated: s.authenticated,
       onboarded: s.onboarded,
       user: s.user,
-      connections: Map.get(s, :connections, %{})
+      connections: Map.merge(Map.get(s, :connections, %{}), real)
     }
 
     conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(body))
@@ -249,11 +253,51 @@ defmodule Autopoet.Control do
 
   post "/auth/disconnect/:provider" do
     authed!(conn, fn conn ->
+      Autopoet.Connections.delete(provider)
+
       case Autopoet.Auth.disconnect(provider) do
         {:error, reason} -> text(conn, "refused: #{inspect(reason)}\n")
         _ -> text(conn, "ok\n")
       end
     end)
+  end
+
+  # ── real OAuth (github/google browser flow; cloudflare token paste) ──────────
+  # These are BROWSER navigations (the system browser follows the redirect), so
+  # they are NOT bearer-authed — CSRF state protects the round trip instead.
+  get "/auth/:provider/login" do
+    Autopoet.Auth.OAuth.login(conn, provider)
+  end
+
+  get "/auth/:provider/callback" do
+    Autopoet.Auth.OAuth.callback(conn, provider)
+  end
+
+  # the desktop path: open the login in the host's SYSTEM browser (WKWebView can't
+  # host Google's OAuth). The UI then polls /auth/state.json for the connection.
+  post "/auth/:provider/open" do
+    authed!(conn, fn conn ->
+      case Autopoet.Auth.OAuth.open_login(conn, provider) do
+        :ok -> text(conn, "opened\n")
+        {:error, reason} -> text(conn, "refused: #{inspect(reason)}\n")
+      end
+    end)
+  end
+
+  # cloudflare has no consumer OAuth — verify + store a pasted, user-scoped token
+  post "/auth/cloudflare/token" do
+    authed!(conn, fn conn ->
+      case Autopoet.Auth.OAuth.cloudflare_connect(conn.query_params["token"] || "") do
+        :ok -> text(conn, "ok\n")
+        {:error, reason} -> text(conn, "refused: #{inspect(reason)}\n")
+      end
+    end)
+  end
+
+  # which providers can actually run a real connect (creds present)
+  get "/auth/providers.json" do
+    body = %{configured: Autopoet.Auth.OAuth.configured(), connected: Autopoet.Connections.all()}
+    conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(body))
   end
 
   # ── setup profile: the quiz's answers, read back by the brain for personalization ──

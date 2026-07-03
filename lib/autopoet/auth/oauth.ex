@@ -1,0 +1,252 @@
+defmodule Autopoet.Auth.OAuth do
+  @moduledoc """
+  Real OAuth for the desktop CONNECT step — the concrete backend behind the
+  stubbed `Autopoet.Auth` connect cards. GitHub + Google run the full
+  authorization-code flow LOCALLY: the system browser is sent to the provider,
+  which redirects back to `http://127.0.0.1:4477/auth/<provider>/callback`; we
+  exchange the code for an access token and store it (encrypted) via
+  `Autopoet.Connections`. Cloudflare has no consumer OAuth — it's a pasted,
+  user-scoped API token we verify and store.
+
+  Credentials are the CLOUD APP's, read via `Nexus.Secrets`
+  (`GITHUB_APP_CLIENT_ID/SECRET`, `GOOGLE_OAUTH_CLIENT_ID/SECRET`) — injected
+  from the same fly secrets that back wb-dogfood. THE DEV-PHASE CAVEAT: the
+  client SECRET lives in the desktop's local env, which is fine for a personal
+  install but cannot ship in a distributed binary — the shippable answer is to
+  broker the exchange through the cloud app (no secret on device). This module
+  is deliberately the one seam that swap touches.
+
+  CSRF: a signed `state` (Phoenix.Token-style via `Plug.Crypto`) carried in a
+  cookie and echoed by the provider. Loopback + 127.0.0.1 means no HTTPS, which
+  GitHub and Google both permit for localhost redirect URIs.
+  """
+
+  import Plug.Conn
+  require Logger
+
+  @providers %{
+    "github" => %{
+      authorize: "https://github.com/login/oauth/authorize",
+      token: "https://github.com/login/oauth/access_token",
+      scope: "read:user repo",
+      id_key: "GITHUB_APP_CLIENT_ID",
+      secret_key: "GITHUB_APP_CLIENT_SECRET"
+    },
+    "google" => %{
+      authorize: "https://accounts.google.com/o/oauth2/v2/auth",
+      token: "https://oauth2.googleapis.com/token",
+      scope:
+        "https://www.googleapis.com/auth/drive.readonly " <>
+          "https://www.googleapis.com/auth/userinfo.email",
+      id_key: "GOOGLE_OAUTH_CLIENT_ID",
+      secret_key: "GOOGLE_OAUTH_CLIENT_SECRET"
+    }
+  }
+
+  @ttl 600
+  @state_table :ap_oauth_states
+
+  @doc "Which connect providers can actually run (creds present)?"
+  def configured do
+    oauth =
+      for {name, cfg} <- @providers, is_binary(Nexus.Secrets.get(cfg.id_key)), do: name
+
+    if is_binary(Nexus.Secrets.get("CLOUDFLARE_API_TOKEN")) or Autopoet.Connections.connected?("cloudflare"),
+      do: ["cloudflare" | oauth],
+      else: oauth
+  end
+
+  def configured?(provider), do: provider in configured()
+
+  # ── GitHub / Google: system-browser + loopback-callback flow ─────────────────
+  # The desktop is a WKWebView; Google rejects OAuth in embedded webviews and
+  # window.open won't spawn a real browser there. So the SYSTEM browser runs the
+  # flow and redirects to our local callback. CSRF state therefore lives
+  # SERVER-SIDE (a short-lived ETS entry), not a cookie — the browser that
+  # completes the callback need not be the one that started it.
+
+  @doc "Build the authorize URL + remember its state. nil if the provider isn't configured."
+  def authorize_url(conn, provider) do
+    with cfg when not is_nil(cfg) <- @providers[provider],
+         id when is_binary(id) <- Nexus.Secrets.get(cfg.id_key) do
+      state = Base.url_encode64(:crypto.strong_rand_bytes(18), padding: false)
+      remember_state(state)
+
+      cfg.authorize <>
+        "?" <>
+        URI.encode_query(
+          %{
+            "client_id" => id,
+            "redirect_uri" => redirect_uri(conn, provider),
+            "scope" => cfg.scope,
+            "state" => state
+          }
+          |> Map.merge(extra(provider))
+        )
+    else
+      _ -> nil
+    end
+  end
+
+  @doc "GET /auth/:provider/login — 302 to the provider (dev / same-browser path)."
+  def login(conn, provider) do
+    case authorize_url(conn, provider) do
+      nil -> send_resp(conn, 404, "#{provider} not configured\n")
+      url -> conn |> put_resp_header("location", url) |> send_resp(302, "")
+    end
+  end
+
+  @doc "Open the provider's login in the host's SYSTEM browser (the desktop path)."
+  def open_login(conn, provider) do
+    case authorize_url(conn, provider) do
+      nil ->
+        {:error, :not_configured}
+
+      url ->
+        System.cmd("open", [url])
+        :ok
+    end
+  rescue
+    e -> {:error, Exception.message(e)}
+  end
+
+  # Google wants offline access + a consent prompt to actually return a refresh token
+  defp extra("google"), do: %{"access_type" => "offline", "prompt" => "consent"}
+  defp extra(_), do: %{}
+
+  @doc "GET /auth/:provider/callback — verify state, exchange, store, close the tab."
+  def callback(conn, provider) do
+    conn = fetch_query_params(conn)
+    cfg = @providers[provider]
+    p = conn.query_params
+
+    with true <- cfg != nil,
+         state when is_binary(state) <- p["state"],
+         true <- consume_state(state),
+         code when is_binary(code) and code != "" <- p["code"],
+         {:ok, token} <- exchange(provider, cfg, code, redirect_uri(conn, provider)) do
+      Autopoet.Connections.put(provider, token)
+      Autopoet.Auth.connect(provider)
+      Nexus.Events.emit(%{kind: "connection.linked", provider: provider, tags: []})
+      Autopoet.Log.puts("oauth: #{provider} connected")
+      close_tab(conn, provider, :ok)
+    else
+      _ ->
+        Autopoet.Log.puts("oauth: #{provider} callback refused")
+        close_tab(conn, provider, :error)
+    end
+  end
+
+  defp exchange(provider, cfg, code, redirect_uri) do
+    form =
+      URI.encode_query(%{
+        "client_id" => Nexus.Secrets.get(cfg.id_key),
+        "client_secret" => Nexus.Secrets.get(cfg.secret_key),
+        "code" => code,
+        "redirect_uri" => redirect_uri,
+        "grant_type" => "authorization_code"
+      })
+
+    headers = [{~c"accept", ~c"application/json"}, {~c"content-type", ~c"application/x-www-form-urlencoded"}]
+    :inets.start()
+    :ssl.start()
+
+    case :httpc.request(:post, {String.to_charlist(cfg.token), headers, ~c"application/x-www-form-urlencoded", String.to_charlist(form)}, [timeout: 15_000], body_format: :binary) do
+      {:ok, {{_, 200, _}, _, body}} ->
+        case Jason.decode(to_string(body)) do
+          {:ok, %{"access_token" => tok}} when is_binary(tok) -> {:ok, tok}
+          _ -> {:error, :no_token}
+        end
+
+      other ->
+        Logger.warning("oauth exchange #{provider}: #{inspect(other)}")
+        {:error, :exchange_failed}
+    end
+  end
+
+  # ── Cloudflare: paste + verify a scoped API token ────────────────────────────
+
+  @doc "Verify a pasted Cloudflare API token against the CF API; store on success."
+  def cloudflare_connect(token) when is_binary(token) do
+    token = String.trim(token)
+
+    headers = [
+      {~c"authorization", String.to_charlist("Bearer " <> token)},
+      {~c"accept", ~c"application/json"}
+    ]
+
+    url = ~c"https://api.cloudflare.com/client/v4/user/tokens/verify"
+    :inets.start()
+    :ssl.start()
+
+    case :httpc.request(:get, {url, headers}, [timeout: 15_000], body_format: :binary) do
+      {:ok, {{_, 200, _}, _, body}} ->
+        case Jason.decode(to_string(body)) do
+          {:ok, %{"success" => true}} ->
+            Autopoet.Connections.put("cloudflare", token)
+            Autopoet.Auth.connect("cloudflare")
+            Nexus.Events.emit(%{kind: "connection.linked", provider: "cloudflare", tags: []})
+            Autopoet.Log.puts("oauth: cloudflare token verified + connected")
+            :ok
+
+          _ ->
+            {:error, :invalid_token}
+        end
+
+      # CF returns 401 for a malformed/invalid token — that's a bad token, not
+      # a transport failure; say so honestly
+      {:ok, {{_, code, _}, _, _}} when code in [400, 401, 403] ->
+        {:error, :invalid_token}
+
+      other ->
+        Logger.warning("cloudflare verify: #{inspect(other)}")
+        {:error, :verify_failed}
+    end
+  end
+
+  # ── helpers ──────────────────────────────────────────────────────────────────
+
+  defp redirect_uri(conn, provider) do
+    port = conn.port
+    "http://127.0.0.1:#{port}/auth/#{provider}/callback"
+  end
+
+  # server-side CSRF state: a short-lived, single-use nonce set. Survives across
+  # browsers (system-browser flow) where a cookie could not.
+  defp table do
+    case :ets.whereis(@state_table) do
+      :undefined -> :ets.new(@state_table, [:named_table, :public, :set])
+      _ -> @state_table
+    end
+  end
+
+  defp remember_state(state), do: :ets.insert(table(), {state, now()})
+
+  defp consume_state(state) do
+    case :ets.take(table(), state) do
+      [{^state, ts}] -> now() - ts <= @ttl
+      _ -> false
+    end
+  end
+
+  defp now, do: System.os_time(:second)
+
+  # the callback tab: a tiny self-closing page so the browser doesn't linger
+  defp close_tab(conn, provider, status) do
+    msg = if status == :ok, do: "#{provider} connected — you can close this tab.", else: "#{provider} connection failed."
+
+    html = """
+    <!doctype html><meta charset=utf-8>
+    <body style="font:14px ui-monospace,monospace;color:#1c2230;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
+    <div style="text-align:center">
+      <p>#{msg}</p>
+      <script>
+        try { window.opener && window.opener.postMessage({apOauth:"#{provider}",ok:#{status == :ok}}, "*"); } catch(e){}
+        setTimeout(() => window.close(), 800);
+      </script>
+    </div></body>
+    """
+
+    conn |> put_resp_content_type("text/html") |> send_resp(200, html)
+  end
+end

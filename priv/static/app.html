@@ -809,6 +809,8 @@
   .obcard svg { margin-bottom:auto; }
   .obcard:hover { border-color:#b9c2cd; box-shadow:0 1px 4px rgba(25,35,55,.1); }
   .obcard.on { border-color:#6aa84f; box-shadow:0 0 0 3px rgba(106,168,79,.12); }
+  .obcard.pending { border-color:#8e7cc3; box-shadow:0 0 0 3px rgba(142,124,195,.14); }
+  .obcard.pending .obcardname::after { content:" …"; color:#8e7cc3; }
   .obcardname { font:600 13px ui-monospace,monospace; color:#1c2230; }
   .obcardline { font:10.5px/1.45 ui-monospace,monospace; color:#67707c; }
   .obck { position:absolute; top:10px; right:10px; display:none; color:#6aa84f; }
@@ -4160,14 +4162,59 @@ async function obConnectStep() {
       card.classList.toggle("on", !!conns[card.dataset.prov]);
     plan();
   };
-  // the cards TOGGLE — connect on click, disconnect on click again
+  // refresh connection truth from the server (real, token-backed)
+  const refresh = async () => {
+    try { conns = (await (await fetch("/auth/state.json")).json()).connections || {}; } catch (_) {}
+    paint();
+  };
+  // a connected card DISCONNECTS on click; an unconnected one runs the REAL flow:
+  // github/google open the system browser to the OAuth login; cloudflare takes a
+  // pasted, user-scoped API token (it has no consumer OAuth).
   for (const card of s.querySelectorAll(".obcard"))
     card.onclick = async () => {
       const prov = card.dataset.prov;
-      await authedPost("/auth/" + (conns[prov] ? "disconnect" : "connect") + "/" + prov);
-      conns[prov] = !conns[prov];
-      paint();
+      if (conns[prov]) {
+        await authedPost("/auth/disconnect/" + prov);
+        conns[prov] = false;
+        paint();
+        return;
+      }
+      if (prov === "cloudflare") {
+        const token = prompt("paste a Cloudflare API token (scoped to the zones you want it to publish):");
+        if (!token) return;
+        const r = await authedPost("/auth/cloudflare/token?token=" + encodeURIComponent(token.trim()));
+        const t = await r.text();
+        if (!t.startsWith("ok")) { toast("cloudflare: " + t.replace(/^refused: /, "").trim()); return; }
+        await refresh();
+        return;
+      }
+      // github / google: open the SYSTEM browser (WKWebView can't host Google's
+      // OAuth), then poll for the connection to appear. The callback tab also
+      // postMessages back as a fast-path when the flow runs in this same browser.
+      await authedPost("/auth/" + prov + "/open");
+      card.classList.add("pending");
+      pollFor(prov);
     };
+  // poll /auth/state.json until the provider connects (or give up after ~2min)
+  let _poll = null;
+  const pollFor = prov => {
+    clearInterval(_poll);
+    let tries = 0;
+    _poll = setInterval(async () => {
+      tries++;
+      try {
+        const c = (await (await fetch("/auth/state.json")).json()).connections || {};
+        if (c[prov] || tries > 60) {
+          clearInterval(_poll);
+          conns = c;
+          for (const el of s.querySelectorAll(".obcard")) el.classList.remove("pending");
+          paint();
+        }
+      } catch (_) {}
+    }, 2000);
+  };
+  // fast-path: a same-browser popup callback postMessages back
+  addEventListener("message", e => { if (e.data && e.data.apOauth) refresh(); });
   paint();
   refreshIcons();
   document.getElementById("ob-next2").onclick = () => obStep(3);
