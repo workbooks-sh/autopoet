@@ -16,5 +16,6 @@ if config_env() == :test do
     brain_live: false
 end
 
-# BEAM-native ML: every Nx tensor op (Whisper dictation) runs on EXLA
-config :nx, default_backend: EXLA.Backend
+# Nx stays on BinaryBackend by default: the ONNX lane (Ortex/moonshine) must own
+# the process's native-lib symbol space; EXLA is started lazily by the whisper
+# fallback only (XLA-before-onnxruntime segfaults — see Autopoet.Stt)

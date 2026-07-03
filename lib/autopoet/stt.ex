@@ -1,60 +1,99 @@
 defmodule Autopoet.Stt do
   @moduledoc """
-  BEAM-native speech-to-text — Whisper running IN-PROCESS via Bumblebee/EXLA.
-  The first taste of the future-state ML stack (everything on Nx, no python,
-  no sidecar processes).
+  BEAM-native speech-to-text — no python, no sidecars, nothing downloaded at
+  transcribe time. Two in-process engines behind one door:
 
-  Weights live under `data/models/bumblebee` and are fetched ONCE — at first
-  boot (or pre-seeded by packaging), never at transcribe time. The serving is
-  loaded and XLA-compiled in the background right after boot (`handle_continue`),
-  so by the time anyone presses the mic it answers in about a second. Calls that
-  arrive mid-warmup simply queue behind it.
+    * PRIMARY — Moonshine base on the ONNX lane (`Autopoet.Stt.Moonshine`,
+      official UsefulSensors graphs via Ortex). Small, fast, ships with the app
+      under `data/models/moonshine`.
+    * FALLBACK — Whisper base on Bumblebee/EXLA, weights cached once under
+      `data/models/bumblebee` (first boot or packaging pre-seed). Loaded lazily,
+      only if moonshine is missing or errors.
+
+  The primary engine warms in the background right after boot
+  (`handle_continue`); calls that arrive mid-warmup queue behind it.
   """
   use GenServer
 
-  @model "openai/whisper-base"
+  @whisper "openai/whisper-base"
 
   def start_link(_), do: GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
 
   @doc "Transcribe a 16kHz mono s16le WAV file. Returns {:ok, text} | {:error, reason}."
   def transcribe_wav(path), do: GenServer.call(__MODULE__, {:stt, path}, 180_000)
 
-  @doc "Is the serving loaded and compiled?"
-  def ready?, do: GenServer.call(__MODULE__, :ready?)
+  @doc "Which engine is live? :moonshine | :whisper | nil"
+  def engine, do: GenServer.call(__MODULE__, :engine)
 
   @impl true
-  def init(:ok), do: {:ok, nil, {:continue, :warm}}
+  def init(:ok), do: {:ok, %{moonshine: nil, whisper: nil}, {:continue, :warm}}
 
   @impl true
-  def handle_continue(:warm, nil) do
-    {:noreply, load()}
+  def handle_continue(:warm, state) do
+    moonshine = Autopoet.Stt.Moonshine.load(model_dir("moonshine"))
+
+    # bind-run: onnxruntime's symbols must resolve BEFORE anything dlopens XLA
+    # (both bundle protobuf/absl; XLA-first segfaults Ortex.run) — half a second
+    # of silence through the encoder pins the symbol space to onnxruntime
+    if moonshine, do: Autopoet.Stt.Moonshine.bind(moonshine)
+    if moonshine == nil, do: Autopoet.Log.puts("stt: moonshine files absent — whisper will serve")
+    {:noreply, %{state | moonshine: moonshine}}
   end
 
   @impl true
-  def handle_call(:ready?, _from, serving), do: {:reply, serving != nil, serving}
+  def handle_call(:engine, _from, state) do
+    {:reply, (state.moonshine && :moonshine) || (state.whisper && :whisper), state}
+  end
 
-  def handle_call({:stt, path}, _from, serving) do
-    serving = serving || load()
-
-    reply =
-      with {:ok, serving} <- (serving && {:ok, serving}) || {:error, :stt_unavailable},
-           {:ok, audio} <- wav_tensor(path) do
-        case Nx.Serving.run(serving, audio) do
-          %{chunks: chunks} -> {:ok, chunks |> Enum.map_join(" ", & &1.text) |> String.trim()}
-          other -> {:error, {:unexpected, other}}
+  def handle_call({:stt, path}, _from, state) do
+    case wav_tensor(path) do
+      {:ok, audio} ->
+        case moonshine(state, audio) do
+          {:ok, _} = ok -> {:reply, ok, state}
+          {:error, why} -> whisper_reply(state, audio, why)
         end
-      end
 
-    {:reply, reply, serving}
-  rescue
-    e -> {:reply, {:error, {:stt_crashed, Exception.message(e)}}, serving}
+      {:error, _} = e ->
+        {:reply, e, state}
+    end
   end
 
-  # ── loading ──────────────────────────────────────────────────────────────────
-  defp load do
-    dir = Path.join([Autopoet.Discovery.home(), "data", "models", "bumblebee"])
+  # ── moonshine (primary) ──────────────────────────────────────────────────────
+  defp moonshine(%{moonshine: nil}, _audio), do: {:error, :moonshine_absent}
+
+  defp moonshine(%{moonshine: engine}, audio) do
+    Autopoet.Stt.Moonshine.transcribe(engine, Nx.reshape(audio, {1, Nx.size(audio)}))
+  rescue
+    e -> {:error, {:moonshine_crashed, Exception.message(e)}}
+  end
+
+  # ── whisper (fallback, lazy) ─────────────────────────────────────────────────
+  defp whisper_reply(state, audio, primary_why) do
+    serving = state.whisper || load_whisper()
+
+    if serving do
+      case Nx.Serving.run(serving, audio) do
+        %{chunks: chunks} ->
+          {:reply, {:ok, chunks |> Enum.map_join(" ", & &1.text) |> String.trim()},
+           %{state | whisper: serving}}
+
+        other ->
+          {:reply, {:error, {:unexpected, other}}, %{state | whisper: serving}}
+      end
+    else
+      {:reply, {:error, {:no_engine, primary_why}}, state}
+    end
+  rescue
+    e -> {:reply, {:error, {:whisper_crashed, Exception.message(e)}}, state}
+  end
+
+  defp load_whisper do
+    # :exla is runtime: false — started HERE, lazily, always after the ONNX lane
+    # has bound its symbols (see the bind-run in handle_continue)
+    {:ok, _} = Application.ensure_all_started(:exla)
+    dir = model_dir("bumblebee")
     File.mkdir_p!(dir)
-    repo = {:hf, @model, cache_dir: dir}
+    repo = {:hf, @whisper, cache_dir: dir}
 
     with {:ok, model} <- Bumblebee.load_model(repo),
          {:ok, featurizer} <- Bumblebee.load_featurizer(repo),
@@ -76,8 +115,10 @@ defmodule Autopoet.Stt do
       nil
   end
 
+  defp model_dir(name), do: Path.join([Autopoet.Discovery.home(), "data", "models", name])
+
   # afconvert emits standard RIFF: walk the chunks to the `data` payload,
-  # s16le mono 16k → f32 tensor in [-1, 1] (what the whisper featurizer wants)
+  # s16le mono 16k → f32 tensor in [-1, 1] (what both engines want)
   defp wav_tensor(path) do
     with {:ok, <<"RIFF", _::32-little, "WAVE", rest::binary>>} <- File.read(path),
          {:ok, pcm} <- wav_data(rest) do
