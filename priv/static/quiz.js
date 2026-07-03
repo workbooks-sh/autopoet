@@ -375,6 +375,13 @@
         { v: "organize", name: "keep my files organized" },
         { v: "receipts", name: "keep receipts on everything it does" },
       ],
+      next: () => "apps",
+    },
+
+    apps: {
+      widget: "catalog",
+      title: "which apps should your agent live in?",
+      sub: "search anything — gmail, slack, notion, stripe, linear. these become its toolbelt.",
       next: () => "ch2",
     },
 
@@ -717,13 +724,15 @@
     if (setting) lines.push(["setting", setting]);
     if (s.intent === "delegate" && (s.hours || s.burn))
       lines.push(["fleet", `hours=${s.hours || "?"} budget=${s.burn || "?"}`]);
+    const apps = (s.apps || "").split(",").filter(Boolean);
+    if (apps.length) lines.push(["toolbelt", apps.slice(0, 12).join(", ")]);
     lines.push(["firstrun", firstrun]);
     return lines;
   }
 
   // labels for the recap — keys read as plain words
   const KEY_LABEL = {
-    intent: "here for", blank_nudge: "nudge", build_what: "making", build_site_job: "site does",
+    intent: "here for", apps: "toolbelt", blank_nudge: "nudge", build_what: "making", build_site_job: "site does",
     build_tool_who: "tool for", money_road: "road", money_sell_what: "selling",
     money_audience_medium: "medium", money_freelance_craft: "craft", money_trade_flavor: "flavor",
     money_biz_bottleneck: "bottleneck", prod_pain: "time sink", prod_scope: "for",
@@ -736,6 +745,7 @@
   };
 
   let state = {}, notes = {}, history = [], hooks = {}, root = null, faceApi = null;
+  let catalogNames = {};
   let notesEverOpened = false, _keysBound = false;
 
   const save = (k, v) =>
@@ -862,7 +872,7 @@
         ${history.length ? `<button class="qzback" title="back"><i data-lucide="arrow-left"></i></button>` : ""}
         <button class="qznotebtn">${noteBtnHTML(_current)}</button>
         <div class="qzbar"><div class="qzbarfill"></div></div>
-        ${node.multi || node.widget === "pick" ? `<button class="qzgo" ${picked.length ? "" : "disabled"}>continue</button>` : ""}
+        ${node.multi || node.widget === "pick" || node.widget === "catalog" ? `<button class="qzgo" ${picked.length ? "" : "disabled"}>continue</button>` : ""}
       </div>`;
   }
 
@@ -955,6 +965,60 @@
       { y: 8, autoAlpha: 0, duration: .3, delay: .06, stagger: .025, ease: "power2.out" });
   }
 
+  // live searchable multi-select over the Composio catalog (1000+ apps). Server
+  // search via /cloud/toolkits?search=; selected chips persist across searches.
+  function buildCatalog(body, node, id) {
+    const selected = new Map();
+    (state[id] || "").split(",").filter(Boolean).forEach(s => selected.set(s, catalogNames[s] || s));
+    body.innerHTML = `
+      ${headHTML(node)}
+      <input class="qzsearch" placeholder="search apps — gmail, slack, notion, stripe…">
+      <div class="qzchipline" id="catstatus"></div>
+      <div class="qzchipgrid" id="catsel"></div>
+      <div class="qzchipgrid" id="catres" style="max-height:200px;overflow-y:auto"></div>
+      ${navHTML(node, [...selected.keys()])}`;
+    const sel = body.querySelector("#catsel");
+    const res = body.querySelector("#catres");
+    const status = body.querySelector("#catstatus");
+    const input = body.querySelector(".qzsearch");
+    const chip = (slug, name, on, logo) =>
+      `<button class="qzchip2${on ? " on" : ""}" data-slug="${slug}" data-name="${(name||"").replace(/"/g,"")}">` +
+      `${logo ? `<img src="${logo}" width="15" height="15" style="border-radius:3px;object-fit:contain">` : ""}${name}</button>`;
+    const sync = () => {
+      state[id] = [...selected.keys()].join(",");
+      const go = body.querySelector(".qzgo");
+      go.disabled = !selected.size;
+      go.textContent = selected.size ? `continue (${selected.size})` : "continue";
+    };
+    const renderSel = () => {
+      sel.innerHTML = [...selected].map(([s, n]) => chip(s, n, true)).join("");
+      sel.querySelectorAll(".qzchip2").forEach(c => c.onclick = () => { selected.delete(c.dataset.slug); renderSel(); sync(); });
+    };
+    let timer = null, lastQ = null;
+    const load = async q => {
+      status.textContent = "searching…";
+      try {
+        const r = await fetch("/cloud/toolkits?limit=40" + (q ? "&search=" + encodeURIComponent(q) : ""));
+        if (!r.ok) { status.textContent = "integrations offline — pick after setup"; res.innerHTML = ""; return; }
+        const items = (await r.json()).items || [];
+        items.forEach(t => { catalogNames[t.slug] = t.name; });
+        res.innerHTML = items.filter(t => !selected.has(t.slug))
+          .map(t => chip(t.slug, t.name, false, t.meta && t.meta.logo)).join("");
+        status.textContent = items.length ? "" : "no apps match";
+        res.querySelectorAll(".qzchip2").forEach(c => c.onclick = () => {
+          selected.set(c.dataset.slug, c.dataset.name); c.remove(); renderSel(); sync();
+        });
+      } catch (_) { status.textContent = "integrations offline — pick after setup"; res.innerHTML = ""; }
+    };
+    input.addEventListener("input", () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => { const q = input.value.trim(); if (q !== lastQ) { lastQ = q; load(q); } }, 280);
+    });
+    renderSel();
+    sync();
+    load("");
+  }
+
   function buildSearch(body, node, id) {
     const options = opts(node);
     body.innerHTML = `
@@ -1028,6 +1092,7 @@
       if (widget === "intro") buildIntro(body, node, id);
       else if (widget === "chapter") buildChapter(body, node, id);
       else if (widget === "pick") buildPick(body, node, id);
+      else if (widget === "catalog") buildCatalog(body, node, id);
       else if (widget === "search") buildSearch(body, node, id);
       else buildCards(body, node, id);
       (hooks.refreshIcons || (() => {}))();
@@ -1040,7 +1105,7 @@
         const back = body.querySelector(".qzback");
         if (back) back.onclick = () => { const prev = history.pop(); render(prev, -1); };
         const go = body.querySelector(".qzgo");
-        if (go && (node.multi || widget === "pick"))
+        if (go && (node.multi || widget === "pick" || widget === "catalog"))
           go.onclick = () => { save(id, state[id] || ""); advance(id); };
         bindNotes(body, id);
       }

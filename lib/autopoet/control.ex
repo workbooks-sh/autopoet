@@ -300,6 +300,46 @@ defmodule Autopoet.Control do
     conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(body))
   end
 
+  # ── Workbooks Cloud: the agent's toolbelt (Composio) + cloud host (control plane) ──
+  # Composio is live now (local key); cloud hosting is the control-plane build.
+  get "/cloud/toolkits" do
+    conn = fetch_query_params(conn)
+
+    opts =
+      [limit: conn.query_params["limit"] || "40"] ++
+        case conn.query_params["search"] do
+          s when is_binary(s) and s != "" -> [search: s]
+          _ -> []
+        end
+
+    case Autopoet.Composio.toolkits(opts) do
+      {:ok, body} -> conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(body))
+      {:skip, _} -> send_resp(conn, 503, "composio not configured\n")
+      {:error, r} -> send_resp(conn, 502, "composio error: #{inspect(r)}\n")
+    end
+  end
+
+  # start connecting a toolkit → returns the redirect_url the user completes
+  post "/cloud/connect/:toolkit" do
+    authed!(conn, fn conn ->
+      case Autopoet.Composio.connect(toolkit) do
+        {:ok, %{redirect_url: url}} -> text(conn, url)
+        {:skip, _} -> send_resp(conn, 503, "composio not configured\n")
+        {:error, r} -> send_resp(conn, 502, "connect failed: #{inspect(r)}\n")
+      end
+    end)
+  end
+
+  get "/cloud/connections.json" do
+    body =
+      case Autopoet.Composio.connections() do
+        {:ok, b} -> b
+        _ -> %{"items" => []}
+      end
+
+    conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(body))
+  end
+
   # ── setup profile: the quiz's answers, read back by the brain for personalization ──
   post "/profile/set" do
     authed!(conn, fn conn ->

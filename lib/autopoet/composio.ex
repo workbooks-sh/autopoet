@@ -28,9 +28,9 @@ defmodule Autopoet.Composio do
   @doc "Is Composio available (an API key is present)?"
   def configured?, do: is_binary(key())
 
-  @doc "The app catalog. opts: `limit`, `category`."
+  @doc "The app catalog. opts: `limit`, `category`, `search` (server-side name search)."
   def toolkits(opts \\ []) do
-    q = URI.encode_query(Keyword.take(opts, [:limit, :category]))
+    q = URI.encode_query(Keyword.take(opts, [:limit, :category, :search]))
     get("/v3/toolkits" <> if(q == "", do: "", else: "?" <> q))
   end
 
