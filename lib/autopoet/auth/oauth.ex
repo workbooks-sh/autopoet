@@ -79,7 +79,9 @@ defmodule Autopoet.Auth.OAuth do
             "client_id" => id,
             "redirect_uri" => redirect_uri(conn, provider),
             "scope" => cfg.scope,
-            "state" => state
+            "state" => state,
+            # GitHub defaults to code; Google REQUIRES it explicitly
+            "response_type" => "code"
           }
           |> Map.merge(extra(provider))
         )
