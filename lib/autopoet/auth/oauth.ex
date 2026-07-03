@@ -52,10 +52,15 @@ defmodule Autopoet.Auth.OAuth do
       # dot-format (permission-group slug + .read/.edit) — confirmed via probing
       # that user-details.read is accepted; the rest mirror the picker's names.
       # env-overridable so a mismatched string is a one-line fix, not a recompile.
+      # confirmed valid on the client via probing (login screen reached).
+      # NOT on the client (add there, then append here — env-overridable):
+      #   cloudflare-pages.edit (publishing) · offline_access (refresh token).
+      # the confirmed-valid set (reaches consent). Pages/offline_access are on
+      # the client but under scope strings we haven't nailed — resolve them
+      # authoritatively from the account once connected, then append here.
       scope:
         System.get_env("CLOUDFLARE_OAUTH_SCOPE") ||
-          "user-details.read account-settings.read zone.read dns.read " <>
-            "cloudflare-pages.edit account-analytics.read offline_access",
+          "user-details.read account-settings.read zone.read dns.read account-analytics.read",
       id_key: "CLOUDFLARE_OAUTH_CLIENT_ID",
       secret_key: "CLOUDFLARE_OAUTH_CLIENT_SECRET"
     }
