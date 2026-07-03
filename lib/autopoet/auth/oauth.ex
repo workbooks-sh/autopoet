@@ -151,9 +151,9 @@ defmodule Autopoet.Auth.OAuth do
 
     with true <- cfg != nil,
          state when is_binary(state) <- p["state"],
-         true <- consume_state(state),
+         {:ok, verifier} <- consume_state(state),
          code when is_binary(code) and code != "" <- p["code"],
-         {:ok, token} <- exchange(provider, cfg, code, redirect_uri(conn, provider)) do
+         {:ok, token} <- exchange(provider, cfg, code, redirect_uri(conn, provider), verifier) do
       Autopoet.Connections.put(provider, token)
       Autopoet.Auth.connect(provider)
       Nexus.Events.emit(%{kind: "connection.linked", provider: provider, tags: []})
@@ -166,16 +166,27 @@ defmodule Autopoet.Auth.OAuth do
     end
   end
 
-  defp exchange(provider, cfg, code, redirect_uri) do
-    form =
-      URI.encode_query(%{
-        "client_id" => Nexus.Secrets.get(cfg.id_key),
-        "client_secret" => Nexus.Secrets.get(cfg.secret_key),
-        "code" => code,
-        "redirect_uri" => redirect_uri,
-        "grant_type" => "authorization_code"
-      })
+  defp exchange(provider, cfg, code, redirect_uri, verifier) do
+    base = %{
+      "client_id" => Nexus.Secrets.get(cfg.id_key),
+      "code" => code,
+      "redirect_uri" => redirect_uri,
+      "grant_type" => "authorization_code"
+    }
 
+    # PKCE public clients send code_verifier and NO secret; confidential clients
+    # send the secret. A provider may carry both (PKCE + confidential).
+    params =
+      base
+      |> then(fn m -> if verifier, do: Map.put(m, "code_verifier", verifier), else: m end)
+      |> then(fn m ->
+        case cfg[:secret_key] && Nexus.Secrets.get(cfg.secret_key) do
+          s when is_binary(s) -> Map.put(m, "client_secret", s)
+          _ -> m
+        end
+      end)
+
+    form = URI.encode_query(params)
     headers = [{~c"accept", ~c"application/json"}, {~c"content-type", ~c"application/x-www-form-urlencoded"}]
     :inets.start()
     :ssl.start()
@@ -249,13 +260,23 @@ defmodule Autopoet.Auth.OAuth do
     end
   end
 
-  defp remember_state(state), do: :ets.insert(table(), {state, now()})
+  # PKCE flows stash their code_verifier alongside the state (the callback needs
+  # it for the token exchange); classic flows pass nil.
+  defp remember_state(state, verifier \\ nil), do: :ets.insert(table(), {state, now(), verifier})
 
+  # returns {:ok, verifier} for a fresh single-use state (verifier nil if non-PKCE)
   defp consume_state(state) do
     case :ets.take(table(), state) do
-      [{^state, ts}] -> now() - ts <= @ttl
-      _ -> false
+      [{^state, ts, verifier}] -> if now() - ts <= @ttl, do: {:ok, verifier}, else: :error
+      _ -> :error
     end
+  end
+
+  # PKCE (RFC 7636): a high-entropy verifier + its S256 challenge
+  defp pkce_pair do
+    verifier = Base.url_encode64(:crypto.strong_rand_bytes(48), padding: false)
+    challenge = :crypto.hash(:sha256, verifier) |> Base.url_encode64(padding: false)
+    {verifier, challenge}
   end
 
   defp now, do: System.os_time(:second)
