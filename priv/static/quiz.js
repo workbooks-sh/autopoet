@@ -745,7 +745,7 @@
   };
 
   let state = {}, notes = {}, history = [], hooks = {}, root = null, faceApi = null;
-  let catalogNames = {};
+  let catalogNames = {}, catalogLogos = {};
   let notesEverOpened = false, _keysBound = false;
 
   const save = (k, v) =>
@@ -969,7 +969,7 @@
   // search via /cloud/toolkits?search=; selected chips persist across searches.
   function buildCatalog(body, node, id) {
     const selected = new Map();
-    (state[id] || "").split(",").filter(Boolean).forEach(s => selected.set(s, catalogNames[s] || s));
+    (state[id] || "").split(",").filter(Boolean).forEach(s => selected.set(s, { name: catalogNames[s] || s, logo: catalogLogos[s] || "" }));
     body.innerHTML = `
       ${headHTML(node)}
       <input class="qzsearch" placeholder="search apps — gmail, slack, notion, stripe…">
@@ -982,7 +982,7 @@
     const status = body.querySelector("#catstatus");
     const input = body.querySelector(".qzsearch");
     const chip = (slug, name, on, logo) =>
-      `<button class="qzchip2${on ? " on" : ""}" data-slug="${slug}" data-name="${(name||"").replace(/"/g,"")}">` +
+      `<button class="qzchip2${on ? " on" : ""}" data-slug="${slug}" data-name="${(name||"").replace(/"/g,"")}" data-logo="${logo||""}">` +
       `${logo ? `<img src="${logo}" width="15" height="15" style="border-radius:3px;object-fit:contain">` : ""}${name}</button>`;
     const sync = () => {
       state[id] = [...selected.keys()].join(",");
@@ -991,7 +991,7 @@
       go.textContent = selected.size ? `continue (${selected.size})` : "continue";
     };
     const renderSel = () => {
-      sel.innerHTML = [...selected].map(([s, n]) => chip(s, n, true)).join("");
+      sel.innerHTML = [...selected].map(([s, o]) => chip(s, o.name, true, o.logo)).join("");
       sel.querySelectorAll(".qzchip2").forEach(c => c.onclick = () => { selected.delete(c.dataset.slug); renderSel(); sync(); });
     };
     let timer = null, lastQ = null;
@@ -1001,12 +1001,12 @@
         const r = await fetch("/cloud/toolkits?limit=40" + (q ? "&search=" + encodeURIComponent(q) : ""));
         if (!r.ok) { status.textContent = "integrations offline — pick after setup"; res.innerHTML = ""; return; }
         const items = (await r.json()).items || [];
-        items.forEach(t => { catalogNames[t.slug] = t.name; });
+        items.forEach(t => { catalogNames[t.slug] = t.name; catalogLogos[t.slug] = (t.meta && t.meta.logo) || ""; });
         res.innerHTML = items.filter(t => !selected.has(t.slug))
           .map(t => chip(t.slug, t.name, false, t.meta && t.meta.logo)).join("");
         status.textContent = items.length ? "" : "no apps match";
         res.querySelectorAll(".qzchip2").forEach(c => c.onclick = () => {
-          selected.set(c.dataset.slug, c.dataset.name); c.remove(); renderSel(); sync();
+          selected.set(c.dataset.slug, { name: c.dataset.name, logo: c.dataset.logo }); c.remove(); renderSel(); sync();
         });
       } catch (_) { status.textContent = "integrations offline — pick after setup"; res.innerHTML = ""; }
     };
