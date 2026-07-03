@@ -27,7 +27,12 @@ defmodule Autopoet.MixProject do
       # realtime voice: browser ⇄ Plug WebSocket (websock_adapter over Bandit) and
       # Elixir ⇄ Gemini Live wss client (mint_web_socket)
       {:websock_adapter, "~> 0.5"},
-      {:mint_web_socket, "~> 1.0"}
+      {:mint_web_socket, "~> 1.0"},
+      # BEAM-native ML (the future-state stack, dogfooded here first): Whisper STT
+      # for notes dictation runs in-process via Bumblebee/EXLA — no python, no
+      # per-transcribe downloads; weights ship under data/models
+      {:bumblebee, "~> 0.7"},
+      {:exla, "~> 0.12"}
     ]
   end
 end

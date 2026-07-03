@@ -15,3 +15,6 @@ if config_env() == :test do
     # calls into the suite; inject :brain_llm instead
     brain_live: false
 end
+
+# BEAM-native ML: every Nx tensor op (Whisper dictation) runs on EXLA
+config :nx, default_backend: EXLA.Backend
