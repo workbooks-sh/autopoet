@@ -6,6 +6,9 @@ set -e
 cd "$(dirname "$0")"
 export AUTOPOET_HOME="$PWD"
 export WB_DATA="$PWD/data/nexus"
+# frameless: the custom HTML chrome + stoplight (drag bar, traffic-light buttons)
+# instead of the native macOS title bar. Set AUTOPOET_FRAMELESS=0 to use native.
+export AUTOPOET_FRAMELESS="${AUTOPOET_FRAMELESS:-1}"
 mkdir -p "$WB_DATA"
 
 # inject .env secrets (OPENROUTER_API_KEY / INCEPTION_API_KEY) — Nexus.Secrets resolves
