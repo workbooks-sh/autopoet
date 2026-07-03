@@ -4200,7 +4200,11 @@ async function obConnectStep() {
       // being built. Your app toolbelt is chosen in setup; this card is the
       // "run in the cloud" half, coming soon.
       if (prov === "cloud") {
-        toast("workbooks cloud — hosting is coming; your apps are set in setup");
+        let st = {};
+        try { st = await (await fetch("/cloud/status.json")).json(); } catch (_) {}
+        if (st.host) toast("workbooks cloud is ready — provision from settings");
+        else if (st.tools) toast("cloud hosting needs setup; your app toolbelt is live — pick apps in setup");
+        else toast("workbooks cloud — coming soon");
         return;
       }
       if (conns[prov]) {

@@ -330,6 +330,16 @@ defmodule Autopoet.Control do
     end)
   end
 
+  # readiness of the two Workbooks Cloud halves — the card reflects this honestly
+  get "/cloud/status.json" do
+    body = %{
+      tools: Autopoet.Composio.configured?(),
+      host: cloud_host_ready?()
+    }
+
+    conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(body))
+  end
+
   get "/cloud/connections.json" do
     body =
       case Autopoet.Composio.connections() do
@@ -859,6 +869,14 @@ defmodule Autopoet.Control do
   end
 
   # ── helpers ──────────────────────────────────────────────────────────────────
+
+  # the cloud host is ready only when Nexus.Cloud's Fly broker is configured with a
+  # DEDICATED org (the fail-safe) — dark otherwise, so the card can't imply hosting
+  defp cloud_host_ready? do
+    Code.ensure_loaded?(Nexus.Cloud.Fly) and Nexus.Cloud.Fly.configured?()
+  rescue
+    _ -> false
+  end
 
   defp text(conn, body), do: conn |> put_resp_content_type("text/plain") |> send_resp(200, body)
 
