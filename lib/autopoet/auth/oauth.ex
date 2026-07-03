@@ -40,6 +40,24 @@ defmodule Autopoet.Auth.OAuth do
           "https://www.googleapis.com/auth/userinfo.email",
       id_key: "GOOGLE_OAUTH_CLIENT_ID",
       secret_key: "GOOGLE_OAUTH_CLIENT_SECRET"
+    },
+    # Cloudflare's self-managed OAuth (confidential client). Same OAuth server as
+    # Wrangler (dash.cloudflare.com/oauth2), so scopes are Wrangler-style colon
+    # form (resource:action). The requested set is env-overridable
+    # (CLOUDFLARE_OAUTH_SCOPE) since it must be a subset of what the client was
+    # created with — the "enable now" core + offline_access for a refresh token.
+    "cloudflare" => %{
+      authorize: "https://dash.cloudflare.com/oauth2/auth",
+      token: "https://dash.cloudflare.com/oauth2/token",
+      # dot-format (permission-group slug + .read/.edit) — confirmed via probing
+      # that user-details.read is accepted; the rest mirror the picker's names.
+      # env-overridable so a mismatched string is a one-line fix, not a recompile.
+      scope:
+        System.get_env("CLOUDFLARE_OAUTH_SCOPE") ||
+          "user-details.read account-settings.read zone.read dns.read " <>
+            "cloudflare-pages.edit account-analytics.read offline_access",
+      id_key: "CLOUDFLARE_OAUTH_CLIENT_ID",
+      secret_key: "CLOUDFLARE_OAUTH_CLIENT_SECRET"
     }
   }
 
@@ -48,11 +66,11 @@ defmodule Autopoet.Auth.OAuth do
 
   @doc "Which connect providers can actually run (creds present)?"
   def configured do
-    oauth =
-      for {name, cfg} <- @providers, is_binary(Nexus.Secrets.get(cfg.id_key)), do: name
+    oauth = for {name, cfg} <- @providers, is_binary(Nexus.Secrets.get(cfg.id_key)), do: name
 
-    if is_binary(Nexus.Secrets.get("CLOUDFLARE_API_TOKEN")) or Autopoet.Connections.connected?("cloudflare"),
-      do: ["cloudflare" | oauth],
+    # cloudflare also works via the legacy pasted API token, even without OAuth creds
+    if "cloudflare" in oauth or is_binary(Nexus.Secrets.get("CLOUDFLARE_API_TOKEN")),
+      do: Enum.uniq(["cloudflare" | oauth]),
       else: oauth
   end
 

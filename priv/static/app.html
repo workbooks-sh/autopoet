@@ -4179,18 +4179,11 @@ async function obConnectStep() {
         paint();
         return;
       }
-      if (prov === "cloudflare") {
-        const token = prompt("paste a Cloudflare API token (scoped to the zones you want it to publish):");
-        if (!token) return;
-        const r = await authedPost("/auth/cloudflare/token?token=" + encodeURIComponent(token.trim()));
-        const t = await r.text();
-        if (!t.startsWith("ok")) { toast("cloudflare: " + t.replace(/^refused: /, "").trim()); return; }
-        await refresh();
-        return;
-      }
-      // github / google: open the SYSTEM browser (WKWebView can't host Google's
-      // OAuth), then poll for the connection to appear. The callback tab also
+      // all three run real OAuth now: open the SYSTEM browser (WKWebView can't
+      // host Google's OAuth), then poll for the connection. The callback tab also
       // postMessages back as a fast-path when the flow runs in this same browser.
+      // (Cloudflare still accepts a pasted API token via /auth/cloudflare/token
+      // for power users, but the card default is the real OAuth flow.)
       await authedPost("/auth/" + prov + "/open");
       card.classList.add("pending");
       pollFor(prov);
