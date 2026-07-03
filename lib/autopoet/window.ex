@@ -88,12 +88,32 @@ defmodule Autopoet.Window do
   end
 
   def handle_cast(:minimize, s) do
-    :wxTopLevelWindow.iconize(s.frame)
+    # wx's Erlang binding takes an OPTIONS keyword list, not a bare boolean —
+    # iconize(frame, true) doesn't exist and raises FunctionClauseError.
+    #
+    # NOTE ON A MACOS PLATFORM CEILING: on macOS, -[NSWindow miniaturize:] (what
+    # this ultimately calls) is a documented no-op for a window without a title
+    # bar. Our frame is deliberately CAPTION-less (@wx_resize_border only) so the
+    # page can draw its own chrome instead of the native one — that's the whole
+    # point of frameless mode. Adding wxMINIMIZE_BOX to the frame style DOES make
+    # the OS honor iconize(), but wxWidgets' Cocoa port brings back the full
+    # native title bar (with its own real traffic lights) the instant any of
+    # CLOSE_BOX/MINIMIZE_BOX/MAXIMIZE_BOX/SYSTEM_MENU is set — verified empirically,
+    # it renders a second, native stoplight stacked above the custom HTML one.
+    # There is no portable wx knob for "titled + miniaturizable but visually
+    # bare" (that needs direct NSWindow access — titlebarAppearsTransparent +
+    # titleVisibility, outside wx/Erlang without native code). So in frameless
+    # mode this call is correct-and-harmless rather than a true dock-genie: it
+    # won't crash, and it's a no-op at the OS level. maximize/close are real.
+    :wxTopLevelWindow.iconize(s.frame, iconize: true)
     {:noreply, s}
   end
 
   def handle_cast(:maximize, s) do
-    :wxTopLevelWindow.maximize(s.frame, not :wxTopLevelWindow.isMaximized(s.frame))
+    # Same shape here: maximize/2 wants [{maximize, bool}], not a raw bool — the
+    # old bare-boolean call crashed this GenServer (restart: :temporary, so it
+    # never came back and the wx frame died with it, taking the window with it).
+    :wxTopLevelWindow.maximize(s.frame, maximize: not :wxTopLevelWindow.isMaximized(s.frame))
     {:noreply, s}
   end
 end

@@ -601,12 +601,21 @@
   /* tree drag-drop */
   #tree li > .row.dragover { background:#e4e8f5; outline:1px dashed #5b8cc9; }
 
-  /* custom chrome (frameless mode) */
-  #chrome { position:fixed; top:0; left:0; width:240px; height:32px; z-index:9;
+  /* custom chrome (frameless mode). z-index:1000 — ABOVE every overlay in the app
+     (onboard:60, backdrop:20, modal:21, footpop/filterpop:40, toast:80, error
+     banner:99) so the stoplight stays visible and clickable no matter what's up. */
+  #chrome { position:fixed; top:0; left:0; width:240px; height:32px; z-index:1000;
     display:__CHROME__; align-items:center; gap:8px; padding-left:13px;
     -webkit-app-region:drag; }
   .tl { width:12px; height:12px; border-radius:50%; cursor:pointer; -webkit-app-region:no-drag; }
   .tl.close { background:#ff5f57; } .tl.min { background:#febc2e; } .tl.max { background:#28c840; }
+  /* persistent top drag strip — present in EVERY state (onboarding included),
+     always above every overlay, so the window is always draggable by its top
+     edge. Deliberately slim (7px, under the 7px/12px offsets where #toprow and
+     #canvasbar's own controls start) so it needs no layout reservation anywhere
+     — it just rides in the dead space that already existed above them. */
+  #dragbar { position:fixed; top:0; left:0; right:0; height:7px; z-index:1000;
+    display:__CHROME__; -webkit-app-region:drag; }
 
   /* ── sidebar footer: account · settings · env ── */
   #sidebarfoot { flex:none; display:flex; align-items:center; gap:6px; padding:8px 12px 10px;
@@ -968,6 +977,7 @@
   @keyframes fxblink { 50% { opacity:0; } }
 </style>
 
+<div id="dragbar"></div>
 <div id="chrome">
   <span class="tl close" title="close"></span>
   <span class="tl min" title="minimize"></span>
