@@ -258,6 +258,13 @@ defmodule Autopoet.Control do
     conn |> put_resp_content_type("text/plain") |> send_resp(200, Autopoet.Profile.render())
   end
 
+  post "/profile/reset" do
+    authed!(conn, fn conn ->
+      Autopoet.Profile.clear()
+      text(conn, "ok\n")
+    end)
+  end
+
   post "/auth/onboarding/done" do
     authed!(conn, fn conn -> Autopoet.Auth.complete_onboarding(); text(conn, "app\n") end)
   end

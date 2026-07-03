@@ -24,6 +24,13 @@ defmodule Autopoet.Profile do
 
   def put(_, _), do: {:error, :bad_answer}
 
+  @doc "Wipe the profile — a fresh quiz run starts from a clean slate."
+  def clear do
+    Agent.update(__MODULE__, fn _ -> %{} end)
+    persist()
+    :ok
+  end
+
   @doc "The whole profile as the line format it's stored in — what the brain ingests."
   def render do
     all()

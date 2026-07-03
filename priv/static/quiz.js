@@ -78,10 +78,12 @@
   .qzback:hover { border-color:#b9c2cd; color:#1c2230; }
   .qzback svg { width:15px; height:15px; }
   .qznotebtn { font:11px ui-monospace,monospace; color:#98a0ac; background:none; border:none;
-    cursor:pointer; -webkit-app-region:no-drag; }
+    cursor:pointer; -webkit-app-region:no-drag; display:flex; align-items:center; gap:6px; }
   .qznotebtn:hover { color:#3a4250; }
+  .qznotebtn kbd { font:600 10px ui-monospace,monospace; color:#3a4250; background:#fff;
+    border:1px solid #c9d0da; border-bottom-width:2px; border-radius:5px; padding:1px 6px; }
   .qznotebtn .qzdot { display:inline-block; width:6px; height:6px; border-radius:3px;
-    background:#6aa84f; margin-left:5px; vertical-align:1px; }
+    background:#6aa84f; vertical-align:1px; }
   .qzbar { width:120px; height:3px; border-radius:2px; background:#e4e8ee; overflow:hidden; }
   .qzbarfill { height:100%; width:0; border-radius:2px; background:#8e7cc3; }
   .qzgo { font:12.5px ui-monospace,monospace; padding:8px 17px; border-radius:10px;
@@ -92,17 +94,23 @@
   .qzlater { font:11px ui-monospace,monospace; color:#98a0ac; background:none; border:none;
     cursor:pointer; -webkit-app-region:no-drag; margin-top:2px; }
   .qzlater:hover { color:#3a4250; }
-  .qzhint { font:10.5px ui-monospace,monospace; color:#c5ccd6; }
-  .qznotes { width:480px; border:1px solid #e4e8ee; border-radius:14px; background:#fafbfc;
-    padding:12px; display:flex; gap:10px; align-items:stretch; position:relative; }
-  .qznotes textarea { flex:1; min-height:74px; resize:none; font:12px/1.55 ui-monospace,monospace;
+  /* notes: a FIXED widget pinned to the bottom of the viewport, one per session */
+  #qznoteswidget { position:fixed; left:50%; transform:translateX(-50%); bottom:16px;
+    width:560px; display:none; gap:10px; align-items:stretch; background:#fff;
+    border:1px solid #d6dbe2; border-radius:16px; padding:12px 12px 10px;
+    box-shadow:0 14px 44px rgba(25,35,55,.18); z-index:70;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  #qznoteswidget textarea { flex:1; min-height:64px; resize:none; font:12px/1.55 ui-monospace,monospace;
     color:#1c2230; border:none; background:none; outline:none; }
-  .qzdictate { align-self:flex-end; font:11px ui-monospace,monospace; color:#3a4250;
-    border:1px solid #d6dbe2; border-radius:9px; background:#fff; padding:7px 12px;
-    cursor:pointer; white-space:nowrap; -webkit-app-region:no-drag; }
+  .qzdictate { align-self:flex-end; display:flex; align-items:center; justify-content:center;
+    width:38px; height:38px; color:#3a4250; border:1px solid #d6dbe2; border-radius:11px;
+    background:#fff; cursor:pointer; -webkit-app-region:no-drag; }
   .qzdictate:hover { border-color:#b9c2cd; }
-  .qzdictate.rec { color:#c0392b; border-color:#e6b0aa; }
-  .qznoted { position:absolute; right:12px; bottom:8px; font:10.5px ui-monospace,monospace;
+  .qzdictate svg { width:16px; height:16px; }
+  .qzdictate.rec { color:#c0392b; border-color:#e6b0aa; animation:qzpulse 1.2s ease-out infinite; }
+  .qzdictate.busy { opacity:.45; pointer-events:none; }
+  @keyframes qzpulse { 50% { box-shadow:0 0 0 6px rgba(192,57,43,.12); } }
+  .qznoted { position:absolute; right:14px; top:7px; font:10.5px ui-monospace,monospace;
     color:#6aa84f; opacity:0; }
   /* finale plan */
   .qzplan { display:flex; flex-direction:column; gap:7px; width:480px; }
@@ -499,17 +507,6 @@
         { v: "both", name: "the lot", line: "email and files, read-only.", ...lot("grocery-basket") },
         { v: "none", name: "nothing yet", line: "earn it first.", ...lot("scuba-mask") },
       ],
-      next: s => (s.watch === "none" ? "voice" : "offlimits"),
-    },
-    offlimits: {
-      title: "anything off-limits?",
-      sub: "some things it should never read — not even to help.",
-      options: [
-        { v: "payroll", name: "payroll and hr", line: "paychecks are sacred.", ...lot("billing-system") },
-        { v: "personal", name: "personal threads", line: "family, doctors, the accountant.", ...lot("photo-frame") },
-        { v: "clients", name: "client financials", line: "their numbers stay theirs.", ...lot("donation-box") },
-        { v: "nothing", name: "nothing off-limits", line: "it all stays on this machine anyway.", ...lot("sunglasses") },
-      ],
       next: () => "voice",
     },
     voice: {
@@ -687,7 +684,10 @@
       agents = [["study buddy", "fetches, summarizes, files what you keep"]];
       rules = ["when i tag #keep, file it in the library with a summary"];
       connect = ["google"];
-      firstrun = "a demo rule fires on load — plain words, running";
+      firstrun = { visible: "a demo rule fires on load — watch a node light up",
+                   automated: "the study buddy automates its first chore on load",
+                   understood: "it builds one small thing on load and explains every move"
+                 }[s.firstwin] || "a demo rule fires on load — plain words, running";
     }
     // aspirations top up the rules (skip duplicates), max 3 total
     const aspRule = { inbox: "when an email needs a reply, draft one in my voice",
@@ -728,7 +728,7 @@
     delegate_job: "handed off", platforms: "platforms", industry: "industry", aspirations: "wishlist",
     speak: "code", language: "language", git: "git", gitrules: "laws", pen: "pen", fence: "fence",
     trust: "trust", research: "research", narrate: "narration", depth: "depth", firstwin: "first win",
-    watch: "reads", offlimits: "off-limits", voice: "voice", leash: "leash", pings: "pings",
+    watch: "reads", voice: "voice", leash: "leash", pings: "pings",
     oops: "breakage", hours: "hours", burn: "budget", start: "starts with", taste: "taste",
     motion: "motion", moneyrules: "money",
   };
@@ -774,40 +774,34 @@
     });
   }
 
-  // ── notes drawer (every question): typed or dictated, saved per-question ────
-  function notesUI(id) {
-    return `
-      <div class="qznotes" style="display:none">
-        <textarea placeholder="what would you tell a sharp assistant that the buttons couldn't capture? caveats, exceptions, strong opinions. it all gets used."></textarea>
-        <button class="qzdictate">dictate</button>
-        <span class="qznoted">noted.</span>
-      </div>`;
-  }
-  function bindNotes(body, id) {
-    const drawer = body.querySelector(".qznotes");
-    const btn = body.querySelector(".qznotebtn");
-    if (!drawer || !btn) return;
-    const ta = drawer.querySelector("textarea");
-    const dict = drawer.querySelector(".qzdictate");
-    const noted = drawer.querySelector(".qznoted");
-    ta.value = notes[id] || "";
+  // ── notes: ONE fixed widget pinned to the bottom of the viewport. It lives on
+  //    document.body (never inside the gsap-transformed column, which would break
+  //    position:fixed) and rebinds to whichever question is on screen. ──────────
+  function notesWidget() {
+    let w = document.getElementById("qznoteswidget");
+    if (w) return w;
+    w = document.createElement("div");
+    w.id = "qznoteswidget";
+    w.innerHTML = `
+      <span class="qznoted">noted.</span>
+      <textarea placeholder="what would you tell a sharp assistant that the buttons couldn't capture? caveats, exceptions, strong opinions. it all gets used."></textarea>
+      <button class="qzdictate" title="dictate"><i data-lucide="mic"></i></button>`;
+    document.body.appendChild(w);
+    (hooks.refreshIcons || (() => {}))();
+    const ta = w.querySelector("textarea");
+    const dict = w.querySelector(".qzdictate");
+    const noted = w.querySelector(".qznoted");
     let saveTimer = null;
     const persist = () => {
-      notes[id] = ta.value;
-      save(`${id}.notes`, ta.value);
+      if (!w._id) return;
+      notes[w._id] = ta.value;
+      save(`${w._id}.notes`, ta.value);
       gsap.fromTo(noted, { opacity: 0 }, { opacity: 1, duration: .25 });
       gsap.to(noted, { opacity: 0, duration: .4, delay: 1.5 });
-      btn.innerHTML = ta.value.trim() ? `notes<span class="qzdot"></span>` : "notes";
+      if (w._btn) w._btn.innerHTML = noteBtnHTML(w._id);
     };
     ta.addEventListener("input", () => { clearTimeout(saveTimer); saveTimer = setTimeout(persist, 800); });
-    btn.onclick = () => {
-      notesEverOpened = true;
-      const open = drawer.style.display !== "none";
-      drawer.style.display = open ? "none" : "flex";
-      if (!open) { gsap.from(drawer, { y: 10, autoAlpha: 0, duration: .25, ease: "power2.out" }); ta.focus(); }
-    };
-    body._toggleNotes = () => btn.onclick();
-    // dictation: MediaRecorder → /voice/dictate (moonshine, local) → append
+    // dictation: MediaRecorder → /voice/dictate (moonshine, fully local) → append
     let rec = null, chunks = [];
     dict.onclick = async () => {
       if (rec && rec.state === "recording") { rec.stop(); return; }
@@ -819,19 +813,44 @@
         rec.onstop = async () => {
           stream.getTracks().forEach(t => t.stop());
           dict.classList.remove("rec");
-          dict.textContent = "transcribing…";
+          dict.classList.add("busy");
           try {
             const blob = new Blob(chunks, { type: "audio/mp4" });
             const r = await hooks.postRaw("/voice/dictate", blob, "audio/mp4");
             const text = r.ok ? (await r.text()).trim() : "";
             if (text) { ta.value = (ta.value ? ta.value + " " : "") + text; persist(); }
-          } finally { dict.textContent = "dictate"; }
+          } finally { dict.classList.remove("busy"); }
         };
         rec.start();
         dict.classList.add("rec");
-        dict.textContent = "listening — press to stop";
-      } catch (_) { dict.textContent = "mic unavailable"; setTimeout(() => dict.textContent = "dictate", 1600); }
+      } catch (_) { dict.title = "mic unavailable"; }
     };
+    w._ta = ta;
+    return w;
+  }
+  const noteBtnHTML = id =>
+    `<kbd>n</kbd> for notes${(notes[id] || "").trim() ? `<span class="qzdot"></span>` : ""}`;
+  function hideNotes() {
+    const w = document.getElementById("qznoteswidget");
+    if (w) w.style.display = "none";
+  }
+  function bindNotes(body, id) {
+    const btn = body.querySelector(".qznotebtn");
+    if (!btn) return;
+    const w = notesWidget();
+    w._id = id;
+    w._btn = btn;
+    w._ta.value = notes[id] || "";
+    const toggle = () => {
+      notesEverOpened = true;
+      const open = w.style.display !== "none" && w.style.display !== "";
+      w.style.display = open ? "none" : "flex";
+      if (!open) { gsap.from(w, { y: 12, autoAlpha: 0, duration: .25, ease: "power2.out" }); w._ta.focus(); }
+    };
+    btn.onclick = toggle;
+    body._toggleNotes = toggle;
+    // widget stays open across questions; its contents follow the question
+    if (w.style.display === "flex") w._ta.value = notes[id] || "";
   }
 
   // ── per-widget body builders ────────────────────────────────────────────────
@@ -839,12 +858,10 @@
     return `
       <div class="qznav">
         ${history.length ? `<button class="qzback" title="back"><i data-lucide="arrow-left"></i></button>` : ""}
-        <button class="qznotebtn">${(notes[_current] || "").trim() ? `notes<span class="qzdot"></span>` : "notes"}</button>
+        <button class="qznotebtn">${noteBtnHTML(_current)}</button>
         <div class="qzbar"><div class="qzbarfill"></div></div>
         ${node.multi || node.widget === "pick" ? `<button class="qzgo" ${picked.length ? "" : "disabled"}>continue</button>` : ""}
-      </div>
-      ${notesEverOpened || history.length > 1 ? "" : `<div class="qzhint">press n to add notes</div>`}
-      ${notesUI(_current)}`;
+      </div>`;
   }
 
   function headHTML(node) {
@@ -1013,6 +1030,7 @@
       else buildCards(body, node, id);
       (hooks.refreshIcons || (() => {}))();
       initLotties(body);
+      if (widget === "intro" || widget === "chapter") hideNotes();
       if (widget !== "intro" && widget !== "chapter") {
         const done = history.length + 1;
         gsap.to(body.querySelector(".qzbarfill"),
@@ -1039,6 +1057,7 @@
 
   function finale() {
     _current = null;
+    hideNotes();
     if (faceApi) faceApi.setMouth("superHappy");
     const body = root.querySelector(".qzbody");
     const plan = planFor(state);
@@ -1070,6 +1089,10 @@
     state = {}; notes = {}; history = [];
     root = container;
     destroyAnims();
+    hideNotes();
+    // a fresh run starts from a clean slate server-side too — no stale answers
+    // from an earlier or abandoned pass leaking into this session's profile
+    if (hooks.post) hooks.post("/profile/reset");
     if (!document.getElementById("qzcss")) {
       const st = document.createElement("style");
       st.id = "qzcss"; st.textContent = CSS;
