@@ -34,7 +34,7 @@ defmodule Autopoet.Window do
   def init(nil) do
     :wx.new()
     style = if frameless?(), do: @wx_resize_border, else: @wx_default_frame_style
-    frame = :wxFrame.new(:wx.null(), -1, ~c"", size: {1440, 900}, style: style)
+    frame = :wxFrame.new(:wx.null(), -1, ~c"autopoet", size: {1440, 900}, style: style)
     :wxWindow.setBackgroundColour(frame, {251, 251, 249, 255})
 
     view = attach_view(frame)

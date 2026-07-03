@@ -47,27 +47,42 @@ defmodule Autopoet.Composio do
   used (its brand on the consent screen — fine locally, replace for production).
   """
   def connect(toolkit, opts \\ []) when is_binary(toolkit) do
-    body = %{
-      "toolkit" => %{"slug" => toolkit},
-      "connection" => %{"user_id" => @user, "state" => %{"authScheme" => "OAUTH2"}}
-    }
+    # connecting requires an auth config (the managed-OAuth shortcut is retired):
+    # ensure one for this toolkit, then create the connection against it.
+    with {:ok, ac} <- ensure_auth_config(toolkit, opts) do
+      body = %{
+        "auth_config" => %{"id" => ac},
+        "connection" => %{"user_id" => @user, "state" => %{"authScheme" => "OAUTH2"}}
+      }
 
-    body =
-      case opts[:auth_config_id] do
-        ac when is_binary(ac) -> put_in(body, ["auth_config"], %{"id" => ac})
-        _ -> body
+      body =
+        case opts[:callback_url] do
+          cb when is_binary(cb) -> put_in(body, ["connection", "callback_url"], cb)
+          _ -> body
+        end
+
+      case post("/v3.1/connected_accounts", body) do
+        {:ok, %{"redirect_url" => url, "id" => id}} -> {:ok, %{redirect_url: url, id: id, auth_config: ac}}
+        {:ok, other} -> {:error, {:unexpected, other}}
+        err -> err
       end
+    end
+  end
 
-    body =
-      case opts[:callback_url] do
-        cb when is_binary(cb) -> put_in(body, ["connection", "callback_url"], cb)
-        _ -> body
-      end
+  # An auth config for the toolkit: an explicit `auth_config_id` (whitelabel,
+  # our brand), else a Composio-MANAGED one created on demand (Composio's brand —
+  # fine locally; the control plane swaps in custom auth configs per toolkit).
+  defp ensure_auth_config(toolkit, opts) do
+    case opts[:auth_config_id] do
+      ac when is_binary(ac) ->
+        {:ok, ac}
 
-    case post("/v3.1/connected_accounts", body) do
-      {:ok, %{"redirect_url" => url, "id" => id}} -> {:ok, %{redirect_url: url, id: id}}
-      {:ok, other} -> {:error, {:unexpected, other}}
-      err -> err
+      _ ->
+        case post("/v3.1/auth_configs", %{"toolkit" => %{"slug" => toolkit}}) do
+          {:ok, %{"auth_config" => %{"id" => id}}} -> {:ok, id}
+          {:ok, %{"id" => id}} -> {:ok, id}
+          err -> err
+        end
     end
   end
 
