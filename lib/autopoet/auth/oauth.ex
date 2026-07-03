@@ -35,9 +35,13 @@ defmodule Autopoet.Auth.OAuth do
     "google" => %{
       authorize: "https://accounts.google.com/o/oauth2/v2/auth",
       token: "https://oauth2.googleapis.com/token",
+      # env-overridable (GOOGLE_OAUTH_SCOPE) so the suite can grow without a
+      # recompile. Each scope requested must be added to the OAuth consent
+      # screen AND its API enabled in the project, or Google rejects it.
       scope:
-        "https://www.googleapis.com/auth/drive.readonly " <>
-          "https://www.googleapis.com/auth/userinfo.email",
+        System.get_env("GOOGLE_OAUTH_SCOPE") ||
+          "https://www.googleapis.com/auth/drive.readonly " <>
+            "https://www.googleapis.com/auth/userinfo.email",
       id_key: "GOOGLE_OAUTH_CLIENT_ID",
       secret_key: "GOOGLE_OAUTH_CLIENT_SECRET"
     },
