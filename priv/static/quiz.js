@@ -21,7 +21,7 @@
 (() => {
   const CSS = `
   #obquiz { display:none; flex-direction:column; align-items:center; gap:18px;
-    width:600px; padding:40px; position:relative;
+    width:auto; max-width:860px; padding:40px; position:relative;
     font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
   .qzface { width:64px; height:64px; border-radius:15px; border:1px solid rgba(0,0,0,.12);
     background:#fff; overflow:hidden; flex:none; }
@@ -31,6 +31,9 @@
   .qzsub { font:12px/1.6 ui-monospace,monospace; color:#67707c; margin:7px 0 0; }
   .qzmeta { font:11px ui-monospace,monospace; color:#b3bac4; margin-top:10px; }
   .qzcards { display:flex; flex-wrap:wrap; gap:12px; justify-content:center; width:100%; }
+  /* up to five options: ONE row, always — cards shrink instead of wrapping */
+  .qzcards.row { flex-wrap:nowrap; }
+  .qzcards.row .qzcard { flex:1 1 0; width:auto; max-width:158px; min-width:126px; }
   .qzcard { position:relative; display:flex; flex-direction:column; align-items:center;
     gap:4px; width:158px; padding:14px 12px 13px; box-sizing:border-box;
     border:1px solid #d6dbe2; border-radius:16px; background:#fff; cursor:pointer;
@@ -499,8 +502,8 @@
       next: s => (s.watch === "none" ? "voice" : "offlimits"),
     },
     offlimits: {
-      title: "what should it pretend not to see?",
-      sub: "not shared, not even read.",
+      title: "anything off-limits?",
+      sub: "some things it should never read — not even to help.",
       options: [
         { v: "payroll", name: "payroll and hr", line: "paychecks are sacred.", ...lot("billing-system") },
         { v: "personal", name: "personal threads", line: "family, doctors, the accountant.", ...lot("photo-frame") },
@@ -858,7 +861,7 @@
     const picked = (state[id] || "").split(",").filter(Boolean);
     body.innerHTML = `
       ${headHTML(node)}
-      <div class="qzcards">${options.map((o, i) => `
+      <div class="qzcards${options.length <= 5 ? " row" : ""}">${options.map((o, i) => `
         <button class="qzcard${picked.includes(o.v) ? " on" : ""}" data-i="${i}">
           <span class="qzck"><i data-lucide="check"></i></span>
           ${media(o)}
