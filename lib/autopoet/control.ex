@@ -53,6 +53,12 @@ defmodule Autopoet.Control do
     conn |> put_resp_content_type("application/javascript") |> send_resp(200, js)
   end
 
+  # the quiz's industry corpus — data, not code, so it swaps without touching quiz.js
+  get "/static/quiz-corpus.js" do
+    js = [:code.priv_dir(:autopoet), "static", "quiz-corpus.js"] |> Path.join() |> File.read!()
+    conn |> put_resp_content_type("application/javascript") |> send_resp(200, js)
+  end
+
   get "/static/perfect-freehand.mjs" do
     js = [:code.priv_dir(:autopoet), "static", "perfect-freehand.mjs"] |> Path.join() |> File.read!()
     conn |> put_resp_content_type("text/javascript") |> send_resp(200, js)

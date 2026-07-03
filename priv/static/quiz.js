@@ -353,8 +353,10 @@
     industry: {
       widget: "search",
       title: "what world are you from?",
-      sub: "so it talks like your industry, not like a startup.",
-      options: () => INDUSTRIES.map(([v, label]) => ({ v, name: label })),
+      sub: "so it talks like your world, not like a startup. type anything.",
+      // the big corpus ships in quiz-corpus.js (data, not code); the small
+      // built-in list is only the fallback if that file failed to load
+      options: () => (window.QUIZ_INDUSTRIES || INDUSTRIES).map(([v, label]) => ({ v, name: label })),
       next: () => "aspirations",
     },
     aspirations: {
