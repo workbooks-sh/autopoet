@@ -1154,8 +1154,9 @@
       <div class="sldots" id="sldots"></div>
       <button id="slnext" title="next"><i data-lucide="arrow-right"></i></button>
     </div>
-    <button class="obstepgo" id="slenter" style="display:none">enter autopoet</button>
+    <button class="obstepgo" id="slenter" style="display:none">set up your nexus →</button>
   </div>
+  <div id="obquiz"></div>
 </div>
 
 <div id="shade"></div>
@@ -1181,6 +1182,8 @@
 <script src="/static/d3.v7.min.js"></script>
 <script src="/static/lucide.min.js"></script>
 <script src="/static/gsap.min.js"></script>
+<script src="/static/lottie.min.js"></script>
+<script src="/static/quiz.js"></script>
 <script type="module">
   import { getStroke } from "/static/perfect-freehand.mjs";
   window.getStroke = getStroke;   // the Excalidraw-grade ink engine (pen falls back until loaded)
@@ -4416,6 +4419,76 @@ const SLIDES = [
       gsap.from(comp.querySelectorAll(".fxline"), { width: 0, duration: .45, delay: 2.5, stagger: .15, ease: "power2.out" });
       gsap.from(comp.querySelector(".fxcompbtn"), { scale: 0, duration: .45, delay: 2.85, ease: "back.out(3)" });
     } },
+  { title: "but sure, you can chat", mood: "happy",
+    sub: "chat and voice are right there too — real tool calls and all. (yes, after everything you just saw. some days you want to talk.)",
+    fx(fx) {
+      // LEFT: chat with visible tool calls…
+      const chat = fxEl(`<div class="fxchat" style="left:1%;top:12%">
+        <div class="fxmsg user">add a pricing page?</div>
+        <div class="fxtool"><i data-lucide="wrench"></i>write: pricing.work</div>
+        <div class="fxtool"><i data-lucide="git-branch"></i>link: nav → pricing</div>
+        <div class="fxmsg bot">done — on the graph</div>
+      </div>`);
+      // …RIGHT: voice — waveform docked in its own panel, same tool-call shape
+      const voice = fxEl(`<div class="fxchat" style="right:1%;top:20%">
+        <div class="fxvoice"><span class="vb"></span><span class="vb"></span><span class="vb"></span><span class="vb"></span><span class="vb"></span><span class="vb"></span><span class="vb"></span></div>
+        <div class="fxmsg user">“make the hero bolder”</div>
+        <div class="fxtool"><i data-lucide="pencil"></i>edit: hero.ts</div>
+      </div>`);
+      fx.append(chat, voice);
+      refreshIcons();
+      gsap.from(chat.children, { autoAlpha: 0, y: 8, duration: .4, stagger: .5, delay: .3, ease: "power2.out" });
+      gsap.from(voice.children, { autoAlpha: 0, y: 8, duration: .4, stagger: .5, delay: 1.0, ease: "power2.out" });
+      gsap.to(voice.querySelectorAll(".vb"), { scaleY: () => 0.5 + Math.random() * 2.4, duration: .28,
+        yoyo: true, repeat: -1, repeatRefresh: true, stagger: .07, ease: "sine.inOut", delay: 1.2 });
+      // and the face TALKS along — the REAL voice mouth-sync (viseme chart +
+      // playhead classifier, 50ms cadence), driven by a scripted line + envelope
+      const line = "done. I wrote the pricing page and linked it into the nav for you.";
+      const t0 = performance.now(), dur = 4600;
+      let lastV = null;
+      const talk = setInterval(() => {
+        const m = _slideFaceApi && _slideFaceApi.el("mouth");
+        if (!m) return;
+        const frac = ((performance.now() - t0) % dur) / dur;
+        // synthetic speech envelope: syllable pulses + a rest at the loop seam
+        const amp = frac > .9 ? 0 : .3 + .5 * Math.abs(Math.sin(frac * Math.PI * 16)) * (.6 + Math.random() * .4);
+        const v = visemeAt(line, frac, amp);
+        if (v === lastV) return;
+        lastV = v;
+        if (v === "X") _slideFaceApi.setMouth("happy");
+        else m.innerHTML = VISEMES[v];
+      }, 50);
+      return () => clearInterval(talk);
+    } },
+  { title: "it files its own work", mood: "hopeful",
+    sub: "each heartbeat scans the body for drift — gaps become issues it files for itself, then claims and closes on a later beat.",
+    fx(fx) {
+      // LEFT — what happened: the scan found drift
+      const scan = fxEl(`<div class="fxchat" style="left:1%;top:20%;width:148px">
+        <div class="fxtool"><i data-lucide="heart-pulse"></i>heartbeat № 214</div>
+        <div class="fxmsg bot">stale page: oota.md</div>
+        <div class="fxmsg bot">hook without a match</div>
+      </div>`);
+      // RIGHT — how it reacted: issues filed, then one claimed + closed
+      const q = fxEl(`<div class="fxchat" style="right:1%;top:18%;width:152px">
+        <div class="fxtool"><i data-lucide="git-pull-request"></i>issue queue</div>
+        <div class="fxmsg bot" id="fxi1">#12 refresh oota.md</div>
+        <div class="fxmsg bot" id="fxi2">#13 rewire the hook</div>
+      </div>`);
+      fx.append(scan, q);
+      refreshIcons();
+      gsap.from(scan.children, { autoAlpha: 0, y: 8, duration: .4, stagger: .45, delay: .3, ease: "power2.out" });
+      gsap.from(q.children, { autoAlpha: 0, y: 8, duration: .4, stagger: .45, delay: 1.2, ease: "power2.out" });
+      // beat № 215: it claims #12 and closes it
+      const done = gsap.delayedCall(3.1, () => {
+        const r = q.querySelector("#fxi1");
+        if (!r) return;
+        r.style.borderColor = "#bcd9ac"; r.style.background = "#f2f8ee"; r.style.color = "#4d7a3a";
+        r.textContent = "✓ " + r.textContent;
+        gsap.fromTo(r, { scale: 1 }, { scale: 1.06, duration: .2, yoyo: true, repeat: 1 });
+      });
+      return () => done.kill();
+    } },
   { title: "this is your world", mood: "neutral",
     sub: "the graph is the whole interface. every node is a real running thing — pages, rules, agents — grouped into living clusters with membranes. not a picture of your notes; the notes, alive.",
     fx(fx) {
@@ -4498,76 +4571,6 @@ const SLIDES = [
       });
       gsap.from(holder, { autoAlpha: 0, duration: .8, delay: .2 });
       return () => sim.stop();
-    } },
-  { title: "but sure, you can chat", mood: "happy",
-    sub: "chat and voice are right there too — real tool calls and all. (yes, after everything you just saw. some days you want to talk.)",
-    fx(fx) {
-      // LEFT: chat with visible tool calls…
-      const chat = fxEl(`<div class="fxchat" style="left:1%;top:12%">
-        <div class="fxmsg user">add a pricing page?</div>
-        <div class="fxtool"><i data-lucide="wrench"></i>write: pricing.work</div>
-        <div class="fxtool"><i data-lucide="git-branch"></i>link: nav → pricing</div>
-        <div class="fxmsg bot">done — on the graph</div>
-      </div>`);
-      // …RIGHT: voice — waveform docked in its own panel, same tool-call shape
-      const voice = fxEl(`<div class="fxchat" style="right:1%;top:20%">
-        <div class="fxvoice"><span class="vb"></span><span class="vb"></span><span class="vb"></span><span class="vb"></span><span class="vb"></span><span class="vb"></span><span class="vb"></span></div>
-        <div class="fxmsg user">“make the hero bolder”</div>
-        <div class="fxtool"><i data-lucide="pencil"></i>edit: hero.ts</div>
-      </div>`);
-      fx.append(chat, voice);
-      refreshIcons();
-      gsap.from(chat.children, { autoAlpha: 0, y: 8, duration: .4, stagger: .5, delay: .3, ease: "power2.out" });
-      gsap.from(voice.children, { autoAlpha: 0, y: 8, duration: .4, stagger: .5, delay: 1.0, ease: "power2.out" });
-      gsap.to(voice.querySelectorAll(".vb"), { scaleY: () => 0.5 + Math.random() * 2.4, duration: .28,
-        yoyo: true, repeat: -1, repeatRefresh: true, stagger: .07, ease: "sine.inOut", delay: 1.2 });
-      // and the face TALKS along — the REAL voice mouth-sync (viseme chart +
-      // playhead classifier, 50ms cadence), driven by a scripted line + envelope
-      const line = "done. I wrote the pricing page and linked it into the nav for you.";
-      const t0 = performance.now(), dur = 4600;
-      let lastV = null;
-      const talk = setInterval(() => {
-        const m = _slideFaceApi && _slideFaceApi.el("mouth");
-        if (!m) return;
-        const frac = ((performance.now() - t0) % dur) / dur;
-        // synthetic speech envelope: syllable pulses + a rest at the loop seam
-        const amp = frac > .9 ? 0 : .3 + .5 * Math.abs(Math.sin(frac * Math.PI * 16)) * (.6 + Math.random() * .4);
-        const v = visemeAt(line, frac, amp);
-        if (v === lastV) return;
-        lastV = v;
-        if (v === "X") _slideFaceApi.setMouth("happy");
-        else m.innerHTML = VISEMES[v];
-      }, 50);
-      return () => clearInterval(talk);
-    } },
-  { title: "it files its own work", mood: "hopeful",
-    sub: "each heartbeat scans the body for drift — gaps become issues it files for itself, then claims and closes on a later beat.",
-    fx(fx) {
-      // LEFT — what happened: the scan found drift
-      const scan = fxEl(`<div class="fxchat" style="left:1%;top:20%;width:148px">
-        <div class="fxtool"><i data-lucide="heart-pulse"></i>heartbeat № 214</div>
-        <div class="fxmsg bot">stale page: oota.md</div>
-        <div class="fxmsg bot">hook without a match</div>
-      </div>`);
-      // RIGHT — how it reacted: issues filed, then one claimed + closed
-      const q = fxEl(`<div class="fxchat" style="right:1%;top:18%;width:152px">
-        <div class="fxtool"><i data-lucide="git-pull-request"></i>issue queue</div>
-        <div class="fxmsg bot" id="fxi1">#12 refresh oota.md</div>
-        <div class="fxmsg bot" id="fxi2">#13 rewire the hook</div>
-      </div>`);
-      fx.append(scan, q);
-      refreshIcons();
-      gsap.from(scan.children, { autoAlpha: 0, y: 8, duration: .4, stagger: .45, delay: .3, ease: "power2.out" });
-      gsap.from(q.children, { autoAlpha: 0, y: 8, duration: .4, stagger: .45, delay: 1.2, ease: "power2.out" });
-      // beat № 215: it claims #12 and closes it
-      const done = gsap.delayedCall(3.1, () => {
-        const r = q.querySelector("#fxi1");
-        if (!r) return;
-        r.style.borderColor = "#bcd9ac"; r.style.background = "#f2f8ee"; r.style.color = "#4d7a3a";
-        r.textContent = "✓ " + r.textContent;
-        gsap.fromTo(r, { scale: 1 }, { scale: 1.06, duration: .2, yoyo: true, repeat: 1 });
-      });
-      return () => done.kill();
     } },
   { title: "nothing is lost", mood: "neutral",
     sub: "every body write lands in a real jj repo — the console shows the whole braid, and any point rolls back.",
@@ -4698,6 +4701,16 @@ const SLIDES = [
 ];
 let _slideFaceApi = null, _slideIdx = -1, _slideCleanup = null, _slidesKeyed = false;
 function obDone() { authedPost("/auth/onboarding/done").then(() => location.reload()); }
+// the deck exits INTO the setup quiz (its own file: /static/quiz.js) — skip included
+function showQuiz() {
+  if (_slideCleanup) { _slideCleanup(); _slideCleanup = null; }
+  document.getElementById("obslides").style.display = "none";
+  document.getElementById("obsteps").style.display = "none";
+  document.querySelector("#onboard .obinner").style.display = "none";
+  const q = document.getElementById("obquiz");
+  q.style.display = "flex";
+  AutopoetQuiz.start(q, { post: authedPost, createFace, refreshIcons, onDone: obDone });
+}
 function showSlides() {
   document.querySelector("#onboard .obinner").style.display = "none";
   document.getElementById("obsteps").style.display = "none";
@@ -4710,8 +4723,8 @@ function showSlides() {
   document.getElementById("sldots").innerHTML = SLIDES.map(() => `<div class="sldot"></div>`).join("");
   document.getElementById("slprev").onclick = () => slideGo(_slideIdx - 1);
   document.getElementById("slnext").onclick = () => slideGo(_slideIdx + 1);
-  document.getElementById("obskip").onclick = obDone;
-  document.getElementById("slenter").onclick = obDone;
+  document.getElementById("obskip").onclick = showQuiz;
+  document.getElementById("slenter").onclick = showQuiz;
   if (!_slidesKeyed) {
     _slidesKeyed = true;
     addEventListener("keydown", e => {
