@@ -1,0 +1,3 @@
+Lottie animations served at /static/lotties/* — licensed IconScout packs owned by
+the account holder (Digital License, single end product). Used in the nexus-setup
+quiz cards. Do not redistribute the raw JSONs outside the app.

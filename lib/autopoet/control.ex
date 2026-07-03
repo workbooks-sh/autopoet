@@ -47,6 +47,12 @@ defmodule Autopoet.Control do
     conn |> put_resp_content_type("application/javascript") |> send_resp(200, js)
   end
 
+  # the nexus-setup quiz — deliberately its OWN file, not another app.html inline
+  get "/static/quiz.js" do
+    js = [:code.priv_dir(:autopoet), "static", "quiz.js"] |> Path.join() |> File.read!()
+    conn |> put_resp_content_type("application/javascript") |> send_resp(200, js)
+  end
+
   get "/static/perfect-freehand.mjs" do
     js = [:code.priv_dir(:autopoet), "static", "perfect-freehand.mjs"] |> Path.join() |> File.read!()
     conn |> put_resp_content_type("text/javascript") |> send_resp(200, js)
@@ -61,6 +67,22 @@ defmodule Autopoet.Control do
       conn |> put_resp_content_type(type) |> send_resp(200, File.read!(path))
     else
       send_resp(conn, 404, "no portrait\n")
+    end
+  end
+
+  # the lottie player + quiz-card animations (owned IconScout packs, see LICENSE.txt)
+  get "/static/lottie.min.js" do
+    js = [:code.priv_dir(:autopoet), "static", "lottie.min.js"] |> Path.join() |> File.read!()
+    conn |> put_resp_content_type("application/javascript") |> send_resp(200, js)
+  end
+
+  get "/static/lotties/:name" do
+    path = Path.join([:code.priv_dir(:autopoet), "static", "lotties", Path.basename(name)])
+
+    if File.exists?(path) and String.ends_with?(name, ".json") do
+      conn |> put_resp_content_type("application/json") |> send_resp(200, File.read!(path))
+    else
+      send_resp(conn, 404, "no animation\n")
     end
   end
 
@@ -220,6 +242,20 @@ defmodule Autopoet.Control do
         _ -> text(conn, "ok\n")
       end
     end)
+  end
+
+  # ── setup profile: the quiz's answers, read back by the brain for personalization ──
+  post "/profile/set" do
+    authed!(conn, fn conn ->
+      case Autopoet.Profile.put(conn.query_params["key"], conn.query_params["value"]) do
+        :ok -> text(conn, "ok\n")
+        _ -> text(conn, "refused: bad answer\n")
+      end
+    end)
+  end
+
+  get "/profile" do
+    conn |> put_resp_content_type("text/plain") |> send_resp(200, Autopoet.Profile.render())
   end
 
   post "/auth/onboarding/done" do

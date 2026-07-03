@@ -25,6 +25,7 @@ defmodule Autopoet.Application do
         Autopoet.Log,
         Autopoet.History,
         Autopoet.Auth,
+        Autopoet.Profile,
         Autopoet.Watchdog,
         Autopoet.Requests,
         Autopoet.Capture,
