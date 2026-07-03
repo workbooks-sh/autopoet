@@ -4709,7 +4709,12 @@ function showQuiz() {
   document.querySelector("#onboard .obinner").style.display = "none";
   const q = document.getElementById("obquiz");
   q.style.display = "flex";
-  AutopoetQuiz.start(q, { post: authedPost, createFace, refreshIcons, onDone: obDone });
+  AutopoetQuiz.start(q, {
+    post: authedPost,
+    postRaw: (url, blob, type) =>
+      fetch(url, { method: "POST", body: blob, headers: { ...authed.headers, "content-type": type } }),
+    createFace, refreshIcons, onDone: obDone
+  });
 }
 function showSlides() {
   document.querySelector("#onboard .obinner").style.display = "none";

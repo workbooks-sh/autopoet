@@ -387,7 +387,26 @@ defmodule Autopoet.Control do
     end)
   end
 
-  # ── voice (v1: local TTS via macOS `say`; STT rides Moonshine/Gemini Live later) ──
+  # ── voice (v1: local TTS via macOS `say`; dictation = Moonshine, fully local) ──
+
+  # notes dictation: audio blob in, plain transcript out (audio deleted after)
+  post "/voice/dictate" do
+    authed!(conn, fn conn ->
+      {:ok, body, conn} = read_body(conn, length: 25_000_000)
+
+      ext =
+        case get_req_header(conn, "content-type") do
+          ["audio/wav" <> _ | _] -> "wav"
+          ["audio/aiff" <> _ | _] -> "aiff"
+          _ -> "m4a"
+        end
+
+      case Autopoet.Dictate.transcribe(body, ext) do
+        {:ok, transcript} -> text(conn, transcript)
+        {:error, reason} -> send_resp(conn, 422, "refused: #{inspect(reason)}\n")
+      end
+    end)
+  end
 
   post "/speak" do
     authed!(conn, fn conn ->
