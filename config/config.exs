@@ -19,3 +19,9 @@ end
 # Nx stays on BinaryBackend by default: the ONNX lane (Ortex/moonshine) must own
 # the process's native-lib symbol space; EXLA is started lazily by the whisper
 # fallback only (XLA-before-onnxruntime segfaults — see Autopoet.Stt)
+
+# which Nx runner backs the Bumblebee lane (whisper fallback, future embeddings/
+# reranker). :exla = CPU, proven. :emlx = Metal — flip when it matures AND after
+# validating bind-order against onnxruntime (see Autopoet.Ml + beam-local-ml.md);
+# requires adding {:emlx, github: "elixir-nx/emlx"} to deps.
+config :autopoet, :nx_runner, :exla

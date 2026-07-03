@@ -88,9 +88,9 @@ defmodule Autopoet.Stt do
   end
 
   defp load_whisper do
-    # :exla is runtime: false — started HERE, lazily, always after the ONNX lane
-    # has bound its symbols (see the bind-run in handle_continue)
-    {:ok, _} = Application.ensure_all_started(:exla)
+    # the Nx runner (EXLA today, EMLX when it matures) starts HERE, lazily —
+    # always after the ONNX lane has bound its symbols (bind-run in handle_continue)
+    %{defn_options: defn_options} = Autopoet.Ml.runner_up!()
     dir = model_dir("bumblebee")
     File.mkdir_p!(dir)
     repo = {:hf, @whisper, cache_dir: dir}
@@ -101,7 +101,7 @@ defmodule Autopoet.Stt do
          {:ok, generation_config} <- Bumblebee.load_generation_config(repo) do
       Bumblebee.Audio.speech_to_text_whisper(model, featurizer, tokenizer, generation_config,
         compile: [batch_size: 1],
-        defn_options: [compiler: EXLA],
+        defn_options: defn_options,
         chunk_num_seconds: 30
       )
     else
