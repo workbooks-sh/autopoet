@@ -4216,6 +4216,7 @@ document.getElementById("callin").addEventListener("keydown", async e => {
 
 loadTree();
 draw();
+VoiceStage.preload();   // start the Kokoro model download at boot, not first call
 refreshIcons();
 updateDirtyUI();   // hot exit: restored buffers resurface the save prompt + tree dots
 

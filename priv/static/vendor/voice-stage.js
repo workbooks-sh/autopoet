@@ -200,9 +200,48 @@
     })();
   }
 
+  // ── audio engine ──────────────────────────────────────────────────────
+  // ONE AudioContext, created and resumed inside the user's voice-button
+  // gesture (webviews block contexts/media started outside a gesture — this
+  // was the "it writes but never speaks" bug). Clips are raw Float32 from
+  // Kokoro played as AudioBufferSources: no <audio> elements, no autoplay
+  // policy, exact durations for caption/viseme sync.
+  var actx = null, analyser = null;
+  function ensureAudio() {
+    if (!actx) {
+      actx = new (window.AudioContext || window.webkitAudioContext)();
+      analyser = actx.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.connect(actx.destination);
+    }
+    if (actx.state === "suspended") actx.resume();
+  }
+  function makeClip(raw) {   // {audio: Float32Array, sampling_rate} → playable clip
+    ensureAudio();
+    var f = raw.audio, sr = raw.sampling_rate || 24000;
+    var buf = actx.createBuffer(1, f.length, sr);
+    buf.getChannelData(0).set(f);
+    return { buffer: buf, duration: buf.duration };
+  }
+  var clipNow = null;   // { src, t0 } while a sentence is sounding
+  function playClip(clip, onended) {
+    ensureAudio();
+    stopClip();
+    audioDriven = false;
+    var src = actx.createBufferSource();
+    src.buffer = clip.buffer;
+    src.connect(analyser);
+    clipNow = { src: src, t0: actx.currentTime };
+    src.onended = function () { if (clipNow && clipNow.src === src) clipNow = null; if (onended) onended(); };
+    src.start();
+    startMouthLoop();
+  }
+  function stopClip() {
+    if (clipNow) { try { clipNow.src.onended = null; clipNow.src.stop(); } catch (e) {} clipNow = null; }
+  }
+
   // audio-driven mouth: amplitude gates the jaw, word vowels pick the family
-  var actx = null, analyser = null, lastSrc = null, audioDriven = false;
-  var curFamily = "wide", mouthRaf = null, env = 0, zeroCheck = { sum: 0 };
+  var audioDriven = false, curFamily = "wide", mouthRaf = null, env = 0;
   var FAM = { open: ["C", "D"], wide: ["B", "C"], round: ["F", "E"] };
   function familyOf(word) {
     var w = String(word).toLowerCase(), c = { open: 0, wide: 0, round: 0 };
@@ -216,37 +255,19 @@
     Object.keys(c).forEach(function (k) { if (c[k] > n) { n = c[k]; best = k; } });
     return best;
   }
-  function attachAnalyser(a) {
-    try {
-      if (!actx) {
-        actx = new (window.AudioContext || window.webkitAudioContext)();
-        analyser = actx.createAnalyser();
-        analyser.fftSize = 512;
-        analyser.connect(actx.destination);
-      }
-      if (actx.state === "suspended") actx.resume();
-      if (lastSrc) { try { lastSrc.disconnect(); } catch (e) {} }
-      lastSrc = actx.createMediaElementSource(a);
-      lastSrc.connect(analyser);
-      audioDriven = true;
-      env = 0; zeroCheck = { sum: 0 };
-      startMouthLoop();
-    } catch (e) { audioDriven = false; }
-  }
   function startMouthLoop() {
+    audioDriven = true;
     if (mouthRaf) return;
     var data = new Uint8Array(analyser.fftSize), lastShape = "";
     (function frame() {
       mouthRaf = requestAnimationFrame(frame);
       if (!mounted || !playing) { cancelAnimationFrame(mouthRaf); mouthRaf = null; return; }
-      if (!audioClip || audioClip.paused || !audioDriven) return;
+      if (!clipNow) return;
       analyser.getByteTimeDomainData(data);
       var s = 0;
       for (var i = 0; i < data.length; i++) { var v = (data[i] - 128) / 128; s += v * v; }
       var rms = Math.sqrt(s / data.length);
       env = Math.max(rms, env * 0.82);
-      zeroCheck.sum += rms;
-      if (audioClip.currentTime > 0.6 && zeroCheck.sum < 0.01) { audioDriven = false; return; }
       var shape;
       if (env < 0.03) shape = "X";
       else if (env < 0.075) shape = FAM[curFamily][0];
@@ -509,13 +530,14 @@
 
   // ────────────────────────── caption + transcript ──────────────────────────
   var caption = null, drawer = null, drawerLog = null;
-  function capStatus(text) { caption.className = "on dim"; caption.id = "vs-caption"; caption.textContent = text; caption.classList.add("on"); caption.className = "dim on"; captionShow("dim", text); }
+  function capStatus(text) { captionShow("dim", text); }
   function captionShow(kind, html) {
+    if (!mounted || !caption) return;   // late async callbacks after exit are no-ops
     caption.className = kind ? kind + " on" : "on";
     if (kind === "you" || kind === "dim") caption.textContent = html;
     else caption.innerHTML = html;
   }
-  function captionHide() { caption.className = ""; }
+  function captionHide() { if (caption) caption.className = ""; }
   function logLine(who, text) {
     transcript.push({ who: who, text: text });
     if (!drawerLog) return;
@@ -585,6 +607,9 @@
       kWorker.onmessage = function (e) {
         var m = e.data;
         if (m.type === "ready") { kokoro = true; if (mounted && !playing) capStatus("ready — just talk"); }
+        else if (m.type === "progress") {
+          if (mounted && !playing && !kokoro) capStatus("downloading voice model… " + m.pct + "%");
+        }
         else if (m.type === "error") { kokoro = false; if (mounted) capStatus("voice offline — captions only"); }
         else if (m.type === "audio") {
           var cb = kPending[m.id]; if (!cb) return; delete kPending[m.id];
@@ -623,7 +648,7 @@
     serious: ["neutral", "skeptical"], worried: ["neutral", "worried"],
     neutral: ["neutral", "none"]
   };
-  var audioClip = null, playing = null, timer = null;
+  var playing = null, timer = null;
   function tokenize(text) {
     var stream = [], re = /\[([^\]]+)\]|(\S+)/g, t;
     while ((t = re.exec(text))) {
@@ -636,7 +661,7 @@
     playing = null;
     clearTimeout(timer);
     clearInterval(talkT);
-    if (audioClip) { try { audioClip.pause(); } catch (e) {} audioClip = null; }
+    stopClip();
     captionHide();
     hideHands();
     if (mounted) moveTo(0, 0);
@@ -673,7 +698,7 @@
     if (kokoro) {
       for (var s = 0; s < sText.length; s++) {
         clipP[s] = kokoroGen(sText[s]).then(function (raw) {
-          return raw ? new Audio(URL.createObjectURL(wavFromRaw(raw))) : null;
+          return raw ? makeClip(raw) : null;   // AudioBuffer — gesture-safe, exact duration
         });
         clipP[s].then((function (idx) { return function (a) { clips[idx] = a; }; })(s));
       }
@@ -724,17 +749,9 @@
 
       var clip = clips[sentNo] !== undefined ? clips[sentNo] : await (clipP[sentNo] || Promise.resolve(null));
       if (playing !== runId) return;
-      audioClip = clip;
 
-      var durMs;
-      if (clip) {
-        if (!(isFinite(clip.duration) && clip.duration > 0)) {
-          await new Promise(function (r) { clip.addEventListener("loadedmetadata", r, { once: true }); later(setTimeout(r, 1500)); });
-        }
-        durMs = (isFinite(clip.duration) && clip.duration > 0) ? clip.duration * 1000 : 0;
-      }
+      var durMs = clip ? clip.duration * 1000 : 0;
       if (!durMs) { var wc = g2.items.filter(function (x) { return x.word; }).length; durMs = 260 * wc + 500; }
-      if (playing !== runId) return;
 
       var totalW = 0;
       g2.items.forEach(function (x) { if (x.word) totalW += x.word.length + 1; });
@@ -746,7 +763,8 @@
         else if (x.dir && x.dir.indexOf("pause ") === 0) trailingPause = +x.dir.slice(6) || 0;
       });
 
-      if (clip) { attachAnalyser(clip); clip.play().catch(function () {}); }
+      if (clip) playClip(clip, function () { go(); });   // sound + mouth + advance-on-end
+      else audioDriven = false;                          // silent sentence → text-cadence mouth
 
       g2.items.forEach(function (x) {
         later(setTimeout(function () {
@@ -776,12 +794,12 @@
       });
 
       var advanced = false;
-      var go = function () {
+      function go() {
         if (advanced || playing !== runId) return;
         advanced = true;
         later(setTimeout(nextSentence, trailingPause + 120));
       };
-      if (clip) { clip.addEventListener("ended", go, { once: true }); timer = later(setTimeout(go, durMs + 1200)); }
+      if (clip) timer = later(setTimeout(go, durMs + 1500));   // playClip advances on end; this is the safety net
       else timer = later(setTimeout(go, durMs + trailingPause));
     })();
   }
@@ -980,6 +998,7 @@
     injectCSS();
     buildDOM();
     mounted = true;
+    ensureAudio();     // created + resumed INSIDE the button gesture — sound works
     startBlink();
     startGaze();
     bootKokoro();
@@ -1081,5 +1100,6 @@
     }
   }
 
-  window.VoiceStage = { enter: enter, exit: exit, ask: ask };
+  // preload: call at app boot so the voice model downloads before the first call
+  window.VoiceStage = { enter: enter, exit: exit, ask: ask, preload: bootKokoro };
 })();
