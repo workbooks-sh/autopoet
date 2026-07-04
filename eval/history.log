@@ -113,3 +113,4 @@
 2026-07-04T17:51:06Z · c7b11b7 · live/chief-of-staff · total=3 passed=3 cost_usd=0.0690 llm_calls=6
 2026-07-04T17:52:45Z · c7b11b7 · live/night-shift · total=3 passed=3 cost_usd=0.0815 llm_calls=6
 2026-07-04T17:54:13Z · c7b11b7 · live/site-builder · total=3 passed=3 cost_usd=0.0730 llm_calls=6
+2026-07-04T18:15:25Z · 061278d · live/shop-seller · total=3 passed=3 cost_usd=0.0806 llm_calls=6

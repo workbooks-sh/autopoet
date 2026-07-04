@@ -300,10 +300,30 @@ defmodule Autopoet.Brain do
     _, _ -> []
   end
 
-  # The complete .work primer, token-minimal by design: everything the models must
-  # know, nothing said twice; today's date cemented in org-timestamp form (the
-  # models have no clock). Depth lives in the guide, disclosed on request.
+  # The .work primer — ONE source of format truth (wb-4k6fp.7): when the LINTED
+  # spine is in the guide (skill--the-work-language + the brain-authoring skill,
+  # both CI-gated upstream by skills.lint), the primer IS those pages plus the
+  # date line the models can't know. The hand-rolled text below survives only as
+  # the fallback for installs without the substrate.
   defp format_primer do
+    spine = Autopoet.Guide.read("skill--the-work-language")
+    braincraft = Autopoet.Guide.read("skill--authoring-for-the-autopoet-brain")
+
+    if spine do
+      """
+      .work format — the linted reference (source-gated; examples are EXACT syntax):
+
+      #{spine}
+      #{braincraft || ""}
+      Today is <#{Date.utc_today()} #{dow()}> — org timestamps only, never invented.
+      """
+    else
+      legacy_primer()
+    end
+  end
+
+  # fallback for installs without the skills substrate — kept verbatim
+  defp legacy_primer do
     """
     .work format — complete reference (examples are EXACT syntax):
 

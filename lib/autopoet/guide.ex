@@ -32,17 +32,20 @@ defmodule Autopoet.Guide do
       File.cp!(f, target)
     end
 
-    for f <- Path.wildcard(Path.join(skills_src(), "*.work")) do
+    for sub <- ~w(general internal),
+        f <- Path.wildcard(Path.join([skills_src(), sub, "*.work"])) do
       File.cp!(f, Path.join(dir(), "skill--" <> Path.basename(f)))
     end
 
     :ok
   end
 
-  # the linted skills substrate: app env override (tests/deploys) → the dev
-  # sibling path baked at compile time (Mix is unavailable at release runtime) →
-  # absent (end-user installs, until the spine ships in priv)
-  @dev_skills Path.expand("../workbooks/skills/general", File.cwd!())
+  # the linted skills substrate ROOT (general/ = shared truth, internal/ = our
+  # own agents' — both gated by ci/skills-lint.exs): app env override
+  # (tests/deploys) → the dev sibling path baked at compile time (Mix is
+  # unavailable at release runtime) → absent (end-user installs, until the
+  # spine ships in priv)
+  @dev_skills Path.expand("../workbooks/skills", File.cwd!())
 
   defp skills_src do
     Application.get_env(:autopoet, :skills_dir, @dev_skills)
