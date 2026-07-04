@@ -91,18 +91,25 @@ defmodule Autopoet.Auth.OAuth do
           "checkout_links:write orders:read subscriptions:read subscriptions:write " <>
           "benefits:read benefits:write customers:read customers:write"
     },
-    # Stripe Connect (Standard) — confidential: the platform SECRET key is the
-    # client secret and the exchange is HTTP-Basic, so it runs server-side. We
-    # store the connected account id (acct_…), then act via the Stripe-Account
-    # header. This is the agent literally being able to move money.
-    "stripe" => %{
-      style: :stripe,
-      authorize: "https://connect.stripe.com/oauth/authorize",
-      token: "https://connect.stripe.com/oauth/token",
-      id_key: "STRIPE_CONNECT_CLIENT_ID",
-      secret_key: "STRIPE_SECRET_KEY",
-      scope_env: "STRIPE_OAUTH_SCOPE",
-      scope: "read_write"
+    # Meta (Facebook Login for Business) — ONE connection for the whole Meta
+    # business suite: manage organic + ads across Facebook Pages, Instagram, and
+    # WhatsApp Business through the Graph + Marketing API. Confidential client
+    # (app secret, server-side exchange). The requested scopes reach a user's own
+    # accounts in dev mode immediately; customer accounts need App Review
+    # (advanced access) + Business Verification — env-overridable so the set can
+    # be trimmed to what's been approved without a recompile.
+    "meta" => %{
+      authorize: "https://www.facebook.com/v21.0/dialog/oauth",
+      token: "https://graph.facebook.com/v21.0/oauth/access_token",
+      id_key: "META_APP_ID",
+      secret_key: "META_APP_SECRET",
+      scope_env: "META_OAUTH_SCOPE",
+      scope:
+        "public_profile email business_management " <>
+          "pages_show_list pages_read_engagement pages_manage_posts pages_manage_metadata " <>
+          "instagram_basic instagram_content_publish instagram_manage_insights instagram_manage_comments " <>
+          "ads_management ads_read read_insights " <>
+          "whatsapp_business_management whatsapp_business_messaging"
     }
   }
 
@@ -256,35 +263,6 @@ defmodule Autopoet.Auth.OAuth do
 
       other ->
         Logger.warning("openrouter exchange: #{inspect(other)}")
-        {:error, :exchange_failed}
-    end
-  end
-
-  # Stripe Connect: HTTP-Basic (platform secret key as the user), store the
-  # connected account id (acct_…) — the agent then acts via the Stripe-Account header
-  defp exchange(_provider, %{style: :stripe} = cfg, code, _redirect, _verifier) do
-    secret = Nexus.Secrets.get(cfg.secret_key)
-    form = URI.encode_query(%{"grant_type" => "authorization_code", "code" => code})
-    basic = Base.encode64(secret <> ":")
-
-    headers = [
-      {~c"accept", ~c"application/json"},
-      {~c"authorization", String.to_charlist("Basic " <> basic)},
-      {~c"content-type", ~c"application/x-www-form-urlencoded"}
-    ]
-
-    :inets.start()
-    :ssl.start()
-
-    case :httpc.request(:post, {String.to_charlist(cfg.token), headers, ~c"application/x-www-form-urlencoded", String.to_charlist(form)}, [timeout: 15_000], body_format: :binary) do
-      {:ok, {{_, 200, _}, _, resp}} ->
-        case Jason.decode(to_string(resp)) do
-          {:ok, %{"stripe_user_id" => acct}} when is_binary(acct) -> {:ok, acct}
-          _ -> {:error, :no_account}
-        end
-
-      other ->
-        Logger.warning("stripe exchange: #{inspect(other)}")
         {:error, :exchange_failed}
     end
   end

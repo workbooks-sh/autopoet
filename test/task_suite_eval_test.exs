@@ -30,6 +30,11 @@ defmodule Autopoet.TaskSuiteEvalTest do
         assert :ok = Autopoet.Intake.run()
         plan = Autopoet.Intake.parse_plan(Autopoet.Profile.all())
 
+        # clean crew.work premise: prior persona/L3 runs in the shared test body
+        # leave accepted clerks behind, which the outcome grader would count as a
+        # pre-existing agent (the shared-test-home fragility eval.iso solves)
+        File.rm(Path.join(Autopoet.Body.root(), "#{plan.workspace.name}/crew.work"))
+
         for task <- Tasks.all(), task.persona == persona do
           {task, run_task(task, plan)}
         end

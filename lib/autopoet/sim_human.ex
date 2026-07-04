@@ -1,0 +1,154 @@
+defmodule Autopoet.SimHuman do
+  @moduledoc """
+  The SCOPED simulated human (v3 foundation 3, wb-siutv) — the piece that must
+  be done carefully or the whole loop rots (Sakana's "AI Scientist": an LLM
+  judge of its own output inflates and gets gamed). Two roles, STRICTLY
+  separated, and a hard structural rule: **this module CANNOT settle reward.**
+  It returns opinions; the market (`Autopoet.Market`) settles reward. There is
+  no code path from a sim opinion to the ledger.
+
+    * `customer/3` — simulate a market SEGMENT reacting to the site/proposal.
+      This is ENVIRONMENT: it may shape what the brain builds, but a simulated
+      customer's enthusiasm is NOT a reward — only a real signup is.
+    * `screen/2` — pre-screen a proposal, returning a SUGGESTION
+      (`:accept | :reject | :revise` + note). A monitored signal, never the
+      sole gate; the real accept/reject stays the human's verb (or, in full
+      autonomy, is confirmed by the market outcome).
+
+  ANTI-COLLUSION: the sim uses a model DISTINCT from the brain's planner
+  (`:sim_model`, default a different OpenRouter id) so it is not grading its own
+  writing. Injectable transport (`:complete`) for evals.
+
+  THE GOODHART RECONCILE (`reconcile/2`): every sim verdict is a PREDICTION;
+  after the market speaks, the prediction is scored against reality. Sustained
+  divergence (sim loves what the market ignores) is the alarm that the sim has
+  drifted from being a useful proxy — the tripwire that keeps a simulated judge
+  from quietly becoming the real one.
+  """
+
+  @default_sim_model "meta-llama/llama-3.3-70b-instruct"
+
+  # ── customer simulation (environment — never a reward) ──────────────────────
+
+  @doc """
+  Simulate `persona` reacting to `context` (a page, an offer). Returns
+  `%{interest: 0..1, would_signup: bool, note: string, sim: true}`. The `:sim`
+  flag marks it non-reward everywhere downstream.
+  """
+  def customer(context, persona, opts \\ []) do
+    prompt = """
+    You are a #{persona} browsing the web. React HONESTLY to what follows as a
+    real person with limited time and money — most things do not earn a signup.
+    Reply EXACTLY three lines:
+    INTEREST: <0.0-1.0>
+    SIGNUP: <yes|no>
+    WHY: <one blunt sentence>
+
+    ---
+    #{String.slice(context, 0, 4000)}
+    """
+
+    case complete(prompt, opts) do
+      {:ok, text} -> Map.put(parse_customer(text), :sim, true)
+      _ -> %{interest: 0.0, would_signup: false, note: "(sim unavailable)", sim: true}
+    end
+  end
+
+  # ── proposal pre-screen (a suggestion — never the sole gate) ────────────────
+
+  @doc """
+  Pre-screen a proposal. Returns `%{suggest: :accept | :reject | :revise,
+  note: string, sim: true}` — a SUGGESTION the real gate (human, or market
+  confirmation) may weigh, never the reward itself.
+  """
+  def screen(proposal_text, opts \\ []) do
+    prompt = """
+    You stand in for a busy founder reviewing a proposed change to their site.
+    Judge ONLY whether it plausibly helps the business. Reply EXACTLY two lines:
+    VERDICT: <accept|reject|revise>
+    NOTE: <one sentence, the single biggest reason>
+
+    ---
+    #{String.slice(proposal_text, 0, 4000)}
+    """
+
+    case complete(prompt, opts) do
+      {:ok, text} -> Map.put(parse_screen(text), :sim, true)
+      _ -> %{suggest: :revise, note: "(sim unavailable — defer to human)", sim: true}
+    end
+  end
+
+  # ── the Goodhart reconcile (the tripwire) ───────────────────────────────────
+
+  @doc """
+  Score a batch of `{sim_prediction, market_outcome}` pairs. `sim_prediction`
+  carries `:would_signup` (or `:suggest`); `market_outcome` is truthy iff the
+  market actually rewarded it. Returns `%{n, agree, sim_optimism_gap}` — the gap
+  is the fraction where the sim said YES but the market said NO (the drift that
+  means the sim is becoming an unreliable proxy). `alarm?/1` fires past `tol`.
+  """
+  def reconcile(pairs, _opts \\ []) do
+    n = length(pairs)
+
+    {agree, false_pos} =
+      Enum.reduce(pairs, {0, 0}, fn {pred, market_ok}, {a, fp} ->
+        sim_yes = pred[:would_signup] == true or pred[:suggest] == :accept
+        cond do
+          sim_yes == !!market_ok -> {a + 1, fp}
+          sim_yes and not market_ok -> {a, fp + 1}
+          true -> {a, fp}
+        end
+      end)
+
+    %{n: n, agree: agree, sim_optimism_gap: if(n == 0, do: 0.0, else: false_pos / n)}
+  end
+
+  @doc "The tripwire: the sim's optimism has diverged from the market past `tol` (default 0.5 — it said yes and was wrong more than half the time)."
+  def alarm?(recon, tol \\ 0.5), do: recon.n >= 4 and recon.sim_optimism_gap > tol
+
+  # ── plumbing ────────────────────────────────────────────────────────────────
+
+  # DISTINCT model from the brain (anti-collusion). Injectable for evals.
+  defp complete(prompt, opts) do
+    case Keyword.get(opts, :complete) do
+      fun when is_function(fun, 1) ->
+        fun.(prompt)
+
+      _ ->
+        model = Application.get_env(:autopoet, :sim_model, @default_sim_model)
+
+        case Autopoet.Providers.openrouter([%{role: "user", content: prompt}], max_tokens: 200, temperature: 0.5, model: model) do
+          {:ok, %{content: c}} when is_binary(c) -> {:ok, c}
+          other -> other
+        end
+    end
+  end
+
+  defp parse_customer(text) do
+    interest = extract(text, ~r/INTEREST:\s*([0-9.]+)/i) |> to_float()
+    signup = extract(text, ~r/SIGNUP:\s*(yes|no)/i) |> String.downcase() == "yes"
+    note = extract(text, ~r/WHY:\s*(.+)/i)
+    %{interest: min(interest, 1.0), would_signup: signup, note: note}
+  end
+
+  defp parse_screen(text) do
+    verdict =
+      case extract(text, ~r/VERDICT:\s*(accept|reject|revise)/i) |> String.downcase() do
+        "accept" -> :accept
+        "reject" -> :reject
+        _ -> :revise
+      end
+
+    %{suggest: verdict, note: extract(text, ~r/NOTE:\s*(.+)/i)}
+  end
+
+  defp extract(text, rx) do
+    case Regex.run(rx, text) do
+      [_, m] -> String.trim(m)
+      _ -> ""
+    end
+  end
+
+  defp to_float(""), do: 0.0
+  defp to_float(s), do: case Float.parse(s), do: ({f, _} -> f; :error -> 0.0)
+end

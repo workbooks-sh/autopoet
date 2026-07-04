@@ -42,6 +42,7 @@ defmodule Autopoet.Application do
           Autopoet.Shadow.Hebb,
           Autopoet.Shadow.Surprise,
           Autopoet.Shadow.Outcomes,
+          Autopoet.Treasury,
           {Bandit, plug: Autopoet.Control, ip: io, port: port},
           {Autopoet.Discovery, port}
         ] ++ window()
@@ -67,6 +68,10 @@ defmodule Autopoet.Application do
     # Phase E: the app.execute effect (connected tools) rides the open effect
     # registry — the runtime stays neutral, the app supplies the integration.
     Autopoet.Integrations.install_effect()
+
+    # Warm the shell caches (sh.c wasm build + the 9.6MB coreutils registry decode) OFF the boot
+    # path — cold, the first agent/voice shell call pays ~10s inside its own 10s timeout (wb-p28l9).
+    Task.start(fn -> Nexus.Shell.warm() end)
 
     Autopoet.Log.puts("autopoet up — ctl on 127.0.0.1:#{port}; heartbeat DISARMED (arm via ./autopoetctl arm)")
     result
