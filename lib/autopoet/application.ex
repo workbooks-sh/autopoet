@@ -45,7 +45,7 @@ defmodule Autopoet.Application do
           Autopoet.Treasury,
           {Bandit, plug: Autopoet.Control, ip: io, port: port},
           {Autopoet.Discovery, port}
-        ] ++ window()
+        ] ++ desk() ++ window()
 
     # max_restarts headroom: tests hard-kill the three shadow learners to force
     # cold/reboot paths — three near-simultaneous restarts must not take down the tree
@@ -125,6 +125,12 @@ defmodule Autopoet.Application do
 
   @doc "Is this the cloud profile (a vendored Fly machine), not the desktop?"
   def cloud?, do: System.get_env("AUTOPOET_TARGET") == "cloud"
+
+  # The always-on trading desk (day/night market cycle) — opt-in via AUTOPOET_DESK=1
+  # (machine-identity enablement, like PORT/WB_DATA). Never on in tests by default.
+  defp desk do
+    if System.get_env("AUTOPOET_DESK") == "1", do: [Autopoet.Desk], else: []
+  end
 
   defp window do
     headless? =
