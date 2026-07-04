@@ -195,6 +195,35 @@ history line. We are free to edit/ideate anywhere; gate changes get logged.
 | E2 Composio execute | connected toolkit → agent invokes a real tool in sandbox | ≥ 1 e2e persona eval green |
 | E3 reward wiring | Polar sandbox event → outcome ledger reward entry | e2e eval green |
 
+## 4b. Status ledger (updated 2026-07-04, execution day 1)
+
+- **Phase A — SHIPPED.** A1–A5 green (`genesis_eval_test.exs`); genomes live for
+  6 roads; studio slug collision dead; sim excludes hidden types.
+- **Phase B — SHIPPED** (B5 folded into C3). CIs [52.3,60.7] on the structured
+  lift; pass^3; holdout split + canary; windowed prequential; detector bench
+  beats the E3 envelope (19–22 events, 0 FA/3600); ≥20% negatives.
+- **Phase C — C3 SHIPPED** (18/18 tasks, 6 personas × L1/L2/L3, reference
+  solutions, taxonomy). C1/C2/C4 are PRODUCTION-TIME gates: mechanisms exist
+  (capture corpus, armlift scorer, holdout discipline) — they await ≥14 days of
+  wb-dogfood traces and ≥50 live verdicts. Not completable from a dev session.
+- **Phase D — D1/D2 SHIPPED.** Priors never-worse-than-blank (measured
+  near-neutral, as the chamber predicted for structural priors); provenance
+  headers + fold conservation. D3 awaits `Nexus.Embed` provider config; D4
+  awaits ≥20 consenting tenants (spec in §0/§3).
+- **Phase E — OPEN.** Auth bridge + thin clients, Composio execute lane, Polar
+  reward wiring. Code work; verification needs live accounts.
+- **Learning finding of record:** the miss taxonomy showed 79–90% of real-trace
+  misses are RANK misses → ORDER2 (bigram-context Hebbian, gradient-free) wins
+  the tournament and scores 97.6%/96.8% on real traces vs hebb's 82.8%/87.3%.
+  Promotion to the live learner = pre-registered constant change + shadow-ladder
+  walk. Embeddings remain the 9–15% cold/absent play (D3), not the main lever.
+- **Production-readiness kills this run:** the suite was SECRETLY LIVE (ambient
+  OPENROUTER key → real LLM spend + wasm limb memory → watchdog VM halts eating
+  test modules — brain_live is now the master kill); the Gate allowed birthing
+  NEW agents WITH grants autonomously (fixed + pinned in nexus); O(vocab)/event
+  replay baselines; durable-state compounding across suite runs; welcome.md
+  resurrection; clearSearchDim un-hiding; armlift same-second window leak.
+
 ## 5. Operating rhythm
 
 - `mix eval` per commit (fast tier); nightly slow tier (long soak + prod replay) once C1 lands.
