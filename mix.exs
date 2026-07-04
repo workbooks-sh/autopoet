@@ -15,7 +15,7 @@ defmodule Autopoet.MixProject do
       start_permanent: Mix.env() == :prod,
       releases: releases(),
       aliases: aliases(),
-      preferred_cli_env: [eval: :test, "eval.live": :test],
+      preferred_cli_env: [eval: :test, "eval.live": :test, "eval.iso": :test],
       deps: deps()
     ]
   end
@@ -30,7 +30,22 @@ defmodule Autopoet.MixProject do
   # one run, numbers appended to eval/history.log for cross-commit comparison.
   # AUTOPOET_SOAK_SECONDS scales the soak leg (default 15s; 3600+ overnight).
   defp aliases do
-    [eval: &run_eval/1, "eval.live": &run_eval_live/1]
+    [eval: &run_eval/1, "eval.live": &run_eval_live/1, "eval.iso": &run_eval_iso/1]
+  end
+
+  # CLEAN-ROOM eval: a fresh throwaway home + own port per invocation, so any
+  # number of `mix eval.iso` can run IN PARALLEL with zero shared state (the
+  # shared _build/test_home is what made runs contaminate each other). Same
+  # suite, same gates; artifacts still append to eval/history.log (atomic
+  # line appends) and the clean room is disposable.
+  defp run_eval_iso(args) do
+    home = Path.join(System.tmp_dir!(), "autopoet-eval-#{System.os_time(:millisecond)}-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(home)
+    System.put_env("AUTOPOET_HOME", home)
+    System.put_env("WB_DATA", Path.join(home, "data/nexus"))
+    System.put_env("AUTOPOET_PORT", to_string(4600 + :erlang.phash2(home, 400)))
+    IO.puts("eval.iso — clean room: #{home}")
+    run_eval(args)
   end
 
   # the LIVE tier (real LLM spend): requires AUTOPOET_LIVE=1 set by the caller —

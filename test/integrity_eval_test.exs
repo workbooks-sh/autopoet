@@ -45,8 +45,10 @@ defmodule Autopoet.IntegrityEvalTest do
     frames = Replay.frames(todays_trace())
     assert frames != [], "no capture trace for today"
 
+    # the window picks WHICH settles we grade; causes resolve against the WHOLE
+    # file (an async effect can settle inside the window, cause just before it)
     window = Enum.filter(frames, &((&1[:at] || 0) >= t0))
-    settle = Integrity.settle_sweep(window)
+    settle = Integrity.settle_sweep(window, MapSet.new(frames, & &1[:id]))
     assert settle.violations == [],
            "G-SETTLE FAILED: #{length(settle.violations)} malformed/unresolved settles, e.g. #{inspect(Enum.take(settle.violations, 1))}"
     assert settle.settled == settle.well_formed

@@ -19,9 +19,15 @@ defmodule Autopoet.Eval.Integrity do
   Sweep `effect.settled` events. Returns
   `%{settled, well_formed, cause_resolved, violations: [event]}` —
   a violation is malformed or has a cause id absent from the trace.
+
+  `universe` (optional) supplies the id set causes resolve against — pass the
+  FULL trace when grading a time-window of settles: an async effect can settle
+  just inside the window while its causing event sits just before it.
   """
-  def settle_sweep(frames) do
-    ids = MapSet.new(frames, & &1[:id])
+  def settle_sweep(frames, universe \\ nil)
+
+  def settle_sweep(frames, universe) do
+    ids = universe || MapSet.new(frames, & &1[:id])
     settled = Enum.filter(frames, &(&1[:kind] == "effect.settled"))
 
     {ok, bad} =

@@ -114,3 +114,80 @@
 2026-07-04T17:52:45Z · c7b11b7 · live/night-shift · total=3 passed=3 cost_usd=0.0815 llm_calls=6
 2026-07-04T17:54:13Z · c7b11b7 · live/site-builder · total=3 passed=3 cost_usd=0.0730 llm_calls=6
 2026-07-04T18:15:25Z · 061278d · live/shop-seller · total=3 passed=3 cost_usd=0.0806 llm_calls=6
+2026-07-04T18:24:49Z · 0df720a · detector/delay · delay=19 shift_at=1920
+2026-07-04T18:24:49Z · 0df720a · detector/severity · delay=22
+2026-07-04T18:24:49Z · 0df720a · detector/fa · events=3600 rate=0.0000 alarms=0
+2026-07-04T18:24:49Z · 0df720a · corpus/c2 · need=50 gate=pending decided=0
+2026-07-04T18:24:49Z · 0df720a · corpus/c4 · need=2000 gate=pending holdout_events=0
+2026-07-04T18:24:49Z · 0df720a · corpus/c1 · need=14 days=0 gate=pending
+2026-07-04T18:24:53Z · 0df720a · detector/delay · delay=19 shift_at=1920
+2026-07-04T18:24:53Z · 0df720a · detector/severity · delay=22
+2026-07-04T18:24:53Z · 0df720a · detector/fa · events=3600 rate=0.0000 alarms=0
+2026-07-04T18:24:54Z · 0df720a · efficiency/bus · events_per_sec=163863 state_kb=12
+2026-07-04T18:24:54Z · 0df720a · efficiency/cpu · us_per_event=0.3528
+2026-07-04T18:24:54Z · 0df720a · heartbeat · latency_ms=112 sensed=2 lessons=2
+2026-07-04T18:24:57Z · 0df720a · heartbeat · latency_ms=110 sensed=2 lessons=2
+2026-07-04T18:24:59Z · 0df720a · select · variants=10 pinned_rank=6 winner=ORDER2 order2_rank=1 winner_mean=0.7949 pinned_mean=0.6446 order2_mean=0.7949
+2026-07-04T18:24:59Z · 0df720a · recall-ab/synthetic · decided=8 lift=0.5000 warm_rate=0.7500 flat_rate=0.2500
+2026-07-04T18:25:00Z · 0df720a · replay/trace-2026-07-04-dev · events=105 hebb_windowed=0.1570 hebb=0.3714 frequency=0.2000 lift_lo=-0.0081 lift_hi=0.4081 order2=0.3714 recency=0.4286 miss_rank=0 miss_semantic=25 miss_novel=41
+2026-07-04T18:25:00Z · 0df720a · replay/drift · events=959 hebb_windowed=0.9722 hebb=0.9135 frequency=0.1679 order2=0.9135
+2026-07-04T18:25:00Z · 0df720a · replay/structured · events=959 k=3 hebb_windowed=0.7935 hebb=0.7842 frequency=0.2190 lift_lo=0.5230 lift_hi=0.6070 order2=0.7852 seeds_passed=3
+2026-07-04T18:25:00Z · 0df720a · efficiency/bus · events_per_sec=181138 state_kb=43
+2026-07-04T18:25:00Z · 0df720a · corpus/c2 · need=50 gate=pending decided=0
+2026-07-04T18:25:00Z · 0df720a · corpus/c4 · need=2000 gate=pending holdout_events=0
+2026-07-04T18:25:00Z · 0df720a · corpus/c1 · need=14 days=1 gate=pending
+2026-07-04T18:25:00Z · 0df720a · genome/fleet · edges=1 k_anon=3
+2026-07-04T18:25:00Z · 0df720a · efficiency/cpu · us_per_event=0.3380
+2026-07-04T18:25:00Z · 0df720a · genome/semantic · edges=6 delta150=0.0067
+2026-07-04T18:25:00Z · 0df720a · genome/birth · delta150=-0.0011 delta800=-0.0014 personas=6
+2026-07-04T18:25:01Z · 0df720a · select · variants=10 pinned_rank=6 winner=ORDER2 order2_rank=1 winner_mean=0.7949 pinned_mean=0.6446 order2_mean=0.7949
+2026-07-04T18:25:02Z · 0df720a · recall-ab/synthetic · decided=8 lift=0.5000 warm_rate=0.7500 flat_rate=0.2500
+2026-07-04T18:25:02Z · 0df720a · replay/trace-2026-07-04-dev · events=3075 hebb_windowed=0.7644 hebb=0.9733 frequency=0.0000 lift_lo=0.8779 lift_hi=1.0152 recency=0.0065 order2=0.9733 miss_rank=0 miss_semantic=21 miss_novel=61
+2026-07-04T18:25:02Z · 0df720a · replay/drift · events=959 hebb_windowed=0.9722 hebb=0.9135 frequency=0.1679 order2=0.9135
+2026-07-04T18:25:02Z · 0df720a · replay/structured · events=959 k=3 hebb_windowed=0.7935 hebb=0.7842 frequency=0.2190 lift_lo=0.5230 lift_hi=0.6070 seeds_passed=3 order2=0.7852
+2026-07-04T18:25:12Z · 0df720a · soak · seconds=15 events=14328 state_kb=188 shift_alarms=57 quench_alarms=0
+2026-07-04T18:25:14Z · 0df720a · soak · seconds=15 events=14328 state_kb=183 shift_alarms=55 quench_alarms=0
+2026-07-04T18:25:16Z · 0df720a · tasks · total=18 passed=18 l1=6/6 l2=6/6 l3=6/6
+2026-07-04T18:25:16Z · 0df720a · genome/semantic · edges=6 delta150=0.0067
+2026-07-04T18:25:16Z · 0df720a · genome/fleet · edges=1 k_anon=3
+2026-07-04T18:25:16Z · 0df720a · genome/birth · personas=6 delta150=-0.0011 delta800=-0.0014
+2026-07-04T18:25:20Z · 0df720a · tasks · total=18 passed=18 l1=6/6 l2=6/6 l3=6/6
+2026-07-04T18:26:06Z · 0df720a · detector/delay · delay=19 shift_at=1920
+2026-07-04T18:26:06Z · 0df720a · detector/severity · delay=22
+2026-07-04T18:26:06Z · 0df720a · detector/fa · events=3600 rate=0.0000 alarms=0
+2026-07-04T18:26:07Z · 0df720a · efficiency/bus · events_per_sec=184479 state_kb=12
+2026-07-04T18:26:07Z · 0df720a · efficiency/cpu · us_per_event=0.3209
+2026-07-04T18:26:09Z · 0df720a · detector/fa · events=3600 rate=0.0000 alarms=0
+2026-07-04T18:26:09Z · 0df720a · detector/severity · delay=22
+2026-07-04T18:26:09Z · 0df720a · detector/delay · delay=19 shift_at=1920
+2026-07-04T18:26:19Z · 0df720a · soak · seconds=15 events=14328 state_kb=160 shift_alarms=57 quench_alarms=0
+2026-07-04T18:26:20Z · 0df720a · corpus/c2 · need=50 decided=0 gate=pending
+2026-07-04T18:26:20Z · 0df720a · corpus/c4 · need=2000 gate=pending holdout_events=0
+2026-07-04T18:26:20Z · 0df720a · corpus/c1 · need=14 days=1 gate=pending
+2026-07-04T18:26:21Z · 0df720a · soak · seconds=15 events=14328 shift_alarms=43 quench_alarms=0 state_kb=147
+2026-07-04T18:26:23Z · 0df720a · heartbeat · latency_ms=117 sensed=2 lessons=2
+2026-07-04T18:26:26Z · 0df720a · tasks · total=18 passed=18 l1=6/6 l2=6/6 l3=6/6
+2026-07-04T18:26:26Z · 0df720a · heartbeat · latency_ms=191 sensed=2 lessons=2
+2026-07-04T18:26:27Z · 0df720a · select · variants=10 pinned_rank=6 winner=ORDER2 order2_rank=1 winner_mean=0.7949 pinned_mean=0.6446 order2_mean=0.7949
+2026-07-04T18:26:28Z · 0df720a · replay/structured · events=959 k=3 hebb=0.7842 frequency=0.2190 seeds_passed=3 hebb_windowed=0.7935 order2=0.7852 lift_lo=0.5230 lift_hi=0.6070
+2026-07-04T18:26:28Z · 0df720a · replay/drift · events=959 hebb=0.9135 frequency=0.1679 hebb_windowed=0.9722 order2=0.9135
+2026-07-04T18:26:28Z · 0df720a · replay/trace-2026-07-04-dev · events=14606 hebb=0.9493 frequency=0.2305 recency=0.1256 hebb_windowed=0.6672 order2=0.9493 lift_lo=0.6827 lift_hi=0.7674 miss_rank=38 miss_semantic=552 miss_novel=150
+2026-07-04T18:26:28Z · 0df720a · efficiency/cpu · us_per_event=0.3324
+2026-07-04T18:26:28Z · 0df720a · efficiency/bus · state_kb=209 events_per_sec=206413
+2026-07-04T18:26:28Z · 0df720a · genome/birth · personas=6 delta150=-0.0011 delta800=-0.0014
+2026-07-04T18:26:28Z · 0df720a · genome/semantic · edges=6 delta150=0.0067
+2026-07-04T18:26:28Z · 0df720a · genome/fleet · edges=1 k_anon=3
+2026-07-04T18:26:28Z · 0df720a · corpus/c1 · need=14 days=1 gate=pending
+2026-07-04T18:26:28Z · 0df720a · corpus/c4 · need=2000 gate=pending holdout_events=0
+2026-07-04T18:26:28Z · 0df720a · corpus/c2 · need=50 decided=6 gate=pending
+2026-07-04T18:26:28Z · 0df720a · recall-ab/synthetic · lift=0.5000 decided=8 warm_rate=0.7500 flat_rate=0.2500
+2026-07-04T18:26:28Z · 0df720a · replay/drift · events=959 order2=0.9135 hebb=0.9135 frequency=0.1679 hebb_windowed=0.9722
+2026-07-04T18:26:28Z · 0df720a · replay/trace-2026-07-04-dev · events=17458 order2=0.9604 hebb=0.9604 frequency=0.1895 recency=0.1036 hebb_windowed=0.7962 lift_lo=0.6749 lift_hi=0.8217 miss_rank=35 miss_semantic=511 miss_novel=146
+2026-07-04T18:26:28Z · 0df720a · replay/structured · events=959 k=3 order2=0.7852 hebb=0.7842 frequency=0.2190 seeds_passed=3 hebb_windowed=0.7935 lift_lo=0.5230 lift_hi=0.6070
+2026-07-04T18:26:32Z · 0df720a · tasks · total=18 passed=18 l1=6/6 l2=6/6 l3=6/6
+2026-07-04T18:26:33Z · 0df720a · genome/semantic · edges=6 delta150=0.0067
+2026-07-04T18:26:33Z · 0df720a · genome/fleet · edges=1 k_anon=3
+2026-07-04T18:26:33Z · 0df720a · genome/birth · delta150=-0.0011 delta800=-0.0014 personas=6
+2026-07-04T18:26:34Z · 0df720a · select · variants=10 pinned_rank=6 winner=ORDER2 order2_rank=1 winner_mean=0.7949 pinned_mean=0.6446 order2_mean=0.7949
+2026-07-04T18:26:37Z · 0df720a · recall-ab/synthetic · lift=0.5000 decided=8 warm_rate=0.7500 flat_rate=0.2500
+2026-07-04T18:26:37Z · 0df720a · recall-ab/trace-2026-07-04 · lift=0.2857 decided=14 warm_rate=0.8571 flat_rate=0.5714
