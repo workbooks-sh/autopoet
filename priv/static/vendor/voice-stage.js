@@ -164,12 +164,30 @@
     worried: '<path d="M28.5 31.8 L33.5 29.2 M46.5 29.2 L51.5 31.8" stroke="#121316" stroke-width="2" stroke-linecap="round" fill="none"/>',
     skeptical: '<path d="M28 29.5 Q31 27.3 34 29.5 M46.5 31.5 h5" stroke="#121316" stroke-width="2" stroke-linecap="round" fill="none"/>'
   };
-  var HS = 'fill="#fff" stroke="#121316"';   // inked: the toon line is the stroke itself
-  var POSES = {
-    point: '<svg viewBox="0 0 30 40" fill="none"><path d="M15 2.5 C19.4 2.5 22.5 6 22.5 11 L22.5 24 C22.5 32 19.4 37.5 15 37.5 C10.6 37.5 7.5 32 7.5 24 L7.5 11 C7.5 6 10.6 2.5 15 2.5 Z" ' + HS + ' stroke-width="1.4"/><ellipse cx="24" cy="26" rx="4.4" ry="6" ' + HS + ' stroke-width="1.4"/></svg>',
-    open: '<svg viewBox="0 0 30 40" fill="none"><rect x="6.5" y="15" width="19" height="19" rx="8.5" ' + HS + ' stroke-width="1.4"/><rect x="7" y="3.5" width="5.4" height="15" rx="2.7" ' + HS + ' stroke-width="1.3"/><rect x="13.2" y="1.5" width="5.4" height="17" rx="2.7" ' + HS + ' stroke-width="1.3"/><rect x="19.4" y="3.5" width="5.4" height="15" rx="2.7" ' + HS + ' stroke-width="1.3"/><ellipse cx="27.2" cy="24.5" rx="3.6" ry="5.2" ' + HS + ' stroke-width="1.3"/></svg>',
-    thumb: '<svg viewBox="0 0 30 40" fill="none"><rect x="6" y="16" width="17.5" height="16.5" rx="7.5" ' + HS + ' stroke-width="1.4"/><rect x="5.8" y="3" width="6.4" height="16" rx="3.2" transform="rotate(-9 9 11)" ' + HS + ' stroke-width="1.4"/></svg>'
+  // Hand poses render with a STAMP-UNION outline: the pose's shapes are
+  // defined once (no strokes), stamped 8 times in ink at 1.6px offsets, then
+  // painted once in white on top. That yields ONE merged toon silhouette —
+  // a clean mitten line instead of per-finger strokes — in pure SVG, which
+  // every engine (including WKWebView, where filter unions fail on 3D
+  // subtrees) renders identically.
+  var _poseSeq = 0;
+  function poseSVG(shapes) {
+    var id = "hp" + (++_poseSeq);
+    var stamps = "";
+    var R = 1.6, D8 = R * 0.7071;
+    [[R, 0], [-R, 0], [0, R], [0, -R], [D8, D8], [D8, -D8], [-D8, D8], [-D8, -D8]]
+      .forEach(function (o) {
+        stamps += '<use href="#' + id + '" x="' + o[0].toFixed(2) + '" y="' + o[1].toFixed(2) + '" fill="#121316"/>';
+      });
+    return '<svg viewBox="-4 -4 38 48"><defs><g id="' + id + '">' + shapes + '</g></defs>' +
+           stamps + '<use href="#' + id + '" fill="#fff"/></svg>';
+  }
+  var POSE_SHAPES = {
+    point: '<path d="M15 2.5 C19.4 2.5 22.5 6 22.5 11 L22.5 24 C22.5 32 19.4 37.5 15 37.5 C10.6 37.5 7.5 32 7.5 24 L7.5 11 C7.5 6 10.6 2.5 15 2.5 Z"/><ellipse cx="24" cy="26" rx="4.4" ry="6"/>',
+    open: '<rect x="6.5" y="15" width="19" height="19" rx="8.5"/><rect x="7" y="3.5" width="5.4" height="15" rx="2.7"/><rect x="13.2" y="1.5" width="5.4" height="17" rx="2.7"/><rect x="19.4" y="3.5" width="5.4" height="15" rx="2.7"/><ellipse cx="27.2" cy="24.5" rx="3.6" ry="5.2"/>',
+    thumb: '<rect x="6" y="16" width="17.5" height="16.5" rx="7.5"/><rect x="5.8" y="3" width="6.4" height="16" rx="3.2" transform="rotate(-9 9 11)"/>'
   };
+
 
   var FACE_SVG =
     '<svg viewBox="0 0 80 80" fill="none" preserveAspectRatio="xMidYMid meet">' +
@@ -366,7 +384,14 @@
   // ────────────────────────── hands + skeleton ──────────────────────────
   var overlay = null, hands = null;
   var HALF = 66, REACH = 34, TIP = 17, D = Math.PI / 180, SEC = 30 * D;
-  function setPose(h, pose) { if (h.dataset.pose !== pose) { h.dataset.pose = pose; h.innerHTML = POSES[pose]; } }
+  function setPose(h, pose) {
+    if (h.dataset.pose === pose) return;
+    h.dataset.pose = pose;
+    // adopted cube renders hands in WebGL (avatar3d) — the div is then just an
+    // invisible controller (position/rotation vars + pose), not the artwork
+    if (adopt && window.Avatar3D) { h.innerHTML = ""; return; }
+    h.innerHTML = poseSVG(POSE_SHAPES[pose]);   // standalone: stamped-union SVG art
+  }
   function setHand(h, vars) { Object.keys(vars).forEach(function (k) { h.style.setProperty("--" + k, vars[k]); }); }
   function placeHand(side, ang, rotDeg, pose) {
     var hand = hands[side];

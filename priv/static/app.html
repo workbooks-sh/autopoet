@@ -527,17 +527,12 @@
      float free on the whiteboard. ── */
   #self-cube { position:absolute; left:0; top:0; width:132px; height:132px; z-index:5;
     pointer-events:none;
-    filter:drop-shadow(0 16px 26px rgba(18,19,22,.05)); }
-  /* the toon outline is GEOMETRY, not a filter — WKWebView renders drop-shadow
-     outlines unreliably. A black squircle 1.6px proud sits just behind the
-     front face (the ink ring) and behind the back slice (the far edge). */
-  #self-cube .sc-outline { inset:-1.6px; border-radius:36.6px; background:#121316; }
-  #self-cube .sc-cube { width:100%; height:100%; position:relative; transform-style:preserve-3d;
-    transform:rotateX(calc(var(--rx,0deg) + var(--nod,0deg) + var(--br,0deg)))
-              rotateY(var(--ry,0deg)) rotateZ(var(--rz,0deg));
-    transition:transform .12s ease-out; cursor:pointer; pointer-events:auto; }
-  #self-cube .sc-layer { position:absolute; inset:0; border-radius:35px; }
-  #self-cube .sc-face { background:#fff; display:grid; place-items:center; }
+    filter:drop-shadow(0 16px 26px rgba(18,19,22,.10)); }
+  /* the BODY renders in WebGL (avatar3d.mjs — real mesh, inverted-hull toon
+     outline). .sc-cube is now just the rotation-variable carrier the drivers
+     write to; the face stays a DOM SVG overlay glued on by the render loop. */
+  #self-cube .sc-cube { position:absolute; inset:0; pointer-events:auto; cursor:pointer; }
+  #self-cube .sc-face { position:absolute; inset:0; display:grid; place-items:center; pointer-events:none; }
   #self-cube .sc-face svg { display:block; width:100%; height:100%; }
   /* freed for a call: centered anchor + stage-movement vars (VoiceStage drives) */
   #self-cube.vs-free { left:50%; top:50%; margin:-66px 0 0 -66px;
@@ -1254,6 +1249,7 @@
 <script src="/static/intake.js"></script>
 <script src="/static/quiz.js"></script>
 <script src="/static/vendor/voice-stage.js"></script>
+<script type="module" src="/static/vendor/avatar3d.mjs"></script>
 <script type="module">
   import { getStroke } from "/static/perfect-freehand.mjs";
   window.getStroke = getStroke;   // the Excalidraw-grade ink engine (pen falls back until loaded)
@@ -2266,31 +2262,13 @@ async function buildSelfCube() {
   selfCube = null; selfCubeInner = null;
   const sc = document.createElement("div");
   sc.id = "self-cube";
-  sc.innerHTML = '<div class="sc-cube"></div>';
+  sc.innerHTML = '<div class="sc-cube"><div class="sc-layer sc-face"></div></div>';
   document.getElementById("stage").appendChild(sc);
   const cube = sc.firstChild;
-  // extruded-squircle slices — the tuned lighting (dark 48 / ease .75 / warm 7)
-  const SIZE = 132, STEP = 3, half = SIZE / 2;
-  for (let z = half - STEP; z >= -half; z -= STEP) {
-    const t = (half - z) / SIZE, k = Math.pow(t, 0.75);
-    const rg = Math.round(255 - k * 48), b = Math.round(255 - k * 55);
-    const d = document.createElement("div");
-    d.className = "sc-layer";
-    d.style.background = `rgb(${rg},${rg},${b})`;
-    d.style.transform = `translateZ(${z}px)`;
-    cube.appendChild(d);
-  }
-  for (const [z, name] of [[half - 0.4, "front"], [-half - 0.6, "back"]]) {
-    const ring = document.createElement("div");
-    ring.className = "sc-layer sc-outline";
-    ring.dataset.ring = name;
-    ring.style.transform = `translateZ(${z}px)`;
-    cube.appendChild(ring);
-  }
-  const face = document.createElement("div");
-  face.className = "sc-layer sc-face";
-  face.style.transform = `translateZ(${half}px)`;
-  cube.appendChild(face);
+  const face = cube.firstChild;
+  // the WebGL body — wait for the module, then mount into the container
+  for (let i = 0; i < 200 && !window.Avatar3D; i++) await new Promise(r => setTimeout(r, 50));
+  if (window.Avatar3D) sc._avatar3d = Avatar3D.mount(sc, cube);
   // the SAME primary face (#ap-* ids): mouths.json, voice visemes, hover and
   // click reactions all keep working exactly as before — new body, same soul
   await createFace(face, { idPrefix: "", hoverTarget: cube, clickTarget: cube });
