@@ -748,6 +748,131 @@ defmodule Autopoet.Control do
     end)
   end
 
+  # BEAM-native Kokoro: the widget's primary voice. Plain text in, WAV out.
+  get "/voice/tts/status" do
+    text(conn, Autopoet.Kokoro.status() <> "\n")
+  end
+
+  post "/voice/tts" do
+    authed!(conn, fn conn ->
+      {:ok, body, conn} = read_body(conn, length: 4_000)
+      voice = conn.query_params["voice"] || "af_heart"
+
+      case Autopoet.Kokoro.speak(body, voice) do
+        {:ok, wav} ->
+          conn |> put_resp_content_type("audio/wav") |> send_resp(200, wav)
+
+        {:error, :not_ready} ->
+          send_resp(conn, 503, "voice engine loading\n")
+
+        {:error, reason} ->
+          send_resp(conn, 422, "speak failed: #{inspect(reason)}\n")
+      end
+    end)
+  end
+
+  # ── the session deck: a plain-markdown slide file the agent authors as it
+  #    talks. Slides separated by "\n---\n". Plain text everywhere. ──
+  @deck_dir Path.join([File.cwd!(), "data", "decks"])
+  @deck_file Path.join([File.cwd!(), "data", "decks", "current.md"])
+
+  post "/voice/deck/new" do
+    authed!(conn, fn conn ->
+      File.mkdir_p!(@deck_dir)
+
+      case File.stat(@deck_file) do
+        {:ok, %{mtime: mt}} ->
+          stamp = mt |> NaiveDateTime.from_erl!() |> NaiveDateTime.to_iso8601() |> String.replace(":", "-")
+          File.rename(@deck_file, Path.join(@deck_dir, "deck-#{stamp}.md"))
+
+        _ -> :ok
+      end
+
+      text(conn, "ok\n")
+    end)
+  end
+
+  post "/voice/deck/add" do
+    authed!(conn, fn conn ->
+      {:ok, body, conn} = read_body(conn, length: 100_000)
+      slide = String.trim(body)
+      File.mkdir_p!(@deck_dir)
+
+      deck =
+        case File.read(@deck_file) do
+          {:ok, prior} when prior != "" -> prior <> "\n---\n" <> slide
+          _ -> slide
+        end
+
+      File.write!(@deck_file, deck)
+      text(conn, deck)
+    end)
+  end
+
+  get "/voice/deck" do
+    text(conn, (File.read(@deck_file) |> elem(1) |> to_string()) <> "")
+  end
+
+  # a self-contained-ish export (references the app's vendored reveal assets)
+  get "/voice/deck/export" do
+    md = case File.read(@deck_file) do
+      {:ok, m} -> m
+      _ -> ""
+    end
+
+    html = """
+    <!doctype html><html><head><meta charset="utf-8"><title>autopoet deck</title>
+    <link rel="stylesheet" href="/static/vendor/reveal.css">
+    <style>body{background:#fafaf7}.reveal{font-family:ui-monospace,Menlo,monospace}</style>
+    </head><body><div class="reveal"><div class="slides">
+    <section data-markdown data-separator="^\n---\n$"><textarea data-template>#{md}</textarea></section>
+    </div></div>
+    <script src="/static/vendor/reveal.js"></script>
+    <script src="/static/vendor/reveal-markdown.js"></script>
+    <script>Reveal.initialize({ plugins: [RevealMarkdown], hash: true });</script>
+    </body></html>
+    """
+
+    conn |> put_resp_content_type("text/html") |> send_resp(200, html)
+  end
+
+  # streaming brain: raw SSE proxied from the provider — the widget starts
+  # synthesizing speech from the first clause while the model is still writing
+  post "/voice/brain/stream" do
+    authed!(conn, fn conn ->
+      {:ok, body, conn} = read_body(conn, length: 500_000)
+
+      with {:ok, %{"history" => history}} when is_list(history) <- Jason.decode(body),
+           {:ok, ref} <- Autopoet.VoiceBrain.stream_req(history) do
+        conn =
+          conn
+          |> put_resp_content_type("text/event-stream")
+          |> put_resp_header("cache-control", "no-cache")
+          |> send_chunked(200)
+
+        brain_stream_loop(conn, ref)
+      else
+        {:error, :not_configured} -> send_resp(conn, 503, "brain offline\n")
+        _ -> send_resp(conn, 400, "bad request\n")
+      end
+    end)
+  end
+
+  # BEAM-native emotion read (GoEmotions RoBERTa): plain text in, "label score" lines out
+  post "/voice/affect" do
+    authed!(conn, fn conn ->
+      {:ok, body, conn} = read_body(conn, length: 4_000)
+
+      case Autopoet.Affect.classify(body) do
+        {:ok, top} ->
+          text(conn, Enum.map_join(top, "\n", fn {l, s} -> "#{l} #{s}" end))
+
+        {:error, _} ->
+          send_resp(conn, 204, "")
+      end
+    end)
+  end
+
   # ── the voice lab: tune each mood's style tag + sampler dials, hear it,
   #    save. Presets persist as plain text (data/voice-moods.txt) and drive
   #    the live avatar's per-mood delivery. ──
@@ -780,18 +905,7 @@ defmodule Autopoet.Control do
 
   # BEAM-native Kokoro: the widget's primary voice. Plain text in, WAV out.
   get "/voice/tts/status" do
-    # "ready <engine>" — the widget synthesizes accordingly (tags are
-    # chatterbox-only; kokoro gets tag-stripped text)
-    cond do
-      Autopoet.Chatterbox.ready?() and System.get_env("AUTOPOET_TTS") != "kokoro" ->
-        text(conn, "ready chatterbox\n")
-
-      Autopoet.Kokoro.status() == "ready" ->
-        text(conn, "ready kokoro\n")
-
-      true ->
-        text(conn, Autopoet.Kokoro.status() <> "\n")
-    end
+    text(conn, Autopoet.Kokoro.status() <> "\n")
   end
 
   post "/voice/tts" do

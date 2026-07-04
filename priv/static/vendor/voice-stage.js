@@ -1013,17 +1013,8 @@
       applyReaction(text, partial, top);
     });
   }
-  var KIND2VOICE = {
-    "share-joy": "happy", "happy-for": "happy", relief: "happy", satisfaction: "excited",
-    laugh: "amused", "nervous-laugh": "worried", hope: "happy",
-    disappointment: "sad", sympathy: "sad", "sympathy-them": "sad",
-    "fears-confirmed": "worried", downturn: "sad", concern: "worried",
-    "lean-in": "worried", indignant: "angry", grossed: "angry",
-    "mirror-shock": "surprised", curious: "neutral", "rhet-sympathy": "sad", attentive: "neutral"
-  };
   function applyReaction(text, partial, model) {
     var r = routeListener(text, !partial, model);
-    if (!partial && KIND2VOICE[r.kind]) voiceMood = KIND2VOICE[r.kind];
     var spec = (RESPONSES[r.kind] || RESPONSES.attentive)(r.strength);
     mood = spec.mouth;
     setMouth(spec.mouth);
@@ -1066,7 +1057,6 @@
   // Kokoro survives only as a FALLBACK when the server engine is off
   // (missing model files or espeak-ng).
   var kokoro = false, kokoroMode = null;   // "server" | "worker"
-  var ttsEngine = "kokoro";                // "chatterbox" | "kokoro" (server reports)
   var kWorker = null, kSeq = 0, kPending = {};
   var VOICE_ID = "bf_emma";
   function bootKokoro() {
@@ -1075,7 +1065,6 @@
       s = s.trim();
       if (s.indexOf("ready") === 0) {
         kokoro = true; kokoroMode = "server";
-        ttsEngine = s.split(/\s+/)[1] || "kokoro";
         if (mounted && !playing) capStatus("ready — just talk");
       } else if (s === "loading") {
         if (mounted && !playing) capStatus("warming local voice…");
@@ -1107,44 +1096,7 @@
   // synthesize one sentence → clip {buffer, duration} | null.
   // Cached per turn: the streaming prewarmer fires clauses while the model is
   // still writing, and perform() then reuses the same in-flight promises.
-  // ── mood-driven DELIVERY: each semantic mood carries a chatterbox style
-  //    tag + sampler knobs (tuned in /voice/lab, persisted server-side).
-  //    Kokoro ignores the extra params, so this is engine-safe. ──
-  var voiceMood = "neutral";
-  // sound tags ride INSIDE the synthesized text (chatterbox performs them);
-  // they are never captioned, never in the transcript, never spoken as words
-  var PARA_TAG = /^(chuckle|laugh|sigh|gasp|groan|cough|sniff|clear throat|shush|whispering|dramatic)$/;
-  var MOOD_VOICE = {
-    neutral:   { tag: "",            t: 0.8, p: 0.95, k: 1000, r: 1.2,  m: 0 },
-    happy:     { tag: "[happy]",     t: 0.9, p: 0.95, k: 1000, r: 1.2,  m: 0 },
-    excited:   { tag: "[happy]",     t: 1.1, p: 0.95, k: 1000, r: 1.3,  m: 0 },
-    serious:   { tag: "[narration]", t: 0.5, p: 0.9,  k: 1000, r: 1.2,  m: 0 },
-    worried:   { tag: "[fear]",      t: 0.7, p: 0.95, k: 1000, r: 1.2,  m: 0 },
-    angry:     { tag: "[angry]",     t: 0.9, p: 0.95, k: 1000, r: 1.25, m: 0 },
-    surprised: { tag: "[surprised]", t: 1.0, p: 0.95, k: 1000, r: 1.2,  m: 0 },
-    sad:       { tag: "[crying]",    t: 0.7, p: 0.95, k: 1000, r: 1.15, m: 0 },
-    amused:    { tag: "[sarcastic]", t: 1.0, p: 0.95, k: 1000, r: 1.25, m: 0 }
-  };
-  function loadMoodVoices() {
-    fetch("/voice/moods", { headers: { authorization: "Bearer " + TOKEN } })
-      .then(function (r) { return r.text(); })
-      .then(function (txt) {
-        txt.split("\n").forEach(function (line) {
-          var pz = line.trim().split(/\s+/);
-          if (pz.length < 2 || !MOOD_VOICE[pz[0]]) return;
-          var s = MOOD_VOICE[pz[0]];
-          pz.slice(1).forEach(function (kv) {
-            var i = kv.indexOf("=");
-            if (i < 0) return;
-            var key = kv.slice(0, i), val = kv.slice(i + 1);
-            if (key === "tag") s.tag = val === "-" ? "" : val;
-            else if (key in s) s[key] = parseFloat(val);
-          });
-        });
-      }).catch(function () {});
-  }
-
-  var genCache = new Map();
+    var genCache = new Map();
   function kokoroGen(text) {
     if (genCache.has(text)) return genCache.get(text);
     var p = kokoroGenRaw(text);
@@ -1153,20 +1105,10 @@
   }
   function kokoroGenRaw(text) {
     if (kokoroMode === "server") {
-      var mv = MOOD_VOICE[voiceMood] || MOOD_VOICE.neutral;
-      var q, body;
-      if (ttsEngine === "chatterbox") {
-        q = "engine=chatterbox&temp=" + mv.t + "&top_p=" + mv.p + "&top_k=" + mv.k +
-          "&rep=" + mv.r + "&min_p=" + mv.m;
-        body = (mv.tag ? mv.tag + " " : "") + text;            // style tag + inline sound tags
-      } else {
-        q = "voice=" + encodeURIComponent(VOICE_ID);
-        body = text.replace(/\[[^\]]+\]\s*/g, "");            // kokoro must never SAY a tag
-      }
-      return fetch("/voice/tts?" + q, {
+      return fetch("/voice/tts?voice=" + encodeURIComponent(VOICE_ID), {
         method: "POST",
         headers: { authorization: "Bearer " + TOKEN, "content-type": "text/plain" },
-        body: body
+        body: text.replace(/\[[^\]]+\]\s*/g, "")   // never SAY a stray bracket tag
       }).then(function (r) {
         if (!r.ok) throw new Error("tts " + r.status);
         return r.arrayBuffer();
@@ -1334,11 +1276,7 @@
         }
       }
       else if (d === "move center") moveTo(0, stageEl.clientHeight * 0.12);
-      else if (d.indexOf("mood ") === 0) {
-        var mname = d.slice(5).trim(), mo = MOODS[mname];
-        if (mo) { mood = mo[0]; setMouth(mo[0]); setBrows(mo[1]); }
-        if (MOOD_VOICE[mname]) voiceMood = mname;
-      }
+      else if (d.indexOf("mood ") === 0) { var mo = MOODS[d.slice(5).trim()]; if (mo) { mood = mo[0]; setMouth(mo[0]); setBrows(mo[1]); } }
       else if (/^slide \d+$/.test(d)) deckGoto(parseInt(d.slice(6), 10));
       else if (d === "wave") wave();
       else if (d === "wave2") wave(true);
@@ -1790,8 +1728,6 @@
     deckMd = ""; deckInst = null;
     fetch("/voice/deck/new", { method: "POST",
       headers: { authorization: "Bearer " + TOKEN } }).catch(function () {});
-    loadMoodVoices();
-    voiceMood = "neutral";
     ensureAudio();     // created + resumed INSIDE the button gesture — sound works
     startBlink();
     startGaze();

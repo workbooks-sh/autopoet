@@ -111,9 +111,7 @@ defmodule Autopoet.Application do
     if cloud?() do
       []
     else
-      Enum.filter(
-        [Autopoet.Stt, Autopoet.Voice, Autopoet.Kokoro, Autopoet.Affect, Autopoet.Chatterbox],
-        fn mod ->
+      Enum.filter([Autopoet.Stt, Autopoet.Voice, Autopoet.Kokoro, Autopoet.Affect], fn mod ->
         Code.ensure_loaded?(mod) ||
           (IO.puts("autopoet: desktop I/O child #{inspect(mod)} missing — skipped") && false)
       end)

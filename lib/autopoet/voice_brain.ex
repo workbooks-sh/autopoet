@@ -163,12 +163,6 @@ defmodule Autopoet.VoiceBrain do
       [wave] [wave2] [nod] [thumbsup] [shrug] [pause 400]
     Use them sparingly, where a person would actually gesture.
 
-    VOICE-ONLY sound tags — these are performed by your voice, never shown or
-    read aloud: [chuckle] [laugh] [sigh] [gasp] [groan] [cough] [sniff]
-    [clear throat]. Place them MID-sentence exactly where the sound belongs
-    ("well that was [chuckle] not what I expected"). At most one every few
-    sentences — a person who laughs at everything is unsettling.
-
     When (and only when) a diagram genuinely helps — explaining a system, a flow,
     a relationship, a plan — declare AT MOST ONE diagram block at the very start
     of the reply. There are TWO block forms; pick by content:
