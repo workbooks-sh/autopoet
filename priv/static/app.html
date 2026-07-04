@@ -4198,6 +4198,7 @@ async function obConnectStep() {
   // refresh connection truth from the server (real, token-backed)
   const refresh = async () => {
     try { conns = (await (await fetch("/auth/state.json")).json()).connections || {}; } catch (_) {}
+    try { conns.cloud = !!(await (await fetch("/cloud/status.json")).json()).signed_in; } catch (_) {}
     paint();
   };
   // a connected card DISCONNECTS on click; an unconnected one runs the REAL flow:
@@ -4210,11 +4211,17 @@ async function obConnectStep() {
       // being built. Your app toolbelt is chosen in setup; this card is the
       // "run in the cloud" half, coming soon.
       if (prov === "cloud") {
-        let st = {};
-        try { st = await (await fetch("/cloud/status.json")).json(); } catch (_) {}
-        if (st.host) toast("workbooks cloud is ready — provision from settings");
-        else if (st.tools) toast("cloud hosting needs setup; your app toolbelt is live — pick apps in setup");
-        else toast("workbooks cloud — coming soon");
+        // signed in → disconnect on click; otherwise open the browser device flow + poll
+        if (conns.cloud) {
+          await authedPost("/auth/cloud/disconnect");
+          conns.cloud = false; paint();
+          toast("disconnected from workbooks cloud");
+          return;
+        }
+        await authedPost("/auth/cloud/open");
+        card.classList.add("pending");
+        toast("finish sign-in in your browser…");
+        pollCloud();
         return;
       }
       if (conns[prov]) {
@@ -4250,9 +4257,27 @@ async function obConnectStep() {
       } catch (_) {}
     }, 2000);
   };
-  // fast-path: a same-browser popup callback postMessages back
-  addEventListener("message", e => { if (e.data && e.data.apOauth) refresh(); });
-  paint();
+  // poll cloud sign-in status until the browser device flow completes
+  const pollCloud = () => {
+    clearInterval(_poll);
+    let tries = 0;
+    _poll = setInterval(async () => {
+      tries++;
+      try {
+        const st = await (await fetch("/cloud/status.json")).json();
+        if (st.signed_in || tries > 90) {
+          clearInterval(_poll);
+          conns.cloud = !!st.signed_in;
+          for (const el of s.querySelectorAll(".obcard")) el.classList.remove("pending");
+          paint();
+          if (st.signed_in) toast("connected to workbooks cloud");
+        }
+      } catch (_) {}
+    }, 2000);
+  };
+  // fast-path: a same-browser callback postMessages back (OAuth or cloud device flow)
+  addEventListener("message", e => { if (e.data && (e.data.apOauth || e.data.apCloud)) refresh(); });
+  refresh();
   refreshIcons();
   document.getElementById("ob-next2").onclick = () => obStep(3);
 }

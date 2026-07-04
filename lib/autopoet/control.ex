@@ -330,12 +330,80 @@ defmodule Autopoet.Control do
     end)
   end
 
-  # readiness of the two Workbooks Cloud halves — the card reflects this honestly
+  # readiness of the Workbooks Cloud halves — sign-in, toolbelt, cloud host — the card reflects this honestly
   get "/cloud/status.json" do
+    signed = Autopoet.Cloud.signed_in?()
+    acct = signed && Autopoet.Cloud.account()
+
     body = %{
+      signed_in: signed,
+      account: acct && %{email: acct.email, org: acct.org, role: acct.role},
       tools: Autopoet.Composio.configured?(),
       host: cloud_host_ready?()
     }
+
+    conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(body))
+  end
+
+  # ── Workbooks Cloud sign-in (browser device flow) ────────────────────────────────────────────────
+  # Open the cloud login with our localhost callback; after you authenticate the cloud mints a `wbk_`
+  # PAT and redirects to /auth/cloud/callback. Same shape as the OAuth cards: open → poll status.
+  post "/auth/cloud/open" do
+    cb = "http://127.0.0.1:#{conn.port}/auth/cloud/callback"
+    url = Autopoet.Cloud.base_url() <> "/login/?device=autopoet&cb=" <> URI.encode_www_form(cb)
+    spawn(fn -> System.cmd("open", [url]) end)
+    conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(%{ok: true}))
+  end
+
+  # The cloud redirects here with the minted PAT; store it and confirm in the tab (which pings the opener).
+  get "/auth/cloud/callback" do
+    conn = fetch_query_params(conn)
+
+    case Autopoet.Cloud.put_token(conn.query_params["token"] || "") do
+      :ok ->
+        page = """
+        <!doctype html><meta charset="utf-8"><title>Connected</title>
+        <body style="font:15px system-ui;display:grid;place-items:center;height:100vh;margin:0;color:#16161a">
+        <div style="text-align:center"><h2>Connected to Workbooks Cloud ✓</h2><p style="color:#6a6f68">You can close this tab.</p></div>
+        <script>try{if(window.opener)window.opener.postMessage({apCloud:true},'*')}catch(e){};setTimeout(function(){window.close()},1200)</script>
+        """
+
+        conn |> put_resp_content_type("text/html") |> send_resp(200, page)
+
+      _ ->
+        conn |> put_resp_content_type("text/html") |> send_resp(400, "<p>Sign-in failed — no token received.</p>")
+    end
+  end
+
+  post "/auth/cloud/disconnect" do
+    authed!(conn, fn conn ->
+      Autopoet.Cloud.disconnect()
+      conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(%{ok: true}))
+    end)
+  end
+
+  # ── Deploy pipeline: run this AutoPoet as a dedicated cloud machine ───────────────────────────────
+  # Provision → the control plane clones the autopoet Fly image into your machine. Needs sign-in first.
+  post "/cloud/deploy" do
+    authed!(conn, fn conn ->
+      case Autopoet.Cloud.post("/api/cloud/provision", %{}) do
+        {:ok, body} -> conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(body))
+        {:error, :not_signed_in} -> send_resp(conn, 401, "sign in to workbooks cloud first\n")
+        {:error, {code, body}} when is_integer(code) -> conn |> put_resp_content_type("application/json") |> send_resp(code, Jason.encode!(body))
+        {:error, e} -> send_resp(conn, 502, "deploy failed: #{inspect(e)}\n")
+      end
+    end)
+  end
+
+  # Your cloud machine's live status (for the deploy panel to poll).
+  get "/cloud/machine.json" do
+    body =
+      case Autopoet.Cloud.get("/api/cloud/machine") do
+        {:ok, b} -> b
+        {:error, {_code, b}} when is_map(b) -> b
+        {:error, :not_signed_in} -> %{"error" => "not signed in"}
+        _ -> %{"error" => "unavailable"}
+      end
 
     conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(body))
   end
@@ -566,6 +634,96 @@ defmodule Autopoet.Control do
   # live | local — the UI picks its voice pipeline by this
   get "/voice/mode" do
     text(conn, if(Autopoet.GeminiLive.available?(), do: "live\n", else: "local\n"))
+  end
+
+  # ── the local speech-to-speech widget (VAD → Moonshine/Whisper → Groq → Kokoro) ──
+
+  get "/voice/widget" do
+    html =
+      [:code.priv_dir(:autopoet), "static", "voice.html"]
+      |> Path.join()
+      |> File.read!()
+      |> String.replace("__TOKEN__", Autopoet.Discovery.token())
+
+    conn |> put_resp_content_type("text/html") |> send_resp(200, html)
+  end
+
+  # vendored voice runtime pieces (onnx models, worklets, esm bundles)
+  get "/static/vendor/:name" do
+    safe = Path.basename(name)
+    path = Path.join([:code.priv_dir(:autopoet), "static", "vendor", safe])
+
+    if File.exists?(path) do
+      mime =
+        case Path.extname(safe) do
+          ".js" -> "application/javascript"
+          ".mjs" -> "application/javascript"
+          ".onnx" -> "application/octet-stream"
+          ".wasm" -> "application/wasm"
+          _ -> "application/octet-stream"
+        end
+
+      conn |> put_resp_content_type(mime) |> send_resp(200, File.read!(path))
+    else
+      send_resp(conn, 404, "no such vendor file\n")
+    end
+  end
+
+  # one conversational turn for the voice widget: history in, cue-script out
+  post "/voice/brain" do
+    authed!(conn, fn conn ->
+      {:ok, body, conn} = read_body(conn, length: 200_000)
+
+      with {:ok, %{"history" => history}} when is_list(history) <- Jason.decode(body),
+           {:ok, reply} <- Autopoet.VoiceBrain.reply(history) do
+        conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(%{reply: reply}))
+      else
+        {:error, :not_configured} ->
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(503, Jason.encode!(%{error: "GROQ_API_KEY not configured"}))
+
+        {:error, reason} ->
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(502, Jason.encode!(%{error: "brain failed", detail: inspect(reason) |> String.slice(0, 200)}))
+
+        _ ->
+          send_resp(conn, 422, "history required\n")
+      end
+    end)
+  end
+
+  # compile agent-authored D2 into SVG for the widget's diagram stage.
+  # Local `d2` binary, fixed args, temp files, 2s cap — the source is model
+  # output, never shell-interpolated.
+  post "/voice/d2" do
+    authed!(conn, fn conn ->
+      {:ok, src, conn} = read_body(conn, length: 20_000)
+      base = Path.join(System.tmp_dir!(), "apd2-#{System.unique_integer([:positive])}")
+      d2file = base <> ".d2"
+      svg = base <> ".svg"
+
+      try do
+        File.write!(d2file, src)
+
+        case System.cmd("d2", ["--theme=0", "--pad=12", d2file, svg], stderr_to_stdout: true) do
+          {_, 0} ->
+            conn |> put_resp_content_type("image/svg+xml") |> send_resp(200, File.read!(svg))
+
+          {out, _} ->
+            conn
+            |> put_resp_content_type("text/plain")
+            |> send_resp(422, "d2: " <> String.slice(out, 0, 300))
+        end
+      rescue
+        e in ErlangError ->
+          send_resp(conn, 503, "d2 binary not available: #{inspect(e.original)}\n")
+      after
+        File.rm(d2file)
+        File.rm(svg)
+      end
+    end)
   end
 
   # the realtime call: browser WebSocket ⇄ Gemini Live (token in query — the
