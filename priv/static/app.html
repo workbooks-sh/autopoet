@@ -2250,7 +2250,17 @@ async function createFace(mount, opts = {}) {
 // draw() redraws); the svg self group stays as the physics/zoom anchor. ──
 let selfCube = null, selfCubeInner = null;
 async function ensureSelfCube() {
-  if (selfCube) return;
+  // SINGLE-FLIGHT: draw() re-runs on every data refresh, and the old guard
+  // only landed after an await — overlapping draws each hatched a cube and
+  // the orphans piled up unsynced at the canvas origin. One promise, ever.
+  if (ensureSelfCube._p) return ensureSelfCube._p;
+  ensureSelfCube._p = buildSelfCube();
+  return ensureSelfCube._p;
+}
+async function buildSelfCube() {
+  // heal any strays from a previous racy session
+  document.querySelectorAll("#self-cube").forEach(el => el.remove());
+  selfCube = null; selfCubeInner = null;
   const sc = document.createElement("div");
   sc.id = "self-cube";
   sc.innerHTML = '<div class="sc-cube"></div>';
@@ -4221,7 +4231,7 @@ document.getElementById("callin").addEventListener("keydown", async e => {
 
 loadTree();
 draw();
-VoiceStage.preload();   // start the Kokoro model download at boot, not first call
+try { window.VoiceStage && VoiceStage.preload(); } catch (e) {}   // voice engine probe — never fatal at boot
 refreshIcons();
 updateDirtyUI();   // hot exit: restored buffers resurface the save prompt + tree dots
 

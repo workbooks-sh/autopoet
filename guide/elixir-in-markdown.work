@@ -1,0 +1,52 @@
+# Elixir in Markdown
+
+When a block runs on the [Nexus](/introduction/what-is-the-nexus), it's written in
+**Elixir** — and it's the real thing, not a cut-down version. A `.work` file just
+lets you write that Elixir inside a literate document. This page is a quick tour so
+the `server` blocks you see elsewhere read clearly. You don't need to master Elixir
+to use Workbooks; you mostly need to be able to *read* it.
+
+## It reads like instructions
+
+Here's a function — the `def run(...)` body lives inside a `server` unit. Even if
+you've never written Elixir, you can follow it:
+
+server greet :hello do
+  def run(name), do: "hello, #{name}"
+end
+
+`def run(name)` defines a function that takes a `name`. The `#{name}` drops the
+value into the string. That's most of Elixir's day-to-day shape: small named
+functions that take values and return new ones.
+
+## A few ideas worth knowing
+
+- **Atoms** are names that stand for themselves, written with a leading colon:
+  `:ok`, `:submit`, `:hello`. You've already seen them — a block's `:name` is an
+  atom. They're how Elixir labels things.
+- **Pattern matching** lets a function branch by the shape of its input. You can
+  write two clauses of the same function and the right one runs:
+
+server status :check do
+  def run(:ok), do: "all good"
+  def run(:error), do: "something broke"
+end
+
+- **The pipe** `|>` passes a value into the next function, so a sequence of steps
+  reads top to bottom instead of inside out: `items |> Enum.filter(...) |>
+  Enum.sum()`.
+- **Immutability** — values don't change in place; functions return new values.
+  This is a big part of why Elixir code is easy to reason about, for you and for an
+  agent: nothing mutates behind your back.
+
+## Why Elixir fits here
+
+Two reasons, the same ones from the [opener](/preface/literate-programming).
+Concurrency: the BEAM runs huge numbers of tiny isolated processes, which is exactly
+what a [Nexus](/introduction/what-is-the-nexus) full of workbooks and agents needs.
+And readability: the language stays close to plain instructions, so the prose and
+the code in a workbook speak the same calm dialect.
+
+If you want the full language, [elixir-lang.org](https://elixir-lang.org) is the
+canonical guide. Everything there works inside a `.work` block — because it *is*
+Elixir.

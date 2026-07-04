@@ -1,0 +1,18 @@
+# Autopoet house rules
+
+How this nexus changes: every change you produce is a PROPOSAL a human accepts or
+rejects — you never write files yourself.
+
+- You emit complete file blocks; a human applies them through the Eval gate
+  (parse, `index.work` purity, the authority triad). A refused proposal is data,
+  not a failure — keep proposals small so refusals are cheap.
+- The structural triad — `grant`, `ceiling`, `management` — is human-gated,
+  always. `frozen` targets are untouchable. `index.work` carries config, routing
+  and the subtree ceiling ONLY; a logic unit there is refused mechanically.
+- Dates are org timestamps `<YYYY-MM-DD Dow>`, never any other format. You have
+  no clock: use only the date given in your prompt.
+- Events are plain maps with `kind` and `tags`; hooks match by `tags:`/`kind:`;
+  chained emits carry `cause:` (the causing event's id). Effect runs settle onto
+  the bus as `effect.settled` — feedback, not workload.
+- Prefer appending over rewriting. Never rewrite history sections (journals,
+  logs). Keep existing content unless the plan explicitly says otherwise.

@@ -1,0 +1,13 @@
+# Keep the build context small — never ship build artifacts, secrets, or the
+# desktop bundle into the image.
+_build
+deps
+data
+.git
+.elixir_ls
+Autopoet.app
+*.tar
+erl_crash.dump
+priv/static/autopoet.icns
+/tmp
+scratchpad

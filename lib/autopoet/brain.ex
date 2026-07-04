@@ -240,15 +240,17 @@ defmodule Autopoet.Brain do
 
   # The FIRST ACTUATOR (wb-mdk4.6, ladder rung 4): warmer pathways surface first
   # in the brain's context. Interleaved A/B — alternate calls keep the flat
-  # (alphabetical) order — so lift is measurable prequentially from the log lines
-  # (`recall-ab arm=… warmed=…`). Ranking only: the worst case is slightly worse
-  # ordering of the same content. `:recall_ab` app env pins the arm in tests.
+  # (alphabetical) order. Every arm decision is emitted as a `recall.ab` bus
+  # event (observability-classed, captured to the replay trace) so the arm-lift
+  # scorer (wb-8lxzv) can join arms to downstream proposal verdicts per target.
+  # Ranking only: the worst case is slightly worse ordering of the same content.
+  # `:recall_ab` app env pins the arm in tests.
   @doc false
   def context_order(files, root, item) when is_list(files) do
     locus = if is_map(item), do: to_string(item[:target] || ""), else: ""
 
     with true <- locus != "",
-         :warm <- ab_arm(),
+         :warm <- decided_arm(locus),
          acts when acts != [] <- safe_recall(locus) do
       act = Map.new(acts)
 
@@ -267,12 +269,22 @@ defmodule Autopoet.Brain do
       ordered
     else
       :flat ->
-        if locus != "", do: Autopoet.Log.puts("recall-ab arm=flat target=#{locus}")
+        Autopoet.Log.puts("recall-ab arm=flat target=#{locus}")
         files
 
       _ ->
         files
     end
+  end
+
+  # Decide the arm for this locus and RECORD the decision on the bus — the
+  # durable half of the A/B experiment (log lines evaporate; the trace doesn't).
+  defp decided_arm(locus) do
+    arm = ab_arm()
+    Nexus.Events.emit(%{kind: "recall.ab", arm: to_string(arm), target: locus, tags: []})
+    arm
+  rescue
+    _ -> ab_arm()
   end
 
   defp ab_arm do

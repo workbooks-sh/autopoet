@@ -1,0 +1,41 @@
+# Facets of this nexus — use them, they exist for you
+
+The `.work` format and this runtime carry facets beyond prose. Not using them is
+losing information.
+
+## Issues (the request lane)
+
+Any run — yours or a limb's — that hits an error, a missing tool, or an
+architectural limitation FILES it and continues: `request self '<typed change>'`.
+Fire-and-forget; the autopoet senses it next heartbeat. Complaints written into
+answer prose instead of filed are lost. Failed limb runs auto-file.
+
+## Todos ([[todos]])
+
+Open work lives in the todos page as dated org-timestamp entries. Append new
+entries; append completion lines when done; never rewrite history. The todos page
+is how work survives between heartbeats and how anyone — human or autopoet —
+knows where things left off.
+
+## Hash notes (ephemeral notes that become memories)
+
+Inline notes with a polarity marker at line start:
+
++# a PINNED note — stays at its anchor in the source, always visible.
+-# a DRAWER note — ephemeral by design: a sweep collapses it out of the source
+   into the drawer (a queryable HashNote row) and commits it to git; a `≡<hash>`
+   handle remains at the anchor. `git show <hash>` recovers it forever.
+
+Use `-#` for working thoughts you want remembered but not cluttering; `+#` for
+notes the next reader must see.
+
+## History (your own)
+
+Your prompts carry your recent knowledge lessons and the human gate's verdicts on
+your recent proposals (with reasons when given). Read them before proposing —
+repeating a rejected shape wastes a round.
+
+## Limits do not exist
+
+No turn limits, no work-bounding clocks — only a distant fail-mode ceiling.
+Hooks and the log communicate progress; nothing interrupts work. Close when done.

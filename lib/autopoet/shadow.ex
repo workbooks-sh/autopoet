@@ -18,7 +18,7 @@ defmodule Autopoet.Shadow do
   never a crash.
   """
 
-  @observability ~w(effect.settled autopoet.attention)
+  @observability ~w(effect.settled autopoet.attention recall.ab)
 
   def workload?(ev), do: to_string(ev[:kind]) not in @observability
 
@@ -63,20 +63,25 @@ defmodule Autopoet.Shadow.Hebb.Model do
   @moduledoc """
   The PURE Hebbian model — the exact arithmetic the live learner runs, factored
   out so the replay/eval harness scores the REAL model (never a reimplementation;
-  validate-the-instrument). The chamber-validated rule verbatim: `w += 0.35*(1-w)`
+  validate-the-instrument). The chamber-validated rule verbatim: `w += η*(1-w)`
   on an observed transition, lazy multiplicative decay at read. The state map is
   the GenServer's state verbatim (`g/prev/t/n`) — snapshots stay compatible.
+
+  PINNED production config: η=0.35, decay=0.9985 (chamber spike 1). `new/1`
+  accepts a cfg override — for the Select tournament (wb-phbt5) ONLY: variants
+  compete in replay; the live learner always runs the pinned defaults, and a
+  constant change is a human act (pre-registration discipline, never mid-run).
   """
 
-  @eta 0.35
-  @decay 0.9985
+  @default_cfg %{eta: 0.35, decay: 0.9985}
   @hop2_damp 0.5
 
-  def new, do: %{g: %{}, prev: nil, t: 0, n: 0}
+  def new(cfg \\ %{}),
+    do: %{g: %{}, prev: nil, t: 0, n: 0, cfg: Map.merge(@default_cfg, Map.new(cfg))}
 
   @doc "Observe one workload signal (the live learner's per-event step)."
   def observe(m, sig) do
-    g = if m.prev, do: bump(m.g, m.prev, sig, m.t), else: m.g
+    g = if m.prev, do: bump(m.g, m.prev, sig, m.t, cfg(m)), else: m.g
     %{m | g: g, prev: sig, t: m.t + 1, n: m.n + 1}
   end
 
@@ -107,18 +112,26 @@ defmodule Autopoet.Shadow.Hebb.Model do
   end
 
   def decayed_edges(m, node) do
+    d = cfg(m).decay
+
     for {b, {w, tl}} <- Map.get(m.g, node, %{}) do
-      {b, w * :math.pow(@decay, m.t - tl)}
+      {b, w * :math.pow(d, m.t - tl)}
     end
   end
 
-  def decay, do: @decay
+  @doc "The PINNED production decay (stats display + fair baselines)."
+  def decay, do: @default_cfg.decay
 
-  defp bump(g, a, b, t) do
+  def default_cfg, do: @default_cfg
+
+  # tolerate raw state maps (old snapshots restored without :cfg)
+  defp cfg(m), do: Map.get(m, :cfg) || @default_cfg
+
+  defp bump(g, a, b, t, cfg) do
     edges = Map.get(g, a, %{})
     {w0, tl} = Map.get(edges, b, {0.0, t})
-    w = w0 * :math.pow(@decay, t - tl)
-    Map.put(g, a, Map.put(edges, b, {w + @eta * (1.0 - w), t}))
+    w = w0 * :math.pow(cfg.decay, t - tl)
+    Map.put(g, a, Map.put(edges, b, {w + cfg.eta * (1.0 - w), t}))
   end
 end
 
