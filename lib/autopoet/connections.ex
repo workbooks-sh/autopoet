@@ -50,7 +50,11 @@ defmodule Autopoet.Connections do
   @doc "Is a provider connected (a decryptable token exists)?"
   def connected?(provider), do: get(provider) != nil
 
-  @providers ~w(github google cloudflare openrouter polar meta)
+  # Featured connection providers. OpenRouter is DEMOTED from the headline group
+  # (wb-siutv): AI credits flow through the Workbooks Cloudflare LLM gateway, so
+  # a per-user OpenRouter key isn't the default path — it stays available but is
+  # not featured. Alpaca joins as the finance/trading connection.
+  @providers ~w(github google cloudflare polar meta alpaca openrouter)
 
   @doc "All connected providers, for the state endpoint."
   def all, do: for(p <- @providers, connected?(p), do: p)

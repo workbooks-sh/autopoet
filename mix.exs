@@ -71,6 +71,7 @@ defmodule Autopoet.MixProject do
       "test/genome_eval_test.exs",
       "test/integrations_eval_test.exs",
       "test/business_loop_eval_test.exs",
+      "test/finance_eval_test.exs",
       "test/corpus_eval_test.exs",
       "test/efficiency_eval_test.exs",
       "test/armlift_eval_test.exs",

@@ -110,6 +110,19 @@ defmodule Autopoet.Auth.OAuth do
           "instagram_basic instagram_content_publish instagram_manage_insights instagram_manage_comments " <>
           "ads_management ads_read read_insights " <>
           "whatsapp_business_management whatsapp_business_messaging"
+    },
+    # Alpaca (Connect / OAuth) — let the agent trade on a CUSTOMER's brokerage
+    # account. For the OPERATOR's own paper/live account use direct API keys
+    # (ALPACA_KEY_ID/ALPACA_SECRET_KEY in Secrets, header auth) — no OAuth needed.
+    # The Connect flow yields a Bearer token stored in Connections. Finance +
+    # trading is the cleanest autonomous oracle: paper P&L is unfakeable.
+    "alpaca" => %{
+      authorize: "https://app.alpaca.markets/oauth/authorize",
+      token: "https://api.alpaca.markets/oauth/token",
+      id_key: "ALPACA_OAUTH_CLIENT_ID",
+      secret_key: "ALPACA_OAUTH_CLIENT_SECRET",
+      scope_env: "ALPACA_OAUTH_SCOPE",
+      scope: "account:write trading data"
     }
   }
 
