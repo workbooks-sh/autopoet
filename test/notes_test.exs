@@ -15,11 +15,16 @@ defmodule Autopoet.NotesTest do
   end
 
   test "vault basics: seed, tree, create both kinds, sketches are svg" do
+    # GENESIS: seed only ensures dirs — no welcome.md demo (the vault is born
+    # from the accepted first proposal); a lingering welcome.md here is debris
     Autopoet.Notes.seed()
-    assert Enum.any?(Autopoet.Notes.tree(), &(&1.name == "welcome.md"))
+    assert is_list(Autopoet.Notes.tree())
 
-    assert :ok = Autopoet.Notes.create("thoughts/plan-#{System.unique_integer([:positive])}.md", "note")
-    sketch = "draw-#{System.unique_integer([:positive])}.sketch.svg"
+    # names salted with os_time: unique_integer restarts per VM and collides
+    # with debris from previous runs in the shared test vault
+    salt = "#{System.os_time(:millisecond)}-#{System.unique_integer([:positive])}"
+    assert :ok = Autopoet.Notes.create("thoughts/plan-#{salt}.md", "note")
+    sketch = "draw-#{salt}.sketch.svg"
     assert :ok = Autopoet.Notes.create(sketch, "sketch")
     assert {:ok, svg} = Autopoet.Notes.read(sketch)
     assert svg =~ "<svg"

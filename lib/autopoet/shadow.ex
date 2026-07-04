@@ -90,6 +90,26 @@ defmodule Autopoet.Shadow.Hebb.Model do
     %{m | g: bump(m.g, src, dst, m.t, cfg(m)), t: m.t + 1, n: m.n + 1}
   end
 
+  @doc """
+  Seed PRIOR edges (template genome, chamber cold-start correction): Dirichlet-
+  style pseudo-counts with deliberately small mass — a wrong prior is
+  structurally cheap (live traffic washes it out in minutes; the decay sheds the
+  rest). Never frozen weights; `mass` defaults to the weight ~3 co-activations
+  would earn. Idempotent-ish: seeding never lowers an existing edge.
+  """
+  def seed(m, edges, mass \\ 0.7) do
+    g =
+      Enum.reduce(edges, m.g, fn {src, dst}, g ->
+        src = to_string(src)
+        dst = to_string(dst)
+        row = Map.get(g, src, %{})
+        {w0, tl} = Map.get(row, dst, {0.0, m.t})
+        Map.put(g, src, Map.put(row, dst, {max(w0, mass), tl}))
+      end)
+
+    %{m | g: g}
+  end
+
   @doc "Predict the next locus after `from`: 1-hop successors by decayed weight, best-first."
   def predict(m, from, k) do
     m
@@ -163,6 +183,9 @@ defmodule Autopoet.Shadow.Hebb do
   @doc "Force a synchronous state snapshot to disk (shutdown path + tests)."
   def snapshot, do: GenServer.call(__MODULE__, :snapshot)
 
+  @doc "Seed genome prior edges into the live learner (intake boot-time; small pseudo-count mass)."
+  def seed_prior(edges), do: GenServer.call(__MODULE__, {:seed_prior, edges})
+
   @doc "Weighted spreading-activation readout from `locus` — the actuator surface. `[{locus, activation}]` best-first."
   def recall(locus, k \\ 5), do: GenServer.call(__MODULE__, {:recall, to_string(locus), k})
 
@@ -222,10 +245,25 @@ defmodule Autopoet.Shadow.Hebb do
     {:reply, Model.recall(s, locus, k), s}
   end
 
+  def handle_call({:seed_prior, edges}, _from, s) do
+    s = Model.seed(s, edges)
+    Autopoet.Log.puts("shadow: genome prior seeded — #{length(edges)} edge(s), small mass")
+    {:reply, :ok, s}
+  end
+
   @impl true
   def terminate(_reason, s), do: persist(s)
 
-  defp persist(s), do: Autopoet.Shadow.save("hebb", Map.take(s, [:g, :prev, :t, :n]))
+  # D2 provenance header rides every snapshot: which arithmetic + prior produced
+  # this state (schema versioned so future migrations know what they're reading)
+  defp persist(s) do
+    Autopoet.Shadow.save(
+      "hebb",
+      s
+      |> Map.take([:g, :prev, :t, :n])
+      |> Map.put(:meta, %{schema: 1, cfg: Model.default_cfg(), prior: "plan-derived-v1"})
+    )
+  end
 end
 
 defmodule Autopoet.Shadow.Surprise.Model do

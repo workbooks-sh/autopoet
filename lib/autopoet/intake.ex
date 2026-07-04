@@ -48,6 +48,7 @@ defmodule Autopoet.Intake do
     files = skeleton(profile, plan)
     {:ok, _} = Autopoet.Body.apply(files)
     Autopoet.Limbs.register_from_body()
+    seed_prior(plan)
     Autopoet.Log.puts("intake: #{map_size(files)} pages live — agents registered")
 
     ignite(plan)
@@ -413,6 +414,31 @@ defmodule Autopoet.Intake do
         {"#{ws.name}/#{slug(page)}.md", vault_page(profile, plan, page)}
       end
     )
+  end
+
+  @doc """
+  Plan-derived GENOME PRIOR edges (D1, wb-h0tjs.5): the starting pathways a
+  fresh workspace plausibly walks — index ↔ every page, page-to-page chain, and
+  the bare event-target name → its page (an `orders` event warms shop/orders).
+  Seeded as small pseudo-count mass; live traffic overrules in minutes.
+  """
+  def prior_edges(plan) do
+    ws = plan.workspace.name
+    index = "#{ws}/index.work"
+    pages = for p <- plan.workspace.pages, do: {p, "#{ws}/#{slug(p)}.work"}
+    rels = Enum.map(pages, &elem(&1, 1))
+
+    index_edges = Enum.flat_map(rels, &[{index, &1}, {&1, index}])
+    chain_edges = rels |> Enum.chunk_every(2, 1, :discard) |> Enum.flat_map(fn [a, b] -> [{a, b}, {b, a}] end)
+    target_edges = for {title, rel} <- pages, do: {slug(title), rel}
+
+    Enum.uniq(index_edges ++ chain_edges ++ target_edges)
+  end
+
+  defp seed_prior(plan) do
+    Autopoet.Shadow.Hebb.seed_prior(prior_edges(plan))
+  rescue
+    _ -> :ok
   end
 
   # ── the genome: road-specific starting code (genesis I4, wb-h0tjs.2) ────────
