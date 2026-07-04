@@ -64,8 +64,8 @@
     "@keyframes vs-mfade { from { opacity:0; } to { opacity:1; } }",
     "#vs-stagebox { position:absolute; inset:0; display:grid; place-items:center; pointer-events:none; }",
     "#vs-scene { width:132px; height:132px; pointer-events:auto; --toon:1.6px;",
-    "  filter:drop-shadow(var(--toon) 0 0 #121316) drop-shadow(calc(-1*var(--toon)) 0 0 #121316)",
-    "  drop-shadow(0 var(--toon) 0 #121316) drop-shadow(0 calc(-1*var(--toon)) 0 #121316)",
+    "  filter:drop-shadow(var(--toon) 0 0.3px #121316) drop-shadow(calc(-1*var(--toon)) 0 0.3px #121316)",
+    "  drop-shadow(0 var(--toon) 0.3px #121316) drop-shadow(0 calc(-1*var(--toon)) 0.3px #121316)",
     "  drop-shadow(0 16px 26px rgba(18,19,22,.04));",
     "  transform:translate(var(--sx,0px), var(--sy,0px)) scale(var(--sc,1));",
     "  transition:transform .8s cubic-bezier(.3,1,.35,1); }",
@@ -1040,6 +1040,14 @@
   var appHooks = null;   // { selfSpot, hideWorld, showWorld, resync } from the real app
   var adopt = null;      // { scene, cube, prefix } — the app's own self-node cube
   function enter(opts) {
+    // self-heal: if a previous call crashed mid-flight, `mounted` can be stuck
+    // true with the overlay gone — the button would silently do nothing forever
+    if (mounted && !document.getElementById("vs-root")) {
+      mounted = false;
+      clearAll();
+      root = null; overlay = null; hands = null; caption = null; drawer = null; drawerLog = null; graphBg = null;
+      appHooks = null; adopt = null;
+    }
     if (mounted) return;
     opts = opts || {};
     TOKEN = opts.token || TOKEN;
@@ -1070,6 +1078,7 @@
         if (!mounted) return;
         var spot = appHooks.selfSpot();
         scene.dataset.free = "1";                       // the app stops node-tracking
+        scene.style.setProperty("--toon", "1.6px");     // full-size line while free
         scene.classList.add("vs-free");
         scene.style.transform = "";                     // the class + vars own it now
         scene.style.transition = "none";
