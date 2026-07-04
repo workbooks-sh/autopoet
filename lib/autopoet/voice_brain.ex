@@ -152,7 +152,10 @@ defmodule Autopoet.VoiceBrain do
 
     Pick the form that fits: flows and architectures as plain shapes+arrows,
     ordered phases as a grid timeline, back-and-forth protocols as a sequence
-    diagram, data models as sql_table. Then, as you speak, build and reference
+    diagram, data models as sql_table. When the human asks for a gantt chart,
+    timeline, roadmap, schedule, or project plan you MUST use the grid form —
+    a container with grid-rows: 1 and one shape per phase, in order — never
+    plain floating boxes. Then, as you speak, build and reference
     it with cues:
       [+a]        reveal shape a when you first mention it (use the top-level id)
       [+a->b]     reveal the edge from a to b

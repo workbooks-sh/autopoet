@@ -49,7 +49,7 @@
     "  background-image:linear-gradient(var(--grid,rgba(18,19,22,.07)) 1px, transparent 1px),",
     "  linear-gradient(90deg, var(--grid,rgba(18,19,22,.07)) 1px, transparent 1px);",
     "  background-size:24px 24px; }",
-    "#vs-graph-bg { position:absolute; left:50%; top:40%; transform:translate(-50%,-50%);",
+    "#vs-graph-bg { position:absolute; left:50%; top:40%; transform:translate(-50%,-50%); z-index:3;",
     "  width:min(86%,1080px); pointer-events:none; opacity:0; transition:opacity .5s ease-out; }",
     "#vs-graph-bg.on { opacity:1; }",
     "#vs-graph-bg svg { width:100%; height:auto; display:block; }",
@@ -524,9 +524,10 @@
       // forms (sequence diagrams, stacked grids) never run out of frame
       var vb = (svg.getAttribute("viewBox") || "").split(/\s+/).map(Number);
       var ar = vb.length === 4 && vb[3] > 0 ? vb[2] / vb[3] : 1.6;
-      var maxW = (stageEl ? stageEl.clientWidth : innerWidth) * 0.86;
-      var maxH = (stageEl ? stageEl.clientHeight : innerHeight) * 0.56;
-      var w = Math.min(1080, maxW, maxH * ar);
+      var natural = vb.length === 4 ? vb[2] : 700;   // d2 units ≈ px at 1:1
+      var maxW = (stageEl ? stageEl.clientWidth : innerWidth) * 0.62;
+      var maxH = (stageEl ? stageEl.clientHeight : innerHeight) * 0.46;
+      var w = Math.min(natural, 820, maxW, maxH * ar);   // shrink to fit, never blow up
       svg.style.width = w + "px";
       svg.style.height = (w / ar) + "px";
       svg.style.display = "block";
@@ -1273,6 +1274,11 @@
       '  <div class="ft"><input id="vs-drawer-in" placeholder="type to the autopoet…" spellcheck="false" aria-label="Message the autopoet"></div>' +
       '</div>';
     stageEl.appendChild(root);
+    // the whiteboard must paint BELOW the avatar (the performer walks in
+    // front of the board, never behind it) — pull it out of vs-root's
+    // stacking context and let z-index 3 < cube 5 < root 6 do the rest
+    var gbEsc = root.querySelector("#vs-graph-bg");
+    if (gbEsc) stageEl.insertBefore(gbEsc, root);
 
     // fixed-position ants overlay lives at body level (viewport coordinates)
     overlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -1420,6 +1426,8 @@
     function cleanup(delay) {
       setTimeout(function () {
         if (rootRef && rootRef.parentNode) rootRef.parentNode.removeChild(rootRef);
+        var gbEl = document.getElementById("vs-graph-bg");
+        if (gbEl && gbEl.parentNode) gbEl.parentNode.removeChild(gbEl);
         if (oRef && oRef.parentNode) oRef.parentNode.removeChild(oRef);
         if (adopted && handRefs) {
           [handRefs.r, handRefs.l].forEach(function (h) {
@@ -1437,10 +1445,8 @@
 
     if (adopted && hooks && sceneRef) {
       // glide home: back onto the self node's exact footprint, world returns
-      if (rootRef) {
-        var gb = rootRef.querySelector("#vs-graph-bg");
-        if (gb) gb.classList.remove("on");
-      }
+      var gb = document.getElementById("vs-graph-bg");
+      if (gb) gb.classList.remove("on");
       var spot = hooks.selfSpot();
       sceneRef.style.transition = "transform .65s cubic-bezier(.4,.9,.4,1)";
       sceneRef.style.setProperty("--sx", spot.sx + "px");

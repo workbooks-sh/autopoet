@@ -164,14 +164,26 @@ export function mount(container, cubeEl) {
   let disposed = false;
   const faceEl = container.querySelector(".sc-face");
 
+  // SMOOTHING: the drivers step the CSS vars discretely (gestures ~130ms,
+  // breathing ~90ms). The old CSS cube had `transition: transform .12s` to
+  // glide between steps; rendering the raw values here made the body JUMP at
+  // every step — the reported vibration. Exponential lerp restores the glide.
+  const cur = { rx: 0, ry: 0, rz: 0 };
+  const handCur = { r: { x: 0, y: 0, rot: 0, s: 0 }, l: { x: 0, y: 0, rot: 0, s: 0 } };
+  const lerp = (a, b, t) => a + (b - a) * t;
+
   (function frame() {
     if (disposed) return;
     requestAnimationFrame(frame);
 
-    // body rotation from the CSS vars the app already writes
-    const rx = readVar(cubeEl, "--rx") + readVar(cubeEl, "--nod") + readVar(cubeEl, "--br");
-    const ry = readVar(cubeEl, "--ry");
-    const rz = readVar(cubeEl, "--rz");
+    // body rotation from the CSS vars the app already writes — smoothed
+    const trx = readVar(cubeEl, "--rx") + readVar(cubeEl, "--nod") + readVar(cubeEl, "--br");
+    const trY = readVar(cubeEl, "--ry");
+    const trz = readVar(cubeEl, "--rz");
+    cur.rx = lerp(cur.rx, trx, 0.22);
+    cur.ry = lerp(cur.ry, trY, 0.22);
+    cur.rz = lerp(cur.rz, trz, 0.22);
+    const rx = cur.rx, ry = cur.ry, rz = cur.rz;
     rig.rotation.set(-rx * D, ry * D, -rz * D);
 
     // face overlay glue: shift the DOM face toward the front plane's projection
@@ -192,13 +204,15 @@ export function mount(container, cubeEl) {
       const po = parseFloat(ctrl.style.getPropertyValue("--po")) || 0;
       const hs = parseFloat(ctrl.style.getPropertyValue("--hs")) || 0;
       if (po < 0.05 || hs < 0.05) { h.holder.visible = false; continue; }
-      const hx = readVar(ctrl, "--hx") + 15;       // controller top-left → center
-      const hy = readVar(ctrl, "--hy") + 20;
-      const hr = readVar(ctrl, "--hr");
+      const hc = handCur[side];
+      hc.x = lerp(hc.x, readVar(ctrl, "--hx") + 15, 0.3);   // controller top-left → center
+      hc.y = lerp(hc.y, readVar(ctrl, "--hy") + 20, 0.3);
+      hc.rot = lerp(hc.rot, readVar(ctrl, "--hr"), 0.3);
+      hc.s = lerp(hc.s, hs, 0.3);
       h.holder.visible = true;
-      h.holder.position.set(hx - SIZE / 2, SIZE / 2 - hy, 76);
-      h.holder.rotation.z = -hr * D;
-      h.holder.scale.setScalar(hs);
+      h.holder.position.set(hc.x - SIZE / 2, SIZE / 2 - hc.y, 76);
+      h.holder.rotation.z = -hc.rot * D;
+      h.holder.scale.setScalar(Math.max(0.001, hc.s));
       const pose = ctrl.dataset.pose || "point";
       for (const p in h.poses) h.poses[p].visible = (p === pose);
     }
