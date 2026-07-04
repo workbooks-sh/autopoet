@@ -2532,6 +2532,7 @@ async function draw() {
     .attr("dy", d => radius(d) + 14)
     .text(d => d.id === "self" ? "" : (d.label.length > 22 ? d.label.slice(0, 21) + "…" : d.label));
   badgeLayer = g.append("g");   // cluster badges: topmost — edges pass BEHIND them
+  window.vsBadgeLayer = badgeLayer;   // VoiceStage hooks fade badges with the world
 
   // edge bundling: sibling links from ONE external node into a cluster share a pin —
   // they merge into a single trunk to the membrane, then disperse to their members.
@@ -3907,14 +3908,14 @@ function vsHideWorld() {
   nodeSel.filter(d => d.id !== "self").transition("vs").duration(420).attr("opacity", 0)
     .on("end", function () { d3.select(this).style("pointer-events", "none"); });
   if (linkSel) linkSel.transition("vs").duration(420).attr("opacity", 0);
-  if (badgeLayer) badgeLayer.transition("vs").duration(420).attr("opacity", 0);
+  if (window.vsBadgeLayer) window.vsBadgeLayer.transition("vs").duration(420).attr("opacity", 0);
   svg.on(".zoom", null);                                // freeze pan/zoom during the call
 }
 function vsShowWorld() {
   if (!nodeSel) return;
   nodeSel.transition("vs").duration(520).attr("opacity", 1).style("pointer-events", "all");
   if (linkSel) linkSel.transition("vs").duration(520).attr("opacity", 1);
-  if (badgeLayer) badgeLayer.transition("vs").duration(520).attr("opacity", 1);
+  if (window.vsBadgeLayer) window.vsBadgeLayer.transition("vs").duration(520).attr("opacity", 1);
   svg.call(zoomB);                                      // pan/zoom back on
 }
 
