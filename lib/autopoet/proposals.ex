@@ -51,6 +51,14 @@ defmodule Autopoet.Proposals do
   def changes(id), do: read_set(id, "changes")
   def appends(id), do: read_set(id, "appends")
 
+  @doc "The proposal's declared target locus (recorded at record time) — reward events carry it so the outcome ledger keys by locus, not proposal id."
+  def target_of(id) do
+    case File.read(Path.join([dir(), sanitize!(id), "target"])) do
+      {:ok, body} -> String.trim(body)
+      _ -> "?"
+    end
+  end
+
   defp read_set(id, kind) do
     base = Path.join([dir(), sanitize!(id), kind])
 
@@ -87,7 +95,7 @@ defmodule Autopoet.Proposals do
       end
 
       set_status(id, "accepted")
-      Nexus.Events.emit(%{kind: "proposal.accepted", proposal: id, tags: []})
+      Nexus.Events.emit(%{kind: "proposal.accepted", proposal: id, target: target_of(id), tags: []})
       Autopoet.Log.puts("PROPOSAL #{id} ACCEPTED (#{map_size(changes)} file(s) applied; autonomy was #{verdict.autonomy})")
 
       # hot-reload: an accepted agent definition registers immediately (limbs
@@ -133,7 +141,7 @@ defmodule Autopoet.Proposals do
         end
 
       set_status(id, "reverted")
-      Nexus.Events.emit(%{kind: "proposal.reverted", proposal: id, tags: []})
+      Nexus.Events.emit(%{kind: "proposal.reverted", proposal: id, target: target_of(id), tags: []})
       Autopoet.Log.puts("PROPOSAL #{id} REVERTED (#{length(restored)} restored, #{length(created)} removed)")
       :ok
     else
@@ -148,7 +156,7 @@ defmodule Autopoet.Proposals do
       end
 
       set_status(id, "rejected")
-      Nexus.Events.emit(%{kind: "proposal.rejected", proposal: id, reason: reason, tags: []})
+      Nexus.Events.emit(%{kind: "proposal.rejected", proposal: id, target: target_of(id), reason: reason, tags: []})
       Autopoet.Log.puts("PROPOSAL #{id} rejected#{if reason, do: " — #{reason}", else: ""}")
       :ok
     else

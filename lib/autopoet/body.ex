@@ -47,6 +47,9 @@ defmodule Autopoet.Body do
       clear_redo()
 
       emit(%{kind: "body.wrote", files: rels, history: hid, tags: []})
+      # per-doc locus events — the workload signal plasticity learns from: docs
+      # written together in one apply are a real co-activation (PLAN phase 1.1)
+      for rel <- rels, do: emit(%{kind: "doc.touch", doc: rel, tags: []})
       Autopoet.History.record_body(hid, rels)
       Autopoet.Log.puts("body: wrote #{length(rels)} file(s) directly [#{Enum.join(rels, ", ")}] — undo #{hid}")
       {:ok, hid}

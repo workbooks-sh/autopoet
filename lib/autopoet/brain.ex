@@ -45,7 +45,7 @@ defmodule Autopoet.Brain do
         :skip
 
       complete ->
-        ctx = context()
+        ctx = context(item)
         {plan, pages} = plan_with_disclosure(complete, item, ctx)
 
         with {:ok, text} <- complete.(:draft, draft_prompt(item, ctx, plan, pages)),
@@ -182,11 +182,13 @@ defmodule Autopoet.Brain do
 
   # The workbook body the brain reasons over: every .work file in the tree except
   # the guide (which is disclosed progressively, never inlined wholesale).
-  defp context do
+  # Ordered by the recall actuator when a work item names a target locus.
+  defp context(item \\ nil) do
     root = Nexus.Paths.data_dir()
 
     Path.wildcard(Path.join(root, "**/*.work"))
     |> Enum.reject(&String.contains?(&1, "/guide/"))
+    |> context_order(root, item)
     |> Enum.map_join("\n", fn f ->
       rel = Path.relative_to(f, root)
 
@@ -195,6 +197,56 @@ defmodule Autopoet.Brain do
         s -> "--- #{rel} (#{s} bytes, omitted) ---"
       end
     end)
+  end
+
+  # The FIRST ACTUATOR (wb-mdk4.6, ladder rung 4): warmer pathways surface first
+  # in the brain's context. Interleaved A/B — alternate calls keep the flat
+  # (alphabetical) order — so lift is measurable prequentially from the log lines
+  # (`recall-ab arm=… warmed=…`). Ranking only: the worst case is slightly worse
+  # ordering of the same content. `:recall_ab` app env pins the arm in tests.
+  @doc false
+  def context_order(files, root, item) when is_list(files) do
+    locus = if is_map(item), do: to_string(item[:target] || ""), else: ""
+
+    with true <- locus != "",
+         :warm <- ab_arm(),
+         acts when acts != [] <- safe_recall(locus) do
+      act = Map.new(acts)
+
+      warmth = fn f ->
+        rel = Path.relative_to(f, root)
+        Map.get(act, rel) || Map.get(act, Path.basename(rel, ".work")) || 0.0
+      end
+
+      {warm, cold} = Enum.split_with(files, &(warmth.(&1) > 0.0))
+      ordered = Enum.sort_by(warm, warmth, :desc) ++ cold
+
+      if warm != [] do
+        Autopoet.Log.puts("recall-ab arm=warm target=#{locus} warmed=#{length(warm)}/#{length(files)}")
+      end
+
+      ordered
+    else
+      :flat ->
+        if locus != "", do: Autopoet.Log.puts("recall-ab arm=flat target=#{locus}")
+        files
+
+      _ ->
+        files
+    end
+  end
+
+  defp ab_arm do
+    case Application.get_env(:autopoet, :recall_ab) do
+      arm when arm in [:warm, :flat] -> arm
+      _ -> if rem(System.unique_integer([:positive, :monotonic]), 2) == 0, do: :warm, else: :flat
+    end
+  end
+
+  defp safe_recall(locus) do
+    Autopoet.Shadow.Hebb.recall(locus, 32)
+  catch
+    _, _ -> []
   end
 
   # The complete .work primer, token-minimal by design: everything the models must

@@ -80,4 +80,39 @@ defmodule Autopoet.BrainTest do
     Application.delete_env(:autopoet, :brain_llm)
     assert :skip = Autopoet.Brain.propose(%{target: "anything", kind: :concern})
   end
+
+  # The first actuator (wb-mdk4.6): learned pathways reorder the brain's context —
+  # warm arm surfaces the co-activated doc first; flat arm preserves the given order.
+  test "recall actuator warms context ordering, interleaved A/B", %{root: root} do
+    on_exit(fn -> Application.delete_env(:autopoet, :recall_ab) end)
+
+    # teach the shadow graph a real pathway through the real bus: the target
+    # locus co-activates with warm.work
+    target = "actuator-target-#{System.unique_integer([:positive])}"
+
+    for _ <- 1..10 do
+      Nexus.Events.emit(%{kind: "doc.touch", doc: target, tags: []})
+      Nexus.Events.emit(%{kind: "doc.touch", doc: "warm.work", tags: []})
+    end
+
+    Process.sleep(300)
+
+    for name <- ["aaa.work", "warm.work", "zzz.work"] do
+      File.write!(Path.join(root, name), "# #{name}\n")
+    end
+
+    files = Enum.sort(Path.wildcard(Path.join(root, "*.work")))
+    item = %{target: target}
+
+    Application.put_env(:autopoet, :recall_ab, :warm)
+    warm_order = Autopoet.Brain.context_order(files, root, item)
+    assert Path.basename(hd(warm_order)) == "warm.work"
+
+    Application.put_env(:autopoet, :recall_ab, :flat)
+    assert Autopoet.Brain.context_order(files, root, item) == files
+
+    # no locus → untouched regardless of arm
+    Application.put_env(:autopoet, :recall_ab, :warm)
+    assert Autopoet.Brain.context_order(files, root, nil) == files
+  end
 end

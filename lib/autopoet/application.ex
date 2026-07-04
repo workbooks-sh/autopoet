@@ -20,25 +20,40 @@ defmodule Autopoet.Application do
   def start(_type, _args) do
     port = port()
 
+    # Cloud profile: the SAME build runs on a vendored Fly machine as the 24/7
+    # agent — no window, no mic STT, no realtime Voice (those are desktop-only
+    # I/O), and it binds all interfaces (the machine's own network), not just
+    # loopback. The desktop profile keeps everything and stays loopback-only.
+    io = if cloud?(), do: {0, 0, 0, 0}, else: {127, 0, 0, 1}
+
     children =
       [
         Autopoet.Log,
         Autopoet.History,
         Autopoet.Auth,
-        Autopoet.Profile,
-        Autopoet.Stt,
-        Autopoet.Watchdog,
-        Autopoet.Requests,
-        Autopoet.Capture,
-        Autopoet.Snapshot,
-        Autopoet.Shadow.Hebb,
-        Autopoet.Shadow.Surprise,
-        Autopoet.Voice,
-        {Bandit, plug: Autopoet.Control, ip: {127, 0, 0, 1}, port: port},
-        {Autopoet.Discovery, port}
-      ] ++ window()
+        Autopoet.Profile
+      ] ++
+        desktop_io() ++
+        [
+          Autopoet.Watchdog,
+          Autopoet.Requests,
+          Autopoet.Capture,
+          Autopoet.Snapshot,
+          Autopoet.Shadow.Hebb,
+          Autopoet.Shadow.Surprise,
+          Autopoet.Shadow.Outcomes,
+          {Bandit, plug: Autopoet.Control, ip: io, port: port},
+          {Autopoet.Discovery, port}
+        ] ++ window()
 
-    result = Supervisor.start_link(children, strategy: :one_for_one, name: Autopoet.Supervisor)
+    # max_restarts headroom: tests hard-kill the three shadow learners to force
+    # cold/reboot paths — three near-simultaneous restarts must not take down the tree
+    result =
+      Supervisor.start_link(children,
+        strategy: :one_for_one,
+        max_restarts: 10,
+        name: Autopoet.Supervisor
+      )
 
     seed_workbook()
     Autopoet.Guide.seed()
@@ -103,9 +118,16 @@ defmodule Autopoet.Application do
     end
   end
 
+  # Desktop-only I/O children (mic STT + realtime Voice) — dropped in the cloud.
+  defp desktop_io, do: if(cloud?(), do: [], else: [Autopoet.Stt, Autopoet.Voice])
+
+  @doc "Is this the cloud profile (a vendored Fly machine), not the desktop?"
+  def cloud?, do: System.get_env("AUTOPOET_TARGET") == "cloud"
+
   defp window do
     headless? =
-      System.get_env("AUTOPOET_HEADLESS") in ~w(1 true) or
+      cloud?() or
+        System.get_env("AUTOPOET_HEADLESS") in ~w(1 true) or
         Application.get_env(:autopoet, :headless, false)
 
     if headless?, do: [], else: [Autopoet.Window]

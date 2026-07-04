@@ -6,8 +6,30 @@ defmodule Autopoet.MixProject do
       app: :autopoet,
       version: "0.1.0",
       elixir: "~> 1.17",
+      elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
+      releases: releases(),
       deps: deps()
+    ]
+  end
+
+  # test/support holds eval fixtures (the golden personas — Lane E seeds)
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_), do: ["lib"]
+
+  # One release definition, two package targets:
+  #   * CLOUD  → this release assembled inside a Linux Docker image (Dockerfile),
+  #              run on a vendored Fly machine (AUTOPOET_TARGET=cloud).
+  #   * DESKTOP → the SAME release wrapped by burrito into a single self-contained
+  #               macOS binary that lives in Autopoet.app/Contents/MacOS (so users
+  #               need no Elixir install). Enable by adding {:burrito, "~> 1.0"} and
+  #               a `burrito:` block when we cut the desktop distributable.
+  defp releases do
+    [
+      autopoet: [
+        include_executables_for: [:unix],
+        applications: [runtime_tools: :permanent]
+      ]
     ]
   end
 

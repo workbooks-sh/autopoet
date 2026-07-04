@@ -1,7 +1,9 @@
 defmodule Autopoet.Shadow do
   @moduledoc """
   Shared shadow-layer plumbing. The shadow layer OBSERVES the real bus and never
-  acts — v2 of the containment ladder.
+  acts — v2 of the containment ladder. (The ONE sanctioned actuator is the
+  weighted recall readout `Autopoet.Shadow.Hebb.recall/2` — ranking only, worst
+  case is slightly worse ordering; nothing mutates, nothing merges.)
 
   Two event classes: WORKLOAD (learnable) vs OBSERVABILITY (feedback the shadow
   layer itself produces or consumes — `effect.settled`, `autopoet.attention`).
@@ -9,6 +11,11 @@ defmodule Autopoet.Shadow do
 
   The learned signal per event: the most specific locus available —
   `doc` field, else `target`, else the event kind.
+
+  Learner state is DURABLE (Autopoiesis v3 phase 0 — nothing is lost): one atomic
+  ETF snapshot per learner at `data/shadow/<name>.etf`, saved on a timer and at
+  terminate, restored at init. A missing/corrupt snapshot means a cold learner,
+  never a crash.
   """
 
   @observability ~w(effect.settled autopoet.attention)
@@ -16,28 +23,91 @@ defmodule Autopoet.Shadow do
   def workload?(ev), do: to_string(ev[:kind]) not in @observability
 
   def signal(ev), do: to_string(ev[:doc] || ev[:target] || ev[:kind])
+
+  # ── learner-state persistence ────────────────────────────────────────────────
+
+  def dir, do: Path.join([Autopoet.Discovery.home(), "data", "shadow"])
+
+  def save(name, term) do
+    File.mkdir_p!(dir())
+    path = Path.join(dir(), "#{name}.etf")
+    tmp = path <> ".tmp"
+
+    with :ok <- File.write(tmp, :erlang.term_to_binary(term)),
+         :ok <- File.rename(tmp, path) do
+      :ok
+    else
+      _ -> File.rm(tmp)
+    end
+  end
+
+  def load(name) do
+    case File.read(Path.join(dir(), "#{name}.etf")) do
+      {:ok, bin} ->
+        try do
+          {:ok, :erlang.binary_to_term(bin)}
+        rescue
+          _ -> :none
+        end
+
+      _ ->
+        :none
+    end
+  end
+
+  @save_ms 60_000
+  def schedule_save, do: Process.send_after(self(), :shadow_save, @save_ms)
 end
 
 defmodule Autopoet.Shadow.Hebb do
   @moduledoc """
-  Live Hebbian pathway learner over the real bus (shadow — zero actuators).
+  Live Hebbian pathway learner over the real bus (shadow — zero mutation).
   The chamber-validated rule verbatim: `w += 0.35*(1-w)` on an observed transition,
   lazy multiplicative decay at read. Decay is a per-stream tunable (ASSUMPTIONS.md
   A1: cumulative counts beat decay on slow-drift streams — revisit when real usage
   accumulates).
+
+  `recall/2` is the FIRST ACTUATOR (wb-mdk4.6, ladder rung 4): weighted spreading
+  activation over the learned graph — direct neighbors at their edge weight, 2-hop
+  neighbors damped — returning `[{locus, activation}]` best-first. It RANKS, it
+  never mutates: consumers may reorder what they already show, nothing else.
+
+  State survives reboots via `Autopoet.Shadow.save/load` (snapshot `hebb.etf`).
   """
   use GenServer
 
   @eta 0.35
   @decay 0.9985
+  @hop2_damp 0.5
 
   def start_link(_), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
   def stats, do: GenServer.call(__MODULE__, :stats)
 
+  @doc "Force a synchronous state snapshot to disk (shutdown path + tests)."
+  def snapshot, do: GenServer.call(__MODULE__, :snapshot)
+
+  @doc """
+  Weighted spreading-activation readout from `locus` — the actuator surface.
+  Returns up to `k` `[{locus, activation}]`, best-first: 1-hop neighbors at decayed
+  edge weight, 2-hop damped by #{@hop2_damp}, activation summed over paths.
+  """
+  def recall(locus, k \\ 5), do: GenServer.call(__MODULE__, {:recall, to_string(locus), k})
+
   @impl true
   def init(nil) do
+    Process.flag(:trap_exit, true)
     Nexus.Events.subscribe()
-    {:ok, %{g: %{}, prev: nil, t: 0, n: 0}}
+    Autopoet.Shadow.schedule_save()
+
+    base = %{g: %{}, prev: nil, t: 0, n: 0}
+
+    state =
+      case Autopoet.Shadow.load("hebb") do
+        {:ok, saved} -> Map.merge(base, saved)
+        :none -> base
+      end
+
+    {:ok, state}
   end
 
   @impl true
@@ -49,6 +119,12 @@ defmodule Autopoet.Shadow.Hebb do
     else
       {:noreply, s}
     end
+  end
+
+  def handle_info(:shadow_save, s) do
+    persist(s)
+    Autopoet.Shadow.schedule_save()
+    {:noreply, s}
   end
 
   def handle_info(_msg, s), do: {:noreply, s}
@@ -69,6 +145,36 @@ defmodule Autopoet.Shadow.Hebb do
      }, s}
   end
 
+  def handle_call(:snapshot, _from, s) do
+    {:reply, persist(s), s}
+  end
+
+  def handle_call({:recall, locus, k}, _from, s) do
+    hop1 = decayed_edges(s, locus)
+
+    act =
+      Enum.reduce(hop1, %{}, fn {b, w1}, acc ->
+        acc = Map.update(acc, b, w1, &(&1 + w1))
+
+        Enum.reduce(decayed_edges(s, b), acc, fn {c, w2}, acc2 ->
+          if c == locus, do: acc2, else: Map.update(acc2, c, w1 * w2 * @hop2_damp, &(&1 + w1 * w2 * @hop2_damp))
+        end)
+      end)
+
+    {:reply, act |> Enum.sort_by(fn {_, a} -> -a end) |> Enum.take(k), s}
+  end
+
+  @impl true
+  def terminate(_reason, s), do: persist(s)
+
+  defp persist(s), do: Autopoet.Shadow.save("hebb", Map.take(s, [:g, :prev, :t, :n]))
+
+  defp decayed_edges(s, node) do
+    for {b, {w, tl}} <- Map.get(s.g, node, %{}) do
+      {b, w * :math.pow(@decay, s.t - tl)}
+    end
+  end
+
   defp bump(g, a, b, t) do
     edges = Map.get(g, a, %{})
     {w0, tl} = Map.get(edges, b, {0.0, t})
@@ -86,6 +192,8 @@ defmodule Autopoet.Shadow.Surprise do
 
   `:drift_sustain` app env overrides the sustain in tests ONLY — production runs the
   pinned constant.
+
+  State survives reboots via `Autopoet.Shadow.save/load` (snapshot `surprise.etf`).
   """
   use GenServer
 
@@ -100,12 +208,26 @@ defmodule Autopoet.Shadow.Surprise do
   def start_link(_), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
   def stats, do: GenServer.call(__MODULE__, :stats)
 
+  @doc "Force a synchronous state snapshot to disk (shutdown path + tests)."
+  def snapshot, do: GenServer.call(__MODULE__, :snapshot)
+
   defp sustain, do: Application.get_env(:autopoet, :drift_sustain, 15)
 
   @impl true
   def init(nil) do
+    Process.flag(:trap_exit, true)
     Nexus.Events.subscribe()
-    {:ok, %{model: %{}, prev: :none, t: 0, n: 0, f: nil, s: nil, run: 0, alarms: 0}}
+    Autopoet.Shadow.schedule_save()
+
+    base = %{model: %{}, prev: :none, t: 0, n: 0, f: nil, s: nil, run: 0, alarms: 0}
+
+    state =
+      case Autopoet.Shadow.load("surprise") do
+        {:ok, saved} -> Map.merge(base, saved)
+        :none -> base
+      end
+
+    {:ok, state}
   end
 
   @impl true
@@ -117,12 +239,27 @@ defmodule Autopoet.Shadow.Surprise do
     end
   end
 
+  def handle_info(:shadow_save, st) do
+    persist(st)
+    Autopoet.Shadow.schedule_save()
+    {:noreply, st}
+  end
+
   def handle_info(_msg, st), do: {:noreply, st}
 
   @impl true
   def handle_call(:stats, _from, st) do
     {:reply, %{events: st.n, fast: st.f, slow: st.s, alarms: st.alarms}, st}
   end
+
+  def handle_call(:snapshot, _from, st) do
+    {:reply, persist(st), st}
+  end
+
+  @impl true
+  def terminate(_reason, st), do: persist(st)
+
+  defp persist(st), do: Autopoet.Shadow.save("surprise", st)
 
   defp observe(st, sig) do
     {counts, total, tl} = Map.get(st.model, st.prev, {%{}, 0.0, st.t})
@@ -157,4 +294,104 @@ defmodule Autopoet.Shadow.Surprise do
       st
     end
   end
+end
+
+defmodule Autopoet.Shadow.Outcomes do
+  @moduledoc """
+  The outcome/reward ledger — the feedback half of the loop (Autopoiesis v3
+  phase 0). Where Hebb/Surprise learn from the WORKLOAD stream, this module
+  consumes the FEEDBACK stream and keeps machine-readable per-locus outcomes:
+
+    * `effect.settled` — per {hook, effect}: ok/error counts + total duration.
+      The per-pathway signal the credit layer (phase 3) will pay along.
+    * `proposal.recorded|accepted|rejected|reverted` — the human reward stream
+      (accept/reject IS the first labeled reward signal), per proposal target.
+
+  Read it via `stats/0` (dashboard, evals) or `ledger/0` (full detail). State is
+  durable (`outcomes.etf`) like every learner: reward history survives reboots.
+  Pure observer: consumes feedback, emits nothing, mutates nothing.
+  """
+  use GenServer
+
+  @proposal_kinds ~w(proposal.recorded proposal.accepted proposal.rejected proposal.reverted)
+
+  def start_link(_), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
+  def stats, do: GenServer.call(__MODULE__, :stats)
+  def ledger, do: GenServer.call(__MODULE__, :ledger)
+
+  @doc "Force a synchronous state snapshot to disk (shutdown path + tests)."
+  def snapshot, do: GenServer.call(__MODULE__, :snapshot)
+
+  @impl true
+  def init(nil) do
+    Process.flag(:trap_exit, true)
+    Nexus.Events.subscribe()
+    Autopoet.Shadow.schedule_save()
+
+    base = %{effects: %{}, proposals: %{}, n: 0}
+
+    state =
+      case Autopoet.Shadow.load("outcomes") do
+        {:ok, saved} -> Map.merge(base, saved)
+        :none -> base
+      end
+
+    {:ok, state}
+  end
+
+  @impl true
+  def handle_info({:event, %{kind: "effect.settled"} = ev}, s) do
+    key = {to_string(ev[:hook]), to_string(ev[:effect])}
+
+    cell =
+      Map.get(s.effects, key, %{ok: 0, error: 0, us: 0})
+      |> Map.update!(if(ev[:status] == :ok, do: :ok, else: :error), &(&1 + 1))
+      |> Map.update!(:us, &(&1 + (ev[:duration_us] || 0)))
+
+    {:noreply, %{s | effects: Map.put(s.effects, key, cell), n: s.n + 1}}
+  end
+
+  def handle_info({:event, %{kind: kind} = ev}, s) when kind in @proposal_kinds do
+    verdict = kind |> String.split(".") |> List.last() |> String.to_atom()
+    target = to_string(ev[:target] || ev[:proposal] || "?")
+
+    cell =
+      Map.get(s.proposals, target, %{recorded: 0, accepted: 0, rejected: 0, reverted: 0})
+      |> Map.update!(verdict, &(&1 + 1))
+
+    {:noreply, %{s | proposals: Map.put(s.proposals, target, cell), n: s.n + 1}}
+  end
+
+  def handle_info({:event, _ev}, s), do: {:noreply, s}
+
+  def handle_info(:shadow_save, s) do
+    persist(s)
+    Autopoet.Shadow.schedule_save()
+    {:noreply, s}
+  end
+
+  def handle_info(_msg, s), do: {:noreply, s}
+
+  @impl true
+  def handle_call(:stats, _from, s) do
+    settled = s.effects |> Map.values() |> Enum.reduce(%{ok: 0, error: 0}, fn c, a ->
+      %{ok: a.ok + c.ok, error: a.error + c.error}
+    end)
+
+    verdicts = s.proposals |> Map.values() |> Enum.reduce(%{recorded: 0, accepted: 0, rejected: 0, reverted: 0}, fn c, a ->
+      %{recorded: a.recorded + c.recorded, accepted: a.accepted + c.accepted,
+        rejected: a.rejected + c.rejected, reverted: a.reverted + c.reverted}
+    end)
+
+    {:reply, %{observed: s.n, effects: map_size(s.effects), settled: settled, proposals: verdicts}, s}
+  end
+
+  def handle_call(:ledger, _from, s), do: {:reply, Map.take(s, [:effects, :proposals, :n]), s}
+
+  def handle_call(:snapshot, _from, s), do: {:reply, persist(s), s}
+
+  @impl true
+  def terminate(_reason, s), do: persist(s)
+
+  defp persist(s), do: Autopoet.Shadow.save("outcomes", Map.take(s, [:effects, :proposals, :n]))
 end
