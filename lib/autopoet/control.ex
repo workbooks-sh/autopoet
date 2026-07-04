@@ -643,6 +643,71 @@ defmodule Autopoet.Control do
     conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(Autopoet.Voice.sync()))
   end
 
+  # ── the session deck: a plain-markdown slide file the agent authors as it
+  #    talks. Slides separated by "\n---\n". Plain text everywhere. ──
+  @deck_dir Path.join([File.cwd!(), "data", "decks"])
+  @deck_file Path.join([File.cwd!(), "data", "decks", "current.md"])
+
+  post "/voice/deck/new" do
+    authed!(conn, fn conn ->
+      File.mkdir_p!(@deck_dir)
+
+      case File.stat(@deck_file) do
+        {:ok, %{mtime: mt}} ->
+          stamp = mt |> NaiveDateTime.from_erl!() |> NaiveDateTime.to_iso8601() |> String.replace(":", "-")
+          File.rename(@deck_file, Path.join(@deck_dir, "deck-#{stamp}.md"))
+
+        _ -> :ok
+      end
+
+      text(conn, "ok\n")
+    end)
+  end
+
+  post "/voice/deck/add" do
+    authed!(conn, fn conn ->
+      {:ok, body, conn} = read_body(conn, length: 100_000)
+      slide = String.trim(body)
+      File.mkdir_p!(@deck_dir)
+
+      deck =
+        case File.read(@deck_file) do
+          {:ok, prior} when prior != "" -> prior <> "\n---\n" <> slide
+          _ -> slide
+        end
+
+      File.write!(@deck_file, deck)
+      text(conn, deck)
+    end)
+  end
+
+  get "/voice/deck" do
+    text(conn, (File.read(@deck_file) |> elem(1) |> to_string()) <> "")
+  end
+
+  # a self-contained-ish export (references the app's vendored reveal assets)
+  get "/voice/deck/export" do
+    md = case File.read(@deck_file) do
+      {:ok, m} -> m
+      _ -> ""
+    end
+
+    html = """
+    <!doctype html><html><head><meta charset="utf-8"><title>autopoet deck</title>
+    <link rel="stylesheet" href="/static/vendor/reveal.css">
+    <style>body{background:#fafaf7}.reveal{font-family:ui-monospace,Menlo,monospace}</style>
+    </head><body><div class="reveal"><div class="slides">
+    <section data-markdown data-separator="^\n---\n$"><textarea data-template>#{md}</textarea></section>
+    </div></div>
+    <script src="/static/vendor/reveal.js"></script>
+    <script src="/static/vendor/reveal-markdown.js"></script>
+    <script>Reveal.initialize({ plugins: [RevealMarkdown], hash: true });</script>
+    </body></html>
+    """
+
+    conn |> put_resp_content_type("text/html") |> send_resp(200, html)
+  end
+
   # streaming brain: raw SSE proxied from the provider — the widget starts
   # synthesizing speech from the first clause while the model is still writing
   post "/voice/brain/stream" do
@@ -896,6 +961,13 @@ defmodule Autopoet.Control do
   # the previous log-page (kept at /plain for curl-friendly debugging)
   get "/plain" do
     conn |> put_resp_content_type("text/html") |> send_resp(200, page())
+  end
+
+  # Lightweight liveness probe for the cloud machine's Fly health check — no subsystem deps, always 200,
+  # so a hiccup in a Worker/Watchdog/Shadow stat can't flap the check the way GET /status could. Public.
+  # (The provisioner health-checks /status today; switch it to /health on the next autopoet image build.)
+  get "/health" do
+    send_resp(conn, 200, "ok")
   end
 
   get "/status" do
