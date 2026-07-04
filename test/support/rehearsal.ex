@@ -21,11 +21,12 @@ defmodule Autopoet.Eval.Rehearsal do
 
   alias Autopoet.Eval.Personas
 
-  @spend_cap_usd 0.80
   @max_crash_streak 2
 
   def run(opts \\ []) do
     cycles = Keyword.get(opts, :cycles, 8)
+    spend_cap = Keyword.get(opts, :spend_cap, 0.80)
+    feed_mode = Keyword.get(opts, :feed, :day)
     stamp = Keyword.get(opts, :stamp, "rehearsal")
     dir = Path.join("eval/live-runs", stamp)
     File.mkdir_p!(dir)
@@ -51,19 +52,25 @@ defmodule Autopoet.Eval.Rehearsal do
     # ONLY the brain goes live; limbs/ignition stay dead)
     cost_counter = :counters.new(1, [])
     calls_counter = :counters.new(1, [])
+    # instrument: prompt bytes (context-growth trend — the number that decides
+    # real arming cadence)
+    bytes_counter = :counters.new(1, [])
 
     body0 = body_digest()
     vault0 = vault_digest()
 
     {rows, _} =
       Enum.reduce_while(1..cycles, {[], 0}, fn n, {acc, crash_streak} ->
-        feed = life_feed(n, ws)
+        feed = life_feed(feed_mode, n, ws)
         for f <- feed, do: f.()
         Process.sleep(300)
 
         transcript = Path.join(dir, "cycle-#{n}.md")
         File.write!(transcript, "# cycle #{n}\n\nfeed: #{length(feed)} event(s)\n")
-        install_live_brain(transcript, cost_counter, calls_counter)
+        cost_before = :counters.get(cost_counter, 1)
+        bytes_before = :counters.get(bytes_counter, 1)
+        calls_before = :counters.get(calls_counter, 1)
+        install_live_brain(transcript, cost_counter, calls_counter, bytes_counter)
 
         before = snapshot()
         t0 = System.monotonic_time(:millisecond)
@@ -93,6 +100,9 @@ defmodule Autopoet.Eval.Rehearsal do
           self_filed: after_.requests - before.requests,
           knowledge_delta: after_.knowledge - before.knowledge,
           ms: ms,
+          cycle_calls: :counters.get(calls_counter, 1) - calls_before,
+          cycle_cost: Float.round((:counters.get(cost_counter, 1) - cost_before) / 1_000_000, 5),
+          cycle_prompt_bytes: :counters.get(bytes_counter, 1) - bytes_before,
           cost_so_far: Float.round(cost, 4)
         }
 
@@ -107,8 +117,8 @@ defmodule Autopoet.Eval.Rehearsal do
         streak = if status == :ok, do: 0, else: crash_streak + 1
 
         cond do
-          cost > @spend_cap_usd ->
-            IO.puts("  ✋ SPEND CAP $#{@spend_cap_usd} — stopping at cycle #{n}")
+          cost > spend_cap ->
+            IO.puts("  ✋ SPEND CAP $#{spend_cap} — stopping at cycle #{n}")
             {:halt, {[row | acc], streak}}
 
           streak >= @max_crash_streak ->
@@ -133,42 +143,119 @@ defmodule Autopoet.Eval.Rehearsal do
       cost: :counters.get(cost_counter, 1) / 1_000_000,
       calls: :counters.get(calls_counter, 1),
       vault_intact: vault_digest() == vault0,
+      trend: trend(rows),
+      duplicates: duplicate_rules(ws),
       dir: dir
     }
   end
 
-  # ── the life feed: a compressed day, cycle by cycle ─────────────────────────
-  # 1 idle · 2 an order + world pulse · 3 an email ask · 4 the SAME target again
-  # (memory probe) · 5 idle (invention probe) · 6 a rule ask · 7 world pulse
-  # only · 8 idle wind-down
-  defp life_feed(1, _ws), do: []
+  # context-growth trend: mean prompt bytes per call, first vs last quartile of
+  # WORK cycles (idle cycles carry no calls)
+  defp trend(rows) do
+    work = Enum.filter(rows, &(&1.cycle_calls > 0))
 
-  defp life_feed(2, ws) do
+    if length(work) < 8 do
+      %{first: 0, last: 0, growth_pct: 0.0}
+    else
+      q = max(div(length(work), 4), 2)
+      f = Enum.take(work, q)
+      l = Enum.take(work, -q)
+      avg = fn rs -> Enum.sum(Enum.map(rs, &div(&1.cycle_prompt_bytes, max(&1.cycle_calls, 1)))) / length(rs) end
+      first = avg.(f)
+      last = avg.(l)
+      %{first: round(first), last: round(last), growth_pct: Float.round((last - first) * 100 / max(first, 1), 1)}
+    end
+  end
+
+  # duplication probe metric: staged rule sections repeating the order-logging
+  # intent beyond the original (the rehearsal-mined skill rule under test)
+  defp duplicate_rules(ws) do
+    case File.read(Path.join(Autopoet.Body.root(), "#{ws}/rules.work")) do
+      {:ok, src} ->
+        max(length(Regex.scan(~r/when an order lands/i, src)) - 1, 0)
+
+      _ ->
+        0
+    end
+  end
+
+  # ── the life feed: a compressed day, cycle by cycle ─────────────────────────
+  # :day (8 cycles): 1 idle · 2 an order + world pulse · 3 an email ask · 4 the
+  # SAME target again (memory probe) · 5 idle (invention probe) · 6 a rule ask ·
+  # 7 world pulse only · 8 idle wind-down
+  defp life_feed(:day, 1, _ws), do: []
+
+  defp life_feed(:day, 2, ws) do
     [
       fn -> Autopoet.Requests.file("#{ws}/orders", "an order landed: #1043, two prints, $56 — log it on the orders page with today's date") end,
       fn -> Nexus.Events.emit(%{kind: "order.landed", target: "orders", tags: []}) end
     ]
   end
 
-  defp life_feed(3, ws) do
+  defp life_feed(:day, 3, ws) do
     [fn -> Autopoet.Requests.file("#{ws}/money-watch", "buyer emailed asking for an invoice for order #1043 — note it on money watch so nothing slips") end]
   end
 
-  defp life_feed(4, ws) do
+  defp life_feed(:day, 4, ws) do
     [fn -> Autopoet.Requests.file("#{ws}/orders", "another order: #1044, one large canvas, $210 — log it like the last one") end]
   end
 
-  defp life_feed(5, _ws), do: []
+  defp life_feed(:day, 5, _ws), do: []
 
-  defp life_feed(6, ws) do
+  defp life_feed(:day, 6, ws) do
     [fn -> Autopoet.Requests.file("#{ws}/rules", "i keep logging orders by hand — stage an inert rule (#proposed) that would do it for me when an order lands") end]
   end
 
-  defp life_feed(7, _ws) do
+  defp life_feed(:day, 7, _ws) do
     [fn -> for _ <- 1..6, do: Nexus.Events.emit(%{kind: "doc.touch", doc: "shop/money-watch.work", tags: []}) end]
   end
 
-  defp life_feed(_, _ws), do: []
+  defp life_feed(:day, _, _ws), do: []
+
+  # :long (~100 cycles) — the accumulation physics + three probes:
+  #   * ~40% idle; work cycles rotate order/note/email asks (unique ids)
+  #   * DUPLICATION PROBE: the same rule INTENT asked at 6,20,35,50,65,80,95 —
+  #     measures whether the pinned refine-don't-duplicate rule landed
+  #   * CONCERN PROBE: a unit starts failing at 40 (telemetry errors → sensed
+  #     as a concern EVERY cycle), recovers at 70 (ok runs decay the rate) —
+  #     the standing-concern grind loop, watched with a cost meter
+  @rule_probe_cycles [6, 20, 35, 50, 65, 80, 95]
+
+  defp life_feed(:long, n, ws) do
+    probes =
+      cond do
+        n in @rule_probe_cycles ->
+          [fn -> Autopoet.Requests.file("#{ws}/rules", "i keep logging orders by hand — stage an inert rule (#proposed) that logs an order when it lands. if one is already staged, refine it instead of adding another") end]
+
+        n == 40 ->
+          [fn ->
+             for _ <- 1..4 do
+               Nexus.Telemetry.record("invoice_mailer", %{at: 0, turns: 1, tokens: %{total: 5}, latency_ms: 40, tools: %{}, status: :error, error: "smtp timeout"})
+             end
+           end]
+
+        n == 70 ->
+          [fn ->
+             for _ <- 1..12 do
+               Nexus.Telemetry.record("invoice_mailer", %{at: 0, turns: 1, tokens: %{total: 5}, latency_ms: 40, tools: %{}, status: :ok, error: nil})
+             end
+           end]
+
+        true ->
+          []
+      end
+
+    life =
+      case rem(n, 5) do
+        1 -> []
+        2 -> [fn -> Autopoet.Requests.file("#{ws}/orders", "order ##{1050 + n} landed: item #{n}, $#{20 + rem(n * 7, 180)} — log it with today's date") end]
+        3 -> []
+        4 -> [fn -> Autopoet.Requests.file("#{ws}/money-watch", "note on money watch: payout #{n} cleared, $#{50 + rem(n * 13, 300)}") end]
+        0 -> [fn -> for _ <- 1..3, do: Nexus.Events.emit(%{kind: "doc.touch", doc: "#{ws}/orders.work", tags: []}) end]
+      end
+
+    probes ++ life
+  end
 
   # ── the production firing path: bus → hook → autopoet.cycle ─────────────────
   defp fire_cycle(n) do
@@ -196,12 +283,13 @@ defmodule Autopoet.Eval.Rehearsal do
     Nexus.Autopoet.Worker.status().last
   end
 
-  defp install_live_brain(transcript, cost_counter, calls_counter) do
+  defp install_live_brain(transcript, cost_counter, calls_counter, bytes_counter) do
     Application.put_env(:autopoet, :brain_llm, fn prompt ->
       t0 = System.monotonic_time(:millisecond)
       r = Autopoet.Providers.openrouter([%{role: "user", content: prompt}], max_tokens: 3000, temperature: 0.1)
       ms = System.monotonic_time(:millisecond) - t0
       :counters.add(calls_counter, 1, 1)
+      :counters.add(bytes_counter, 1, byte_size(prompt))
 
       {resp, usage} =
         case r do
