@@ -15,7 +15,7 @@ defmodule Autopoet.MixProject do
       start_permanent: Mix.env() == :prod,
       releases: releases(),
       aliases: aliases(),
-      preferred_cli_env: [eval: :test],
+      preferred_cli_env: [eval: :test, "eval.live": :test],
       deps: deps()
     ]
   end
@@ -30,7 +30,14 @@ defmodule Autopoet.MixProject do
   # one run, numbers appended to eval/history.log for cross-commit comparison.
   # AUTOPOET_SOAK_SECONDS scales the soak leg (default 15s; 3600+ overnight).
   defp aliases do
-    [eval: &run_eval/1]
+    [eval: &run_eval/1, "eval.live": &run_eval_live/1]
+  end
+
+  # the LIVE tier (real LLM spend): requires AUTOPOET_LIVE=1 set by the caller —
+  # the alias alone must not be enough to spend money
+  defp run_eval_live(args) do
+    System.put_env("EVAL_HISTORY", "1")
+    Mix.Task.run("test", ["--only", "live", "test/live_eval_test.exs" | args])
   end
 
   defp run_eval(args) do

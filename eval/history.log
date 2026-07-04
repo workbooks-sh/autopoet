@@ -104,3 +104,12 @@
 2026-07-04T17:15:54Z · f49d84e · replay/trace-2026-07-04-dev · events=24709 hebb_windowed=1.0000 hebb=0.9481 frequency=0.2007 lift_lo=0.6681 lift_hi=0.8260 recency=0.1613 order2=0.9482 miss_rank=79 miss_semantic=917 miss_novel=287
 2026-07-04T17:15:54Z · f49d84e · replay/trace-telemetry-dev · events=2 hebb_windowed=0.0050 hebb=0.5000 frequency=1.0000 lift_lo=0.0000 lift_hi=0.0000 recency=1.0000 order2=0.5000 miss_rank=0 miss_semantic=1 miss_novel=0
 2026-07-04T17:15:54Z · f49d84e · replay/drift · events=959 hebb_windowed=0.9722 hebb=0.9135 frequency=0.1679 order2=0.9135
+2026-07-04T17:44:55Z · 5c17d1e · live/shop-seller · total=3 passed=2 cost_usd=0.0568 llm_calls=6
+2026-07-04T17:47:03Z · 5c17d1e · live/shop-seller · total=3 passed=2 cost_usd=0.0569 llm_calls=6
+2026-07-04T17:48:01Z · 5c17d1e · live/shop-seller · total=3 passed=3 llm_calls=6 cost_usd=0.0626
+2026-07-04T17:48:55Z · 5c17d1e · live/shop-seller · total=3 passed=3 cost_usd=0.0634 llm_calls=6
+2026-07-04T17:49:23Z · 5c17d1e · live/audience-creator · total=3 passed=3 cost_usd=0.0648 llm_calls=6
+2026-07-04T17:50:15Z · c7b11b7 · live/trader · total=3 passed=3 cost_usd=0.0659 llm_calls=6
+2026-07-04T17:51:06Z · c7b11b7 · live/chief-of-staff · total=3 passed=3 cost_usd=0.0690 llm_calls=6
+2026-07-04T17:52:45Z · c7b11b7 · live/night-shift · total=3 passed=3 cost_usd=0.0815 llm_calls=6
+2026-07-04T17:54:13Z · c7b11b7 · live/site-builder · total=3 passed=3 cost_usd=0.0730 llm_calls=6

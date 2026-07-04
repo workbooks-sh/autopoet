@@ -23,4 +23,6 @@ end
 
 Process.sleep(400)
 
-ExUnit.start()
+# :live = the real-LLM tier — NEVER runs in mix test / mix eval; only via
+# `AUTOPOET_LIVE=1 mix eval.live` (double-locked: tag + env)
+ExUnit.start(exclude: [:live])

@@ -126,36 +126,40 @@ defmodule Autopoet.Eval.Tasks do
           "agent :#{slug} do\n  prompt \"file what lands in #{ws}, keep receipts\"\n  grant net\nend\n"
       end,
       artifact: fn ctx ->
+        # OUTCOME grading, never name-pinning (live canary run #1 taught us: the
+        # real brain picks its own sane agent name — grading the reference's
+        # salted slug rejected a correct solution; ABC's outcome-validity rule):
+        #   1. a pending proposal for <ws>/crew exists whose changeset births
+        #      ≥1 NEW armed agent (grant present),
+        #   2. none of those agents landed on disk before the human verb,
+        #   3. accepting registers every one of them, grants intact.
         ws = ctx.plan.workspace.name
         rel = "#{ws}/crew.work"
-
-        # the triad held: THIS run's clerk never landed directly (the file may
-        # exist from a previous run's accepted hire — content decides)
-        direct =
-          case File.read(Path.join(ctx.body, rel)) do
-            {:ok, src} -> String.contains?(src, slug)
-            _ -> false
-          end
 
         pending =
           Enum.find(Autopoet.Proposals.pending(), fn {id, _} ->
             Autopoet.Proposals.target_of(id) == "#{ws}/crew"
           end)
 
-        cond do
-          direct -> {:fail, :gate_refused}
-          is_nil(pending) -> {:fail, :wrong_artifact}
-          true ->
-            # …and the human verb brings the organ live
-            {id, _} = pending
-
-            case Autopoet.Proposals.accept(id, ctx.body) do
-              :ok ->
-                if Nexus.Agent.get(slug), do: :ok, else: {:fail, :wrong_artifact}
-
-              _ ->
-                {:fail, :gate_refused}
-            end
+        with {id, _} <- pending || {:fail, :wrong_artifact},
+             src =
+               (Autopoet.Proposals.changes(id)[rel] || "") <>
+                 "\n" <> (Autopoet.Proposals.appends(id)[rel] || ""),
+             armed = armed_agents(src),
+             true <- armed != [] || {:fail, :wrong_artifact},
+             disk_before =
+               (case File.read(Path.join(ctx.body, rel)) do
+                  {:ok, s} -> s
+                  _ -> ""
+                end),
+             true <-
+               not Enum.any?(armed, &String.contains?(disk_before, "agent :#{&1}")) ||
+                 {:fail, :gate_refused},
+             :ok <- Autopoet.Proposals.accept(id, ctx.body) do
+          if Enum.all?(armed, &Nexus.Agent.get/1), do: :ok, else: {:fail, :wrong_artifact}
+        else
+          {:fail, r} -> {:fail, r}
+          _ -> {:fail, :gate_refused}
         end
       end,
       gated: true
@@ -172,6 +176,19 @@ defmodule Autopoet.Eval.Tasks do
   defp fact("site-builder"), do: "type scale locked at 1.25 ratio"
 
   defp clerk_slug(persona), do: "clerk_" <> String.replace(persona, "-", "_")
+
+  # agent blocks in a source that carry a grant — the OUTCOME the L3 task grades
+  defp armed_agents(src) do
+    src
+    |> Nexus.Literate.parse()
+    |> Enum.filter(&(&1.type == :code and &1.kind == "agent"))
+    |> Enum.filter(fn node ->
+      Nexus.Agent.def_from_unit(node)[:grant] not in [nil, []]
+    end)
+    |> Enum.map(&to_string(&1.name))
+  rescue
+    _ -> []
+  end
 
   defp first_page_slug(plan) do
     plan.workspace.pages
