@@ -64,6 +64,9 @@ defmodule Autopoet.Application do
     seed_limbs()
     Autopoet.Limbs.register_from_body()
     wire_brain()
+    # Phase E: the app.execute effect (connected tools) rides the open effect
+    # registry — the runtime stays neutral, the app supplies the integration.
+    Autopoet.Integrations.install_effect()
 
     Autopoet.Log.puts("autopoet up — ctl on 127.0.0.1:#{port}; heartbeat DISARMED (arm via ./autopoetctl arm)")
     result
@@ -108,7 +111,9 @@ defmodule Autopoet.Application do
     if cloud?() do
       []
     else
-      Enum.filter([Autopoet.Stt, Autopoet.Voice, Autopoet.Kokoro, Autopoet.Affect], fn mod ->
+      Enum.filter(
+        [Autopoet.Stt, Autopoet.Voice, Autopoet.Kokoro, Autopoet.Affect, Autopoet.Chatterbox],
+        fn mod ->
         Code.ensure_loaded?(mod) ||
           (IO.puts("autopoet: desktop I/O child #{inspect(mod)} missing — skipped") && false)
       end)

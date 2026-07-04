@@ -758,7 +758,23 @@ defmodule Autopoet.Control do
       {:ok, body, conn} = read_body(conn, length: 4_000)
       voice = conn.query_params["voice"] || "af_heart"
 
-      case Autopoet.Kokoro.speak(body, voice) do
+      engine =
+        conn.query_params["engine"] || System.get_env("AUTOPOET_TTS") || "kokoro"
+
+      result =
+        case engine do
+          "chatterbox" ->
+            case Autopoet.Chatterbox.speak(body) do
+              {:ok, _} = ok -> ok
+              # quality engine down → the fast engine still answers
+              {:error, _} -> Autopoet.Kokoro.speak(body, voice)
+            end
+
+          _ ->
+            Autopoet.Kokoro.speak(body, voice)
+        end
+
+      case result do
         {:ok, wav} ->
           conn |> put_resp_content_type("audio/wav") |> send_resp(200, wav)
 
