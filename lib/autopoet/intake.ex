@@ -348,7 +348,10 @@ defmodule Autopoet.Intake do
       goal:
         "rewrite the intake skeleton's PROSE in this human's own vocabulary " <>
           "(industry + notes below). Keep every file's structure, links, and " <>
-          "agent blocks intact. Then make rule 1 in #{plan.workspace.name}/rules.work " <>
+          "agent blocks intact. The vault pages' `## what this is`, `## how it " <>
+          "fills`, and `## first moves` headings are PROTECTED STRUCTURE — " <>
+          "rewrite the prose under them, never the headings themselves. Then " <>
+          "make rule 1 in #{plan.workspace.name}/rules.work " <>
           "its simplest genuinely runnable form against what exists locally.",
       profile: Autopoet.Profile.render(),
       industry: profile["industry"]
@@ -367,7 +370,13 @@ defmodule Autopoet.Intake do
       target = Path.join([Autopoet.Proposals.dir(), id, "target"])
 
       with {:ok, "intake" <> _} <- File.read(target),
-           brief when is_binary(brief) <- Autopoet.Proposals.changes(id)["first-proposal.md"] do
+           # the brief nests inside the workspace (genesis I7 — no vault-root
+           # strays); dual-key: old installs' root first-proposal.md still found
+           brief when is_binary(brief) <-
+             Autopoet.Proposals.changes(id)
+             |> Enum.find_value(fn {rel, src} ->
+               if Path.basename(rel) == "first-proposal.md", do: src
+             end) do
         {id, brief}
       else
         _ -> nil
@@ -385,16 +394,67 @@ defmodule Autopoet.Intake do
         %{
           "#{ws.name}/.workspace" => "",
           "#{ws.name}/index.md" => vault_index(plan),
-          "first-proposal.md" => brief(profile, plan)
+          "#{ws.name}/first-proposal.md" => brief(profile, plan)
         }
         |> Map.merge(
           for page <- ws.pages, into: %{} do
-            {"#{ws.name}/#{slug(page)}.md", "# #{page}\n\nNothing yet — honest. The machinery behind this page is already standing by.\n"}
+            {"#{ws.name}/#{slug(page)}.md", vault_page(plan, page)}
           end
         )
 
       Autopoet.Proposals.record(%{target: "intake", kind: "intake.brief"}, changes)
     end
+  end
+
+  # A vault page is STARTING CODE, not a placeholder (genesis I4): three
+  # protected sections a human can work with immediately. Deterministic from the
+  # plan (Lane A, zero-LLM); Lane B rewrites the prose under the headings only.
+  defp vault_page(plan, page) do
+    ws = plan.workspace
+
+    fills =
+      case plan.agents do
+        [] ->
+          "Nothing automatic yet — this world starts quiet. Whatever you write here is the seed your future crew reads first."
+
+        agents ->
+          crew = Enum.map_join(agents, ", ", & &1.name)
+          rules = length(plan.rules)
+
+          "Your crew (#{crew}) works this workspace" <>
+            if(rules > 0,
+              do: "; #{rules} staged rule(s) wait for you to arm them. Until then, what you write here is what they read.",
+              else: ". What you write here is what they read."
+            )
+      end
+
+    moves =
+      [
+        "write one real thing on this page — the crew reads the vault, not your mind",
+        case plan.connect do
+          [first | _] -> "connect #{first} — it feeds #{page} real data"
+          [] -> "keep it local — this page works with zero connections"
+        end,
+        if(plan.rules != [],
+          do: "arm rule 1 on the graph when you trust it — it starts watching",
+          else: "ask for a rule when a chore repeats — plain words are enough"
+        )
+      ]
+      |> Enum.with_index(1)
+      |> Enum.map_join("\n", fn {m, i} -> "#{i}. #{m}" end)
+
+    """
+    # #{page}
+
+    ## what this is
+    The #{page} page of your #{ws.title} workspace — starting code built from your setup answers, yours to edit.
+
+    ## how it fills
+    #{fills}
+
+    ## first moves
+    #{moves}
+    """
   end
 
   defp vault_index(plan) do

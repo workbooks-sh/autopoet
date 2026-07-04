@@ -4,7 +4,7 @@ The autopoet's disposable, task-scoped bodies. There is ONE autopoet; a limb is
 an ephemeral delegated run with a NARROWED grant that reports back and dies —
 never a peer, never persistent. Its findings are untrusted evidence the autopoet
 turns into gated proposals. Structure is `management frozen`: only a human edits
-a limb's grant. See [[index]].
+a limb's grant.
 
 agent :research_limb do
   prompt """

@@ -568,6 +568,10 @@
   #canvasbar .cb .bdg { position:absolute; top:-5px; right:-5px; min-width:15px; height:15px;
     border-radius:99px; background:#f2a33c; color:#223; font-size:9px; font-weight:700;
     display:flex; align-items:center; justify-content:center; padding:0 3px; }
+  /* "N hidden" pill — hiding is never invisible-invisible (genesis I3) */
+  #flt-pill { position:absolute; top:-7px; right:-10px; background:#8e99a8; color:#fff;
+    font-size:9px; line-height:1; padding:2px 6px; border-radius:8px;
+    pointer-events:none; white-space:nowrap; }
   #canvasbar .cb .tip { position:absolute; top:38px; right:0; background:#223; color:#fff;
     font-size:10px; padding:3px 9px; border-radius:6px; white-space:nowrap;
     opacity:0; pointer-events:none; transform:translateY(-3px);
@@ -2030,7 +2034,7 @@ sktext.addEventListener("blur", () => sktext.style.display = "none");
 // ══ THE WORLD (graph) ═══════════════════════════════════════════════════
 const COLORS = {
   self: "#223", doc: "#4a90d9", guide: "#8e7cc3", limb: "#e07a5f", request: "#d96ba0",
-  library: "#2aa198", cluster: "#5a6472",
+  library: "#2aa198", cluster: "#5a6472", system: "#9aa5b1",
   proposal: { pending:"#f2c14e", accepted:"#6aa84f", rejected:"#cc4125",
               "rejected-by-gate":"#a61c00", reverted:"#999" }
 };
@@ -2313,6 +2317,12 @@ async function draw() {
   catch (err) { return fatal("graph.json fetch failed: " + err); }
   if (!data.nodes || !data.nodes.length) return fatal("graph.json returned no nodes");
   data = applyClusterTransform(data);
+  // first load with no saved choice: adopt the server's default_hidden (I3)
+  if (!hiddenAdopted) {
+    (data.default_hidden || []).forEach(t => hiddenTypes.add(t));
+    hiddenAdopted = true;
+    saveHidden();
+  }
   worldData = data;
   renderNotifications();
   g.selectAll("*").remove();
@@ -3017,11 +3027,15 @@ document.getElementById("cb-bell").onclick = () => {
   syncActive();
 };
 
-function clearSearchDim() { g.selectAll("g > g").attr("opacity", 1); }
+function clearSearchDim() { g.selectAll("g > g").attr("opacity", 1); applyFilter(); }
 
 // ── filter · views: show/hide node types on the canvas ──
-// modeled as HIDDEN types so anything new (e.g. a first cluster) defaults visible
-let hiddenTypes = new Set();
+// modeled as HIDDEN types so anything new (e.g. a first cluster) defaults visible.
+// GENESIS (I3): the server ships default_hidden (guide/system/library — plumbing);
+// adopted once on first load, then the user's choices persist in localStorage.
+let hiddenTypes = new Set(JSON.parse(localStorage.getItem("ap-hidden") || "null") || []);
+let hiddenAdopted = localStorage.getItem("ap-hidden") !== null;
+const saveHidden = () => localStorage.setItem("ap-hidden", JSON.stringify([...hiddenTypes]));
 const typeSwatch = t => t === "proposal" ? COLORS.proposal.pending : (COLORS[t] || "#888");
 const typeLabel = t => t === "self" ? "autopoet" : t;
 function presentTypes() {
@@ -3039,6 +3053,15 @@ function applyFilter() {
   };
   nodeSel.attr("opacity", d => on(d.type) ? 1 : 0.05).style("pointer-events", d => on(d.type) ? "all" : "none");
   if (linkSel) linkSel.attr("opacity", l => (on(typeOf(l.source)) && on(typeOf(l.target))) ? 1 : 0.04);
+  // hiding is never invisible-invisible: a pill on the graph-tools badge counts it
+  const fb = document.getElementById("cb-filter");
+  if (fb) {
+    let pill = document.getElementById("flt-pill");
+    if (!pill) { pill = document.createElement("span"); pill.id = "flt-pill"; fb.appendChild(pill); }
+    const hc = (worldData.nodes || []).filter(n => hiddenTypes.has(n.type)).length;
+    pill.textContent = hc ? `${hc} hidden` : "";
+    pill.style.display = hc ? "" : "none";
+  }
 }
 function closeFilterPop() { document.getElementById("filterpop").classList.remove("on"); }
 let fltShowOpen = false, fltAiOpen = false;
@@ -3114,9 +3137,9 @@ function openFilterPop() {
     refreshIcons();
   };
   p.querySelectorAll("#flt-showsec input[type=checkbox]").forEach(cb => cb.onchange = () => {
-    cb.checked ? hiddenTypes.delete(cb.dataset.t) : hiddenTypes.add(cb.dataset.t); applyFilter();
+    cb.checked ? hiddenTypes.delete(cb.dataset.t) : hiddenTypes.add(cb.dataset.t); saveHidden(); applyFilter();
   });
-  document.getElementById("flt-all").onclick = () => { hiddenTypes.clear(); applyFilter(); closeFilterPop(); };
+  document.getElementById("flt-all").onclick = () => { hiddenTypes.clear(); saveHidden(); applyFilter(); closeFilterPop(); };
 }
 
 // ── cluster interactions: lasso · AI · gather · panel · ctx ──

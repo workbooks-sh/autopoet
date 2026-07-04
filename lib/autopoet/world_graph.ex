@@ -8,6 +8,28 @@ defmodule Autopoet.WorldGraph do
   (same class as Nexus.Desktop's discovery file) — never config.
   """
 
+  # Node classes hidden from the graph BY DEFAULT (genesis invariant I3, wb-h0tjs.1):
+  # infrastructure exists and runs, but the visible world is the user's world. Shipped
+  # server-side so every frontend (fresh browser profile, voice surface) inherits it.
+  @default_hidden ~w(guide system library)
+
+  # Infra limbs the app itself seeds/uses — plumbing, not crew. The user's own agents
+  # (shopkeeper, producer, …) stay visible: they ARE the product's face.
+  @system_limbs ~w(research_limb intake_scout)
+
+  @doc """
+  The SINGLE source of truth for a body doc's graph class (genesis I2/I3):
+  `guide` (reference pages), `system` (machinery — the limbs registry, intake
+  plumbing), `doc` (the user's world — visible).
+  """
+  def classify(rel) do
+    cond do
+      String.contains?(rel, "guide/") -> "guide"
+      rel == "limbs.work" or String.starts_with?(rel, "intake/") -> "system"
+      true -> "doc"
+    end
+  end
+
   def payload do
     root = Nexus.Paths.data_dir()
 
@@ -18,12 +40,11 @@ defmodule Autopoet.WorldGraph do
     doc_nodes =
       for f <- docs do
         rel = Path.relative_to(f, root)
-        guide? = String.contains?(rel, "guide/")
 
         %{
           id: "doc:#{rel}",
           label: Path.basename(rel, ".work"),
-          type: if(guide?, do: "guide", else: "doc"),
+          type: classify(rel),
           path: rel,
           detail: f |> File.read!() |> String.slice(0, 4000)
         }
@@ -52,7 +73,7 @@ defmodule Autopoet.WorldGraph do
         %{
           id: "limb:#{node.name}",
           label: to_string(node.name),
-          type: "limb",
+          type: if(to_string(node.name) in @system_limbs, do: "system", else: "limb"),
           detail:
             "model: #{inspect(d[:model])}\ngrant: #{inspect(d[:grant])}\nmanagement: #{Nexus.Agent.management(node)}\n\n#{String.slice(d[:system] || "", 0, 400)}"
         }
@@ -117,8 +138,11 @@ defmodule Autopoet.WorldGraph do
         %{source: "self", target: n.id, kind: "tether"}
       end
 
-    %{nodes: nodes, links: tethers ++ ref_links}
+    %{nodes: nodes, links: tethers ++ ref_links, default_hidden: @default_hidden}
   end
+
+  @doc "Node types hidden by default (I3) — exposed for evals and alternate frontends."
+  def default_hidden, do: @default_hidden
 
   defp oota_node do
     dir = Autopoet.Oota.dest()

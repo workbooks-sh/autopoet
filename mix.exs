@@ -37,6 +37,7 @@ defmodule Autopoet.MixProject do
     System.put_env("EVAL_HISTORY", "1")
 
     Mix.Task.run("test", [
+      "test/genesis_eval_test.exs",
       "test/agent_world_eval_test.exs",
       "test/persona_eval_test.exs",
       "test/replay_eval_test.exs",

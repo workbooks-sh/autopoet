@@ -18,26 +18,15 @@ defmodule Autopoet.Notes do
   def state_dir, do: Path.join([Autopoet.Discovery.home(), "data", "notes-state"])
 
   @doc """
-  Seed the vault with a welcome note — ONLY into a truly empty vault. (Checking
-  just the root path re-created welcome.md after the human moved it into a
-  folder; the vault is theirs to arrange.)
+  Ensure the vault directories exist. GENESIS (wb-h0tjs.1): no welcome.md demo
+  seed — the vault starts truly empty and is born from the accepted first
+  proposal (the vault contract lives in that brief, read once and then owned by
+  the human). The old seed literally fought the owner's organization: it
+  re-created itself after being filed away.
   """
   def seed do
     File.mkdir_p!(dir())
     File.mkdir_p!(state_dir())
-    welcome = Path.join(dir(), "welcome.md")
-
-    if Path.wildcard(Path.join(dir(), "**/*")) == [] do
-      File.write!(welcome, """
-      Welcome to your vault.
-
-      Write plain thoughts here — documents and sketches are your source of truth.
-      When you save, the autopoet translates your intent into its own structures
-      and files a proposal for you to approve on the graph. It never edits these
-      notes; they are yours.
-      """)
-    end
-
     :ok
   end
 
