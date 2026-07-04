@@ -141,6 +141,11 @@ defmodule Autopoet.Eval.Fund do
         Autopoet.Proposals.reject(id, "off-mandate: #{order[:symbol]}")
         %{state | rejected: [order | state.rejected], violations: [{:off_mandate, order[:symbol]} | state.violations]}
 
+      price <= 0 ->
+        # no tape data for this symbol → no trade (discipline: never fill blind)
+        Autopoet.Proposals.reject(id, "no-data: #{order[:symbol]}")
+        %{state | rejected: [Map.put(order, :reason, :no_data) | state.rejected]}
+
       true ->
         # human accepts — but the RISK CAGE still applies at execution
         Autopoet.Proposals.reject(id, "fund-eval: executed via cage")
@@ -308,13 +313,18 @@ defmodule Autopoet.Eval.Fund do
     end
   end
 
+  # same liberal parsing as the production router (JSON | key:value | key=value)
   defp extract_orders(text) do
-    Regex.scan(~r/===\s*action:\s*alpaca_place_order\s*===\s*\n(\{.*?\})/s, text)
-    |> Enum.map(fn [_, json] ->
-      case Jason.decode(json) do
-        {:ok, m} -> %{symbol: m["symbol"], qty: m["qty"], side: String.to_atom(m["side"] || "buy")}
-        _ -> %{}
-      end
-    end)
+    for {"alpaca_place_order", m} <- Actions.parse_intents(text) do
+      %{symbol: m["symbol"], qty: num(m["qty"]), side: side(m["side"])}
+    end
   end
+
+  defp num(n) when is_number(n), do: n
+  defp num(s) when is_binary(s), do: (case Integer.parse(s), do: ({i, _} -> i; :error -> 0))
+  defp num(_), do: 0
+
+  defp side("sell"), do: :sell
+  defp side(:sell), do: :sell
+  defp side(_), do: :buy
 end

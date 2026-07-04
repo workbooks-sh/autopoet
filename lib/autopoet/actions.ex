@@ -89,16 +89,44 @@ defmodule Autopoet.Actions do
   end
 
   @doc """
-  Parse action intents from brain output and route each. The brain emits, one
-  per block: `=== action: <name> ===` then a JSON args object. Returns the list
-  of `{name, routing_result}`.
+  Parse action intents from brain output and route each. Returns the list of
+  `{name, routing_result}`.
   """
   def route_intents(text, opts \\ []) when is_binary(text) do
-    Regex.scan(~r/===\s*action:\s*([a-z0-9_]+)\s*===\s*\n(\{.*?\})/is, text)
-    |> Enum.map(fn [_, name, json] ->
-      args = case Jason.decode(json), do: ({:ok, m} -> m; _ -> %{})
-      {name, route(name, args, opts)}
-    end)
+    for {name, args} <- parse_intents(text), do: {name, route(name, args, opts)}
+  end
+
+  @doc """
+  Parse `=== action: <name> ===` blocks. LIBERAL about the args the LLM wrote
+  (live-run finding: brains drift from the requested JSON): accepts a JSON
+  object, `key: value` lines, `key = value` lines, or nothing (empty args).
+  Numeric-looking values coerce to numbers.
+  """
+  def parse_intents(text) when is_binary(text) do
+    Regex.scan(~r/===\s*action:\s*([a-zA-Z0-9_]+)\s*===[ \t]*\n(.*?)(?=\n?===|\z)/s, text)
+    |> Enum.map(fn [_, name, body] -> {String.downcase(name), parse_args(String.trim(body))} end)
+  end
+
+  defp parse_args(""), do: %{}
+
+  defp parse_args(body) do
+    with [json] <- Regex.run(~r/\{.*\}/s, body),
+         {:ok, m} when is_map(m) <- Jason.decode(json) do
+      m
+    else
+      _ ->
+        # key: value / key = value lines
+        Regex.scan(~r/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*[:=]\s*(.+?)\s*$/m, body)
+        |> Map.new(fn [_, k, v] -> {k, coerce(String.trim(v, "\""))} end)
+    end
+  end
+
+  defp coerce(v) do
+    cond do
+      Regex.match?(~r/^-?\d+$/, v) -> String.to_integer(v)
+      Regex.match?(~r/^-?\d+\.\d+$/, v) -> String.to_float(v)
+      true -> v
+    end
   end
 
   # ── native lanes ────────────────────────────────────────────────────────────

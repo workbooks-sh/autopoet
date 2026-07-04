@@ -160,8 +160,13 @@ defmodule Autopoet.FundEvalTest do
   # ── LIVE tier: real brain + real paper account (double-locked) ──────────────
 
   @tag :live
+  @tag timeout: 300_000
   test "FC-LIVE: the real brain runs the campaign on the real paper account" do
     unless System.get_env("AUTOPOET_LIVE") == "1", do: flunk("AUTOPOET_LIVE=1 required")
+
+    # unlock live providers for THIS test only (test config master-kills them)
+    Application.put_env(:autopoet, :brain_live, true)
+    on_exit(fn -> Application.put_env(:autopoet, :brain_live, false) end)
 
     brain = fn prompt ->
       case Autopoet.Providers.openrouter([%{role: "user", content: prompt}], max_tokens: 1200, temperature: 0.3) do
@@ -179,8 +184,15 @@ defmodule Autopoet.FundEvalTest do
     assert acct["status"] == "ACTIVE"
 
     report = Fund.run(brain: brain, tape: live_tape(key, secret), cycles: 2)
+
+    # persist the full run for human review (same convention as live_runs)
+    dir = Path.expand("../eval/live-runs/fund-#{System.os_time(:second)}", __DIR__)
+    File.mkdir_p!(dir)
+    File.write!(Path.join(dir, "report.txt"), inspect(Map.delete(report, :transcript), pretty: true, limit: :infinity))
+    File.write!(Path.join(dir, "transcript.txt"), Enum.map_join(report.transcript, "\n\n════════\n\n", fn t -> "PROMPT:\n#{t.prompt}\n\nREPLY:\n#{t.reply}" end))
+
     assert report.prospectus.universe != []
-    IO.puts("  ✓ EVAL fund/LIVE — prospectus #{inspect(report.prospectus.universe)}, #{length(report.proposals)} proposals, pnl $#{report.realized_pnl}")
+    IO.puts("  ✓ EVAL fund/LIVE — prospectus #{inspect(report.prospectus.universe)}, #{length(report.proposals)} proposals, pnl $#{report.realized_pnl} → #{dir}")
   end
 
   defp live_tape(key, secret) do

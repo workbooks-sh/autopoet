@@ -100,4 +100,27 @@ defmodule Autopoet.ActionsEvalTest do
 
     IO.puts("  ✓ EVAL actions/intents — 2 intents parsed: gmail_list performed, github_commit proposed")
   end
+
+  test "A-LIBERAL: key:value, key=value, and empty-args blocks all parse (live-run finding)" do
+    # the live fund brain emitted key:value lines, not JSON — parser must be liberal
+    text = """
+    === action: alpaca_account ===
+
+    === action: alpaca_bars ===
+    symbol: AAPL
+    timeframe: 1Day
+    limit: 100
+    === action: alpaca_place_order ===
+    symbol=SPY
+    qty=29
+    side=buy
+    """
+
+    parsed = Actions.parse_intents(text)
+    assert {"alpaca_account", %{}} in parsed
+    assert {"alpaca_bars", %{"symbol" => "AAPL", "timeframe" => "1Day", "limit" => 100}} in parsed
+    assert {"alpaca_place_order", %{"symbol" => "SPY", "qty" => 29, "side" => "buy"}} in parsed
+
+    IO.puts("  ✓ EVAL actions/liberal — JSON, key:value, key=value, empty args all parse")
+  end
 end
