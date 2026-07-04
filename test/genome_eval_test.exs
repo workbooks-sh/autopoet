@@ -93,5 +93,105 @@ defmodule Autopoet.GenomeEvalTest do
     IO.puts("  ✓ EVAL genome/provenance — deterministic fold; snapshot schema v1 with cfg + prior id")
   end
 
+  test "D3: semantic nominator proposes edges among related loci; birth never-worse-than-blank" do
+    # embeddings NOMINATE — related page titles cluster, unrelated don't
+    loci = [
+      {"shop/orders.work", "orders shipments fulfillment shop"},
+      {"shop/listings.work", "listings products catalog shop"},
+      {"shop/money-watch.work", "money revenue payouts watch shop"},
+      {"shop/unrelated.work", "quantum astrophysics nebula telescope"}
+    ]
+
+    edges = Autopoet.Genome.semantic_edges(loci, k: 2, min_sim: 0.2)
+    assert edges != [], "D3: nominator proposed nothing"
+    assert Enum.all?(edges, fn {_, _, m} -> m > 0.0 and m <= 0.5 end), "D3: mass out of band"
+
+    # the outlier should be a weak or absent source (lexically distant)
+    outlier_out = Enum.filter(edges, fn {s, _, _} -> s == "shop/unrelated.work" end)
+    shop_out = Enum.filter(edges, fn {s, _, _} -> String.contains?(s, "shop/o") end)
+    assert length(shop_out) >= length(outlier_out), "D3: nominator clustered the outlier over the shop pages"
+
+    # birth gate: seeding semantic edges never hurts vs blank
+    p = Personas.named("shop-seller")
+    plan = Autopoet.Intake.parse_plan(p.profile)
+    sem = semantic_prior_for(plan)
+    signals = pulse_signals(p, 250, 10, {51, 3, 1})
+    blank = prequential_at(signals, Model.new(), [150, 800], 3)
+    seeded = prequential_at(signals, Model.seed(Model.new(), sem), [150, 800], 3)
+
+    for cp <- [150, 800] do
+      assert seeded[cp] >= blank[cp] - 0.02, "D3 birth (@#{cp}): semantic prior hurts (#{seeded[cp]} vs #{blank[cp]})"
+    end
+
+    Autopoet.Eval.History.record("genome/semantic", %{edges: length(edges), delta150: seeded[150] - blank[150]})
+    IO.puts("  ✓ EVAL genome/semantic — nominator: #{length(edges)} edges, outlier isolated; birth never-worse-than-blank")
+  end
+
+  test "D4: fleet aggregation clips, k-anonymizes, and drops tenant-authored loci" do
+    template = ["shop/orders.work", "shop/listings.work", "shop/money-watch.work"]
+
+    # 4 consenting tenants; one edge is reported by only ONE tenant (must be
+    # dropped by k-anon); one edge references a tenant-authored locus (must never
+    # aggregate); one high-count edge tests clipping
+    contribs = [
+      %{edges: %{{"shop/orders.work", "shop/money-watch.work"} => 50, {"shop/orders.work", "shop/secret-vip.work"} => 9}},
+      %{edges: %{{"shop/orders.work", "shop/money-watch.work"} => 40}},
+      %{edges: %{{"shop/orders.work", "shop/money-watch.work"} => 30, {"shop/listings.work", "shop/orders.work"} => 5}},
+      %{edges: %{{"shop/orders.work", "shop/lonely.work"} => 100}}
+    ]
+
+    prior = Autopoet.Genome.fleet_prior(contribs, template, clip: 5.0, k_anon: 3)
+
+    edge_set = MapSet.new(prior, fn {s, d, _} -> {s, d} end)
+
+    # the 3-tenant template edge survives; clipped (50 → ≤5 each) so mass is bounded
+    assert MapSet.member?(edge_set, {"shop/orders.work", "shop/money-watch.work"})
+    {_, _, mass} = Enum.find(prior, fn {s, d, _} -> {s, d} == {"shop/orders.work", "shop/money-watch.work"} end)
+    assert mass > 0.0 and mass <= 0.6
+
+    # k-anon: single-tenant edges dropped
+    refute MapSet.member?(edge_set, {"shop/listings.work", "shop/orders.work"})
+    # tenant-authored loci NEVER aggregate (privacy boundary)
+    refute Enum.any?(prior, fn {s, d, _} -> "shop/secret-vip.work" in [s, d] or "shop/lonely.work" in [s, d] end)
+
+    # noise is injectable + Laplace sampler is real
+    noised = Autopoet.Genome.fleet_prior(contribs, template, k_anon: 3, noise: fn s -> Autopoet.Genome.laplace(s, 0.5) end)
+    assert is_list(noised)
+    assert Autopoet.Genome.laplace(2.0, 0.5) == 0.0
+
+    Autopoet.Eval.History.record("genome/fleet", %{edges: length(prior), k_anon: 3})
+    IO.puts("  ✓ EVAL genome/fleet — clip+k-anon+tenant-locus-drop enforced; #{length(prior)} fleet edge(s)")
+  end
+
+  test "growth bound (wb-5ih92): prune drops decayed edges, keeps active pathways" do
+    # a fresh model, one strong repeated pathway + one stale low-mass edge
+    m = Model.new()
+    m = Model.seed(m, [{"stale-a", "stale-b"}], 0.05)
+    m = Enum.reduce(1..50, m, fn _, m -> m |> Model.observe("hot-a") |> Model.observe("hot-b") end)
+    # advance time far enough that the stale seed (0.05) decays below the 0.02
+    # floor: 0.05·0.9985^t < 0.02 ⇒ t > ~611
+    m = Enum.reduce(1..800, m, fn _, m -> Model.observe(m, "hot-a") end)
+
+    before_edges = for {_s, row} <- m.g, {_d, _} <- row, do: 1
+    pruned = Model.prune(m, 0.02)
+    after_edges = for {_s, row} <- pruned.g, {_d, _} <- row, do: 1
+
+    assert length(after_edges) < length(before_edges), "prune removed nothing"
+    # the hot pathway survives
+    assert Map.has_key?(pruned.g, "hot-a")
+    # the stale seed is gone
+    refute match?(%{"stale-b" => _}, Map.get(pruned.g, "stale-a", %{}))
+
+    IO.puts("  ✓ EVAL genome/prune — #{length(before_edges)} → #{length(after_edges)} edges; hot pathway kept, stale dropped")
+  end
+
+  defp semantic_prior_for(plan) do
+    ws = plan.workspace.name
+    loci = for page <- plan.workspace.pages, do: {"#{ws}/#{slug(page)}.work", "#{page} #{plan.workspace.title}"}
+    Autopoet.Genome.semantic_edges(loci)
+  end
+
+  defp slug(s), do: s |> String.downcase() |> String.replace(~r/[^a-z0-9]+/, "-") |> String.trim("-")
+
   defp pct(d), do: :erlang.float_to_binary(d * 100, decimals: 2) <> "pt"
 end

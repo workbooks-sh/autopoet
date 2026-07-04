@@ -47,6 +47,8 @@ defmodule Autopoet.MixProject do
       "test/containment_eval_test.exs",
       "test/detector_eval_test.exs",
       "test/genome_eval_test.exs",
+      "test/integrations_eval_test.exs",
+      "test/corpus_eval_test.exs",
       "test/efficiency_eval_test.exs",
       "test/armlift_eval_test.exs",
       "test/select_eval_test.exs",

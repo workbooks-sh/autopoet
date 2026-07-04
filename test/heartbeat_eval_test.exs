@@ -16,7 +16,7 @@ defmodule Autopoet.HeartbeatEvalTest do
   use ExUnit.Case, async: false
 
   test "one full beat: sense → propose → gate → learn → settle → ledger" do
-    uniq = "beat#{System.unique_integer([:positive])}"
+    uniq = "beat#{System.os_time(:millisecond)}#{System.unique_integer([:positive])}"
     fname = "#{uniq}.work"
     body_file = Path.join(Autopoet.Body.root(), fname)
     on_exit(fn -> File.rm(body_file) end)

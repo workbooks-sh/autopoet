@@ -27,7 +27,7 @@ defmodule Autopoet.IntegrityEvalTest do
     t0 = System.os_time(:second)
 
     # drive a real hook→effect→settle + a chained emit through the production bus
-    uniq = "integ#{System.unique_integer([:positive])}"
+    uniq = "integ#{System.os_time(:millisecond)}#{System.unique_integer([:positive])}"
     Nexus.Effects.register("#{uniq}_eff", fn _a, _e, _c -> :ok end)
 
     Nexus.Hook.register(%{
@@ -63,7 +63,7 @@ defmodule Autopoet.IntegrityEvalTest do
   end
 
   test "G-CONSERVE: replaying a bus-produced segment reproduces the live ledger exactly" do
-    uniq = "cons#{System.unique_integer([:positive])}"
+    uniq = "cons#{System.os_time(:millisecond)}#{System.unique_integer([:positive])}"
     Nexus.Effects.register("#{uniq}_eff", fn _a, _e, _c -> :ok end)
 
     Nexus.Hook.register(%{

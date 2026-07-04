@@ -437,8 +437,24 @@ defmodule Autopoet.Intake do
 
   defp seed_prior(plan) do
     Autopoet.Shadow.Hebb.seed_prior(prior_edges(plan))
+    Autopoet.Shadow.Hebb.seed_prior(semantic_prior(plan))
   rescue
     _ -> :ok
+  end
+
+  # D3: semantic birth edges among the workspace loci (embeddings nominate). The
+  # locus text is the page's own title/prose — the same signal the graph carries.
+  defp semantic_prior(plan) do
+    ws = plan.workspace.name
+
+    loci =
+      for page <- plan.workspace.pages do
+        {"#{ws}/#{slug(page)}.work", "#{page} #{plan.workspace.title}"}
+      end
+
+    if length(loci) >= 2, do: Autopoet.Genome.semantic_edges(loci), else: []
+  rescue
+    _ -> []
   end
 
   # ── the genome: road-specific starting code (genesis I4, wb-h0tjs.2) ────────

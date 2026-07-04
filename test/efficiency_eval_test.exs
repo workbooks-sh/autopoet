@@ -52,15 +52,17 @@ defmodule Autopoet.EfficiencyEvalTest do
 
     events_per_sec = round(1_500 / (us / 1_000_000))
 
-    assert mem2 < mem1 * 1.5,
-           "E-MEM FAILED: identical vocab burst grew learners #{mem1} → #{mem2} bytes"
+    # STATE footprint (heap words), not process_info(:memory) — the latter is GC
+    # jitter and flaked under mix eval ordering (same fix as the soak eval)
+    assert mem2 <= mem1 * 1.25,
+           "E-MEM FAILED: identical vocab burst grew learner state #{mem1} → #{mem2} words"
 
     IO.puts(
       "  ✓ EVAL efficiency/bus+mem — burst emitted at #{events_per_sec} ev/s · queues drained · " <>
-        "learner memory #{div(mem1, 1024)}KB → #{div(mem2, 1024)}KB on repeat vocab"
+        "learner state #{div(mem1 * 8, 1024)}KB → #{div(mem2 * 8, 1024)}KB on repeat vocab"
     )
 
-    Autopoet.Eval.History.record("efficiency/bus", %{events_per_sec: events_per_sec, mem1_kb: div(mem1, 1024), mem2_kb: div(mem2, 1024)})
+    Autopoet.Eval.History.record("efficiency/bus", %{events_per_sec: events_per_sec, state_kb: div(mem2 * 8, 1024)})
   end
 
   test "E-MONEY: the admission boundary is readable and never raises" do
@@ -90,14 +92,8 @@ defmodule Autopoet.EfficiencyEvalTest do
     end
   end
 
+  # learner STATE footprint in heap words — precise + GC-independent
   defp total_memory(learners) do
-    Enum.sum(
-      for mod <- learners do
-        pid = Process.whereis(mod)
-        :erlang.garbage_collect(pid)
-        {:memory, m} = Process.info(pid, :memory)
-        m
-      end
-    )
+    Enum.sum(for mod <- learners, do: :erts_debug.flat_size(:sys.get_state(Process.whereis(mod))))
   end
 end

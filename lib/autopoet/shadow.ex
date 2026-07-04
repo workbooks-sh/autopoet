@@ -18,7 +18,7 @@ defmodule Autopoet.Shadow do
   never a crash.
   """
 
-  @observability ~w(effect.settled autopoet.attention recall.ab)
+  @observability ~w(effect.settled autopoet.attention recall.ab reward.landed app.executed)
 
   def workload?(ev), do: to_string(ev[:kind]) not in @observability
 
@@ -96,15 +96,23 @@ defmodule Autopoet.Shadow.Hebb.Model do
   structurally cheap (live traffic washes it out in minutes; the decay sheds the
   rest). Never frozen weights; `mass` defaults to the weight ~3 co-activations
   would earn. Idempotent-ish: seeding never lowers an existing edge.
+
+  `edges` may be `{src, dst}` (default mass) or `{src, dst, mass}` (per-edge —
+  the embedding nominator seeds by similarity, the fleet prior by aggregated
+  count).
   """
   def seed(m, edges, mass \\ 0.7) do
     g =
-      Enum.reduce(edges, m.g, fn {src, dst}, g ->
-        src = to_string(src)
-        dst = to_string(dst)
+      Enum.reduce(edges, m.g, fn edge, g ->
+        {src, dst, w} =
+          case edge do
+            {s, d, w} -> {to_string(s), to_string(d), w}
+            {s, d} -> {to_string(s), to_string(d), mass}
+          end
+
         row = Map.get(g, src, %{})
         {w0, tl} = Map.get(row, dst, {0.0, m.t})
-        Map.put(g, src, Map.put(row, dst, {max(w0, mass), tl}))
+        Map.put(g, src, Map.put(row, dst, {max(w0, w), tl}))
       end)
 
     %{m | g: g}
@@ -142,6 +150,28 @@ defmodule Autopoet.Shadow.Hebb.Model do
     for {b, {w, tl}} <- Map.get(m.g, node, %{}) do
       {b, w * :math.pow(d, m.t - tl)}
     end
+  end
+
+  @doc """
+  Prune edges whose DECAYED weight has fallen below `eps` (wb-5ih92): a
+  long-lived install's graph is bounded by its ACTIVE vocabulary, not its
+  lifetime event count. Empty source rows are dropped. Pure; call at snapshot.
+  """
+  def prune(m, eps \\ 0.02) do
+    g =
+      m.g
+      |> Enum.map(fn {src, row} ->
+        kept =
+          for {dst, {w, tl}} <- row, w * :math.pow(cfg(m).decay, m.t - tl) >= eps, into: %{} do
+            {dst, {w, tl}}
+          end
+
+        {src, kept}
+      end)
+      |> Enum.reject(fn {_src, row} -> row == %{} end)
+      |> Map.new()
+
+    %{m | g: g}
   end
 
   @doc "The PINNED production decay (stats display + fair baselines)."
@@ -255,11 +285,15 @@ defmodule Autopoet.Shadow.Hebb do
   def terminate(_reason, s), do: persist(s)
 
   # D2 provenance header rides every snapshot: which arithmetic + prior produced
-  # this state (schema versioned so future migrations know what they're reading)
+  # this state (schema versioned so future migrations know what they're reading).
+  # Prune at snapshot (wb-5ih92) so a long-lived install's graph stays bounded by
+  # active vocabulary, not lifetime events.
   defp persist(s) do
+    pruned = Model.prune(s)
+
     Autopoet.Shadow.save(
       "hebb",
-      s
+      pruned
       |> Map.take([:g, :prev, :t, :n])
       |> Map.put(:meta, %{schema: 1, cfg: Model.default_cfg(), prior: "plan-derived-v1"})
     )
@@ -407,7 +441,7 @@ defmodule Autopoet.Shadow.Outcomes.Model do
 
   @proposal_kinds ~w(proposal.recorded proposal.accepted proposal.rejected proposal.reverted)
 
-  def new, do: %{effects: %{}, proposals: %{}, n: 0}
+  def new, do: %{effects: %{}, proposals: %{}, rewards: %{}, n: 0}
 
   def proposal_kinds, do: @proposal_kinds
 
@@ -432,6 +466,20 @@ defmodule Autopoet.Shadow.Outcomes.Model do
       |> Map.update!(verdict, &(&1 + 1))
 
     %{s | proposals: Map.put(s.proposals, target, cell), n: s.n + 1}
+  end
+
+  # E3: an external reward (billing/usage) credited to a locus — the money
+  # boundary the credit layer (phase 3) will pay along.
+  def reduce(s, %{kind: "reward.landed"} = ev) do
+    target = to_string(ev[:target] || "?")
+    rewards = Map.get(s, :rewards, %{})
+
+    cell =
+      Map.get(rewards, target, %{count: 0, amount: 0.0})
+      |> Map.update!(:count, &(&1 + 1))
+      |> Map.update!(:amount, &(&1 + (ev[:amount] || 0.0)))
+
+    %{s | rewards: Map.put(rewards, target, cell), n: s.n + 1}
   end
 
   def reduce(s, _ev), do: s
@@ -501,15 +549,24 @@ defmodule Autopoet.Shadow.Outcomes do
         rejected: a.rejected + c.rejected, reverted: a.reverted + c.reverted}
     end)
 
-    {:reply, %{observed: s.n, effects: map_size(s.effects), settled: settled, proposals: verdicts}, s}
+    rewards = Map.get(s, :rewards, %{})
+
+    reward_total =
+      rewards |> Map.values() |> Enum.reduce(%{count: 0, amount: 0.0}, fn c, a ->
+        %{count: a.count + c.count, amount: a.amount + c.amount}
+      end)
+
+    {:reply,
+     %{observed: s.n, effects: map_size(s.effects), settled: settled, proposals: verdicts, rewards: reward_total},
+     s}
   end
 
-  def handle_call(:ledger, _from, s), do: {:reply, Map.take(s, [:effects, :proposals, :n]), s}
+  def handle_call(:ledger, _from, s), do: {:reply, Map.take(s, [:effects, :proposals, :rewards, :n]), s}
 
   def handle_call(:snapshot, _from, s), do: {:reply, persist(s), s}
 
   @impl true
   def terminate(_reason, s), do: persist(s)
 
-  defp persist(s), do: Autopoet.Shadow.save("outcomes", Map.take(s, [:effects, :proposals, :n]))
+  defp persist(s), do: Autopoet.Shadow.save("outcomes", Map.take(s, [:effects, :proposals, :rewards, :n]))
 end
