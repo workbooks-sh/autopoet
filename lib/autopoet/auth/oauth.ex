@@ -40,9 +40,16 @@ defmodule Autopoet.Auth.OAuth do
       # Each scope requested must be added to the OAuth consent screen AND its
       # API enabled in the project, or Google rejects it.
       scope_env: "GOOGLE_OAUTH_SCOPE",
+      # Google WORKSPACE suite — the agent reads + acts across Gmail, Calendar,
+      # Drive, and Sheets. Each scope must be enabled on the consent screen +ITS
+      # API turned on in the project, or Google rejects it (env-overridable so a
+      # trim to approved scopes is a one-line change).
       scope:
-        "https://www.googleapis.com/auth/drive.readonly " <>
-          "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/userinfo.email " <>
+          "https://www.googleapis.com/auth/gmail.modify " <>
+          "https://www.googleapis.com/auth/calendar " <>
+          "https://www.googleapis.com/auth/drive " <>
+          "https://www.googleapis.com/auth/spreadsheets",
       id_key: "GOOGLE_OAUTH_CLIENT_ID",
       secret_key: "GOOGLE_OAUTH_CLIENT_SECRET"
     },
