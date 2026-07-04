@@ -59,26 +59,85 @@ defmodule Autopoet.Shadow do
   def schedule_save, do: Process.send_after(self(), :shadow_save, @save_ms)
 end
 
+defmodule Autopoet.Shadow.Hebb.Model do
+  @moduledoc """
+  The PURE Hebbian model — the exact arithmetic the live learner runs, factored
+  out so the replay/eval harness scores the REAL model (never a reimplementation;
+  validate-the-instrument). The chamber-validated rule verbatim: `w += 0.35*(1-w)`
+  on an observed transition, lazy multiplicative decay at read. The state map is
+  the GenServer's state verbatim (`g/prev/t/n`) — snapshots stay compatible.
+  """
+
+  @eta 0.35
+  @decay 0.9985
+  @hop2_damp 0.5
+
+  def new, do: %{g: %{}, prev: nil, t: 0, n: 0}
+
+  @doc "Observe one workload signal (the live learner's per-event step)."
+  def observe(m, sig) do
+    g = if m.prev, do: bump(m.g, m.prev, sig, m.t), else: m.g
+    %{m | g: g, prev: sig, t: m.t + 1, n: m.n + 1}
+  end
+
+  @doc "Predict the next locus after `from`: 1-hop successors by decayed weight, best-first."
+  def predict(m, from, k) do
+    m
+    |> decayed_edges(from)
+    |> Enum.sort_by(fn {_, w} -> -w end)
+    |> Enum.take(k)
+    |> Enum.map(&elem(&1, 0))
+  end
+
+  @doc "Weighted spreading activation from `locus`: 1-hop at edge weight, 2-hop damped, summed over paths."
+  def recall(m, locus, k) do
+    hop1 = decayed_edges(m, locus)
+
+    Enum.reduce(hop1, %{}, fn {b, w1}, acc ->
+      acc = Map.update(acc, b, w1, &(&1 + w1))
+
+      Enum.reduce(decayed_edges(m, b), acc, fn {c, w2}, acc2 ->
+        if c == locus,
+          do: acc2,
+          else: Map.update(acc2, c, w1 * w2 * @hop2_damp, &(&1 + w1 * w2 * @hop2_damp))
+      end)
+    end)
+    |> Enum.sort_by(fn {_, a} -> -a end)
+    |> Enum.take(k)
+  end
+
+  def decayed_edges(m, node) do
+    for {b, {w, tl}} <- Map.get(m.g, node, %{}) do
+      {b, w * :math.pow(@decay, m.t - tl)}
+    end
+  end
+
+  def decay, do: @decay
+
+  defp bump(g, a, b, t) do
+    edges = Map.get(g, a, %{})
+    {w0, tl} = Map.get(edges, b, {0.0, t})
+    w = w0 * :math.pow(@decay, t - tl)
+    Map.put(g, a, Map.put(edges, b, {w + @eta * (1.0 - w), t}))
+  end
+end
+
 defmodule Autopoet.Shadow.Hebb do
   @moduledoc """
   Live Hebbian pathway learner over the real bus (shadow — zero mutation).
-  The chamber-validated rule verbatim: `w += 0.35*(1-w)` on an observed transition,
-  lazy multiplicative decay at read. Decay is a per-stream tunable (ASSUMPTIONS.md
-  A1: cumulative counts beat decay on slow-drift streams — revisit when real usage
-  accumulates).
+  All arithmetic lives in `Autopoet.Shadow.Hebb.Model` (pure — shared verbatim
+  with the replay/eval harness); this GenServer is the bus subscription, the
+  durable snapshot, and the query surface.
 
   `recall/2` is the FIRST ACTUATOR (wb-mdk4.6, ladder rung 4): weighted spreading
-  activation over the learned graph — direct neighbors at their edge weight, 2-hop
-  neighbors damped — returning `[{locus, activation}]` best-first. It RANKS, it
-  never mutates: consumers may reorder what they already show, nothing else.
+  activation over the learned graph — ranking only, consumers may reorder what
+  they already show, nothing else.
 
   State survives reboots via `Autopoet.Shadow.save/load` (snapshot `hebb.etf`).
   """
   use GenServer
 
-  @eta 0.35
-  @decay 0.9985
-  @hop2_damp 0.5
+  alias Autopoet.Shadow.Hebb.Model
 
   def start_link(_), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
   def stats, do: GenServer.call(__MODULE__, :stats)
@@ -86,11 +145,7 @@ defmodule Autopoet.Shadow.Hebb do
   @doc "Force a synchronous state snapshot to disk (shutdown path + tests)."
   def snapshot, do: GenServer.call(__MODULE__, :snapshot)
 
-  @doc """
-  Weighted spreading-activation readout from `locus` — the actuator surface.
-  Returns up to `k` `[{locus, activation}]`, best-first: 1-hop neighbors at decayed
-  edge weight, 2-hop damped by #{@hop2_damp}, activation summed over paths.
-  """
+  @doc "Weighted spreading-activation readout from `locus` — the actuator surface. `[{locus, activation}]` best-first."
   def recall(locus, k \\ 5), do: GenServer.call(__MODULE__, {:recall, to_string(locus), k})
 
   @impl true
@@ -99,12 +154,10 @@ defmodule Autopoet.Shadow.Hebb do
     Nexus.Events.subscribe()
     Autopoet.Shadow.schedule_save()
 
-    base = %{g: %{}, prev: nil, t: 0, n: 0}
-
     state =
       case Autopoet.Shadow.load("hebb") do
-        {:ok, saved} -> Map.merge(base, saved)
-        :none -> base
+        {:ok, saved} -> Map.merge(Model.new(), saved)
+        :none -> Model.new()
       end
 
     {:ok, state}
@@ -113,9 +166,7 @@ defmodule Autopoet.Shadow.Hebb do
   @impl true
   def handle_info({:event, ev}, s) do
     if Autopoet.Shadow.workload?(ev) do
-      sig = Autopoet.Shadow.signal(ev)
-      g = if s.prev, do: bump(s.g, s.prev, sig, s.t), else: s.g
-      {:noreply, %{s | g: g, prev: sig, t: s.t + 1, n: s.n + 1}}
+      {:noreply, Model.observe(s, Autopoet.Shadow.signal(ev))}
     else
       {:noreply, s}
     end
@@ -133,7 +184,7 @@ defmodule Autopoet.Shadow.Hebb do
   def handle_call(:stats, _from, s) do
     weights =
       for {a, es} <- s.g, {b, {w, tl}} <- es do
-        {a, b, w * :math.pow(@decay, s.t - tl)}
+        {a, b, w * :math.pow(Model.decay(), s.t - tl)}
       end
 
     {:reply,
@@ -150,37 +201,13 @@ defmodule Autopoet.Shadow.Hebb do
   end
 
   def handle_call({:recall, locus, k}, _from, s) do
-    hop1 = decayed_edges(s, locus)
-
-    act =
-      Enum.reduce(hop1, %{}, fn {b, w1}, acc ->
-        acc = Map.update(acc, b, w1, &(&1 + w1))
-
-        Enum.reduce(decayed_edges(s, b), acc, fn {c, w2}, acc2 ->
-          if c == locus, do: acc2, else: Map.update(acc2, c, w1 * w2 * @hop2_damp, &(&1 + w1 * w2 * @hop2_damp))
-        end)
-      end)
-
-    {:reply, act |> Enum.sort_by(fn {_, a} -> -a end) |> Enum.take(k), s}
+    {:reply, Model.recall(s, locus, k), s}
   end
 
   @impl true
   def terminate(_reason, s), do: persist(s)
 
   defp persist(s), do: Autopoet.Shadow.save("hebb", Map.take(s, [:g, :prev, :t, :n]))
-
-  defp decayed_edges(s, node) do
-    for {b, {w, tl}} <- Map.get(s.g, node, %{}) do
-      {b, w * :math.pow(@decay, s.t - tl)}
-    end
-  end
-
-  defp bump(g, a, b, t) do
-    edges = Map.get(g, a, %{})
-    {w0, tl} = Map.get(edges, b, {0.0, t})
-    w = w0 * :math.pow(@decay, t - tl)
-    Map.put(g, a, Map.put(edges, b, {w + @eta * (1.0 - w), t}))
-  end
 end
 
 defmodule Autopoet.Shadow.Surprise do
