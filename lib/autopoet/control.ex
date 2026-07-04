@@ -631,6 +631,29 @@ defmodule Autopoet.Control do
     conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(Autopoet.Voice.sync()))
   end
 
+  # BEAM-native Kokoro: the widget's primary voice. Plain text in, WAV out.
+  get "/voice/tts/status" do
+    text(conn, Autopoet.Kokoro.status() <> "\n")
+  end
+
+  post "/voice/tts" do
+    authed!(conn, fn conn ->
+      {:ok, body, conn} = read_body(conn, length: 4_000)
+      voice = conn.query_params["voice"] || "af_heart"
+
+      case Autopoet.Kokoro.speak(body, voice) do
+        {:ok, wav} ->
+          conn |> put_resp_content_type("audio/wav") |> send_resp(200, wav)
+
+        {:error, :not_ready} ->
+          send_resp(conn, 503, "voice engine loading\n")
+
+        {:error, reason} ->
+          send_resp(conn, 422, "speak failed: #{inspect(reason)}\n")
+      end
+    end)
+  end
+
   # stage | live | local — the UI picks its voice pipeline by this.
   # "stage" = the local speech-to-speech whiteboard (Silero VAD → local STT →
   # Groq brain → Kokoro), preferred whenever the Groq key is configured.

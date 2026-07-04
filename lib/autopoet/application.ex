@@ -119,7 +119,7 @@ defmodule Autopoet.Application do
   end
 
   # Desktop-only I/O children (mic STT + realtime Voice) — dropped in the cloud.
-  defp desktop_io, do: if(cloud?(), do: [], else: [Autopoet.Stt, Autopoet.Voice])
+  defp desktop_io, do: if(cloud?(), do: [], else: [Autopoet.Stt, Autopoet.Voice, Autopoet.Kokoro])
 
   @doc "Is this the cloud profile (a vendored Fly machine), not the desktop?"
   def cloud?, do: System.get_env("AUTOPOET_TARGET") == "cloud"

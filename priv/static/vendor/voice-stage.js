@@ -508,19 +508,35 @@
       g.classList.add("m-hidden");
     });
   }
+  function revealNode(name, glance) {
+    var n = pieces.nodes[name];
+    if (!n || !n.classList.contains("m-hidden")) return;
+    n.classList.remove("m-hidden"); n.classList.add("m-pop");
+    if (glance) {
+      var r = n.getBoundingClientRect();
+      setAttention({ x: r.left + r.width / 2, y: r.top + r.height / 2 }, 750, 1);
+    }
+  }
   function reveal(spec) {
     spec = spec.replace(/\s+/g, "");
     if (spec.indexOf("->") > -1) {
+      // an edge implies BOTH endpoints — the model often forgets the node cues
+      var ends = spec.split("->");
+      revealNode(ends[0], false);
+      revealNode(ends[1], true);
       var g = pieces.edges[spec];
       if (g) { g.classList.remove("m-hidden"); g.classList.add("m-fade"); }
     } else {
-      var n = pieces.nodes[spec];
-      if (n) {
-        n.classList.remove("m-hidden"); n.classList.add("m-pop");
-        var r = n.getBoundingClientRect();
-        setAttention({ x: r.left + r.width / 2, y: r.top + r.height / 2 }, 750, 1);
-      }
+      revealNode(spec, true);
     }
+  }
+  // nothing stays invisible once the performance is over
+  function revealAll() {
+    Object.keys(pieces.nodes).forEach(function (k) { revealNode(k, false); });
+    Object.keys(pieces.edges).forEach(function (k) {
+      var g = pieces.edges[k];
+      if (g && g.classList.contains("m-hidden")) { g.classList.remove("m-hidden"); g.classList.add("m-fade"); }
+    });
   }
   function compileD2(src) {
     return fetch("/voice/d2", { method: "POST",
@@ -597,16 +613,34 @@
     return { x: R.left + R.width / 2 + stagePos.x, y: R.top + R.height / 2 + stagePos.y };
   }
 
-  // ────────────────────────── Kokoro worker (persists across calls) ──────────────────────────
-  var kokoro = false, kWorker = null, kSeq = 0, kPending = {};
+  // ────────────────────────── Kokoro (BEAM-native first) ──────────────────────────
+  // PRIMARY: the app's own Autopoet.Kokoro engine (Ortex/ONNX in Elixir) via
+  // POST /voice/tts — one model on disk, no browser downloads. The Web-Worker
+  // Kokoro survives only as a FALLBACK when the server engine is off
+  // (missing model files or espeak-ng).
+  var kokoro = false, kokoroMode = null;   // "server" | "worker"
+  var kWorker = null, kSeq = 0, kPending = {};
   var VOICE_ID = "af_heart";
   function bootKokoro() {
+    if (kokoro) return;
+    fetch("/voice/tts/status").then(function (r) { return r.text(); }).then(function (s) {
+      s = s.trim();
+      if (s === "ready") {
+        kokoro = true; kokoroMode = "server";
+        if (mounted && !playing) capStatus("ready — just talk");
+      } else if (s === "loading") {
+        if (mounted && !playing) capStatus("warming local voice…");
+        setTimeout(bootKokoro, 2500);
+      } else bootWorker();
+    }).catch(bootWorker);
+  }
+  function bootWorker() {
     if (kWorker) return;
     try {
       kWorker = new Worker("/static/vendor/kokoro-worker.mjs", { type: "module" });
       kWorker.onmessage = function (e) {
         var m = e.data;
-        if (m.type === "ready") { kokoro = true; if (mounted && !playing) capStatus("ready — just talk"); }
+        if (m.type === "ready") { kokoro = true; kokoroMode = "worker"; if (mounted && !playing) capStatus("ready — just talk"); }
         else if (m.type === "progress") {
           if (mounted && !playing && !kokoro) capStatus("downloading voice model… " + m.pct + "%");
         }
@@ -621,13 +655,29 @@
       kWorker.postMessage({ type: "load" });
     } catch (e) { kokoro = false; }
   }
+  // synthesize one sentence → clip {buffer, duration} | null
   function kokoroGen(text) {
+    if (kokoroMode === "server") {
+      return fetch("/voice/tts?voice=" + encodeURIComponent(VOICE_ID), {
+        method: "POST",
+        headers: { authorization: "Bearer " + TOKEN, "content-type": "text/plain" },
+        body: text
+      }).then(function (r) {
+        if (!r.ok) throw new Error("tts " + r.status);
+        return r.arrayBuffer();
+      }).then(function (ab) {
+        ensureAudio();
+        return actx.decodeAudioData(ab);
+      }).then(function (buf) {
+        return { buffer: buf, duration: buf.duration };
+      }).catch(function () { return null; });
+    }
     return new Promise(function (resolve) {
       if (!kokoro || !kWorker) { resolve(null); return; }
       var id = ++kSeq; kPending[id] = resolve;
       kWorker.postMessage({ type: "gen", id: id, text: text, voice: VOICE_ID });
       later(setTimeout(function () { if (kPending[id]) { delete kPending[id]; resolve(null); } }, 15000));
-    });
+    }).then(function (raw) { return raw ? makeClip(raw) : null; });
   }
   function wavFromRaw(raw) {
     var f = raw.audio || raw, sr = raw.sampling_rate || 24000, len = f.length;
@@ -697,9 +747,7 @@
     var clips = [], clipP = [];
     if (kokoro) {
       for (var s = 0; s < sText.length; s++) {
-        clipP[s] = kokoroGen(sText[s]).then(function (raw) {
-          return raw ? makeClip(raw) : null;   // AudioBuffer — gesture-safe, exact duration
-        });
+        clipP[s] = kokoroGen(sText[s]);   // → clip {buffer, duration} (server or worker)
         clipP[s].then((function (idx) { return function (a) { clips[idx] = a; }; })(s));
       }
       clips[0] = await clipP[0];
@@ -722,7 +770,11 @@
 
     function fireDir(d) {
       if (d[0] === "+") reveal(d.slice(1));
-      else if (d.indexOf("point ") === 0) { var gp = pieces.nodes[d.slice(6).trim()]; if (gp) pointAt(gp, 2200); }
+      else if (d.indexOf("point ") === 0) {
+        var pname = d.slice(6).trim();
+        revealNode(pname, false);                       // can't point at nothing
+        var gp = pieces.nodes[pname]; if (gp) pointAt(gp, 2200);
+      }
       else if (d.indexOf("move to ") === 0) {
         var n = pieces.nodes[d.slice(8).trim()];
         if (n) {
@@ -743,7 +795,11 @@
     var sIdx = 0, lastPrewalk = null;
     (async function nextSentence() {
       if (playing !== runId) return;
-      if (sIdx >= groups.length) { later(setTimeout(function () { if (playing === runId) { stopPerform(); if (kokoro) capStatus("ready — just talk"); } }, 700)); return; }
+      if (sIdx >= groups.length) {
+        revealAll();   // whatever the cues missed, the finished diagram shows whole
+        later(setTimeout(function () { if (playing === runId) { stopPerform(); if (kokoro) capStatus("ready — just talk"); } }, 700));
+        return;
+      }
       var g2 = groups[sIdx], sentNo = sIdx; sIdx++;
       if (!g2) { nextSentence(); return; }
 
