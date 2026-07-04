@@ -31,6 +31,9 @@ defmodule Autopoet.Eval.Rehearsal do
     dir = Path.join("eval/live-runs", stamp)
     File.mkdir_p!(dir)
 
+    # metered surface ONLY: ignition limbs spend outside the brain wrap
+    Application.put_env(:autopoet, :ignition, false)
+
     p = Personas.named("shop-seller")
     Autopoet.Profile.clear()
     for {k, v} <- p.profile, do: :ok = Autopoet.Profile.put(k, v)
@@ -256,6 +259,27 @@ defmodule Autopoet.Eval.Rehearsal do
 
     probes ++ life
   end
+
+  # :concern_mini — validates the re-sense policy cheaply: unit fails at 5,
+  # recovers at 18; with the suppressor the grind window must collapse to ~1-2
+  # brain touches instead of one per cycle
+  defp life_feed(:concern_mini, 5, _ws) do
+    [fn ->
+       for _ <- 1..4 do
+         Nexus.Telemetry.record("invoice_mailer", %{at: 0, turns: 1, tokens: %{total: 5}, latency_ms: 40, tools: %{}, status: :error, error: "smtp timeout"})
+       end
+     end]
+  end
+
+  defp life_feed(:concern_mini, 18, _ws) do
+    [fn ->
+       for _ <- 1..12 do
+         Nexus.Telemetry.record("invoice_mailer", %{at: 0, turns: 1, tokens: %{total: 5}, latency_ms: 40, tools: %{}, status: :ok, error: nil})
+       end
+     end]
+  end
+
+  defp life_feed(:concern_mini, _, _ws), do: []
 
   # ── the production firing path: bus → hook → autopoet.cycle ─────────────────
   defp fire_cycle(n) do

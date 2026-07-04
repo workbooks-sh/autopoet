@@ -87,4 +87,44 @@ defmodule Autopoet.RehearsalEvalTest do
       assert s.cycles >= 90, "run stopped early at #{s.cycles} cycles — review the halt reason"
     end
   end
+
+  test "concern-policy validation: a standing concern gets ONE honest attempt, then silence" do
+    unless System.get_env("AUTOPOET_LIVE") == "1" and System.get_env("AUTOPOET_LIVE_CONCERN") == "1" do
+      IO.puts("  · concern-policy run skipped (set AUTOPOET_LIVE=1 AUTOPOET_LIVE_CONCERN=1)")
+      assert true
+    else
+      Application.put_env(:autopoet, :brain_live, true)
+      # cooldown longer than the whole mini-run: after the first attempt the
+      # concern must stay suppressed until recovery clears it
+      Application.put_env(:autopoet, :concern_cooldown_ms, 10 * 60 * 1000)
+
+      on_exit(fn ->
+        Application.put_env(:autopoet, :brain_live, false)
+        Application.delete_env(:autopoet, :concern_cooldown_ms)
+      end)
+
+      stamp = "rehearsal-concern-#{System.os_time(:second)}"
+      s = Autopoet.Eval.Rehearsal.run(stamp: stamp, cycles: 24, feed: :concern_mini, spend_cap: 1.0)
+
+      window = Enum.filter(s.rows, &(&1.n in 5..17))
+      touches = Enum.count(window, &(&1.sensed > 0))
+
+      IO.puts(
+        "  ✓ CONCERN POLICY — #{touches} brain touch(es) across a #{length(window)}-cycle standing concern · " <>
+          "~$#{Float.round(s.cost * 1.0, 4)} total (was ~\$1.15 for the unsuppressed window)"
+      )
+
+      Autopoet.Eval.History.record("rehearsal-concern", %{
+        window_cycles: length(window),
+        brain_touches: touches,
+        cost_usd: Float.round(s.cost * 1.0, 5)
+      })
+
+      assert touches <= 2, "concern policy failed: #{touches} grind cycles (want ≤2)"
+      assert s.vault_intact
+      # after recovery the concern stays gone
+      post = Enum.filter(s.rows, &(&1.n >= 19))
+      assert Enum.all?(post, &(&1.sensed == 0)), "concern re-sensed after recovery"
+    end
+  end
 end

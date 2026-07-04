@@ -279,7 +279,12 @@ defmodule Autopoet.Intake do
   defp ignite(%{agents: []}), do: :skip
 
   defp ignite(plan) do
-    if Autopoet.Providers.openrouter?() or Autopoet.Providers.mercury?() do
+    # :ignition (app env, default true) — eval harnesses set false: a live limb
+    # dispatched at intake is REAL agent work whose spend rides Nexus.Llm, not
+    # the harness's brain-wrapped cost meter (found live: the long rehearsal's
+    # intake ignited a shopkeeper limb outside the spend cap)
+    if Application.get_env(:autopoet, :ignition, true) and
+         (Autopoet.Providers.openrouter?() or Autopoet.Providers.mercury?()) do
       first = hd(plan.agents)
 
       Autopoet.Limbs.dispatch(

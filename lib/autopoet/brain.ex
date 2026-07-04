@@ -24,8 +24,11 @@ defmodule Autopoet.Brain do
       Nexus.Autopoet.Worker.run_once(
         requests: Autopoet.Requests.drain(),
         proposer: &propose/1,
-        notify: &notify/2
+        notify: &notify/2,
+        suppress: &suppress_concern?/1
       )
+
+    remember_handled(report)
 
     # Idle beats are silent (the self-node shows the heartbeat is armed) — only a
     # beat that actually sensed work is worth a log line.
@@ -80,6 +83,48 @@ defmodule Autopoet.Brain do
   def notify(item, reasons) do
     Autopoet.Log.puts("human-gated: #{item[:target]} — #{inspect(reasons)}")
   end
+
+  # ── the re-sense policy (the long rehearsal's $1.15 lesson) ─────────────────
+  # A standing concern re-senses every beat until telemetry decays. Policy:
+  #   1. work already IN FLIGHT (a pending proposal for the target) — the human
+  #      holds the pen; grinding more proposals is spam.
+  #   2. cooldown — this brain touched the target recently; one honest attempt,
+  #      then silence until :concern_cooldown_ms passes (default 30 min).
+  @cooldown_key {__MODULE__, :handled}
+
+  @doc false
+  def suppress_concern?(%{kind: :concern, target: target}) do
+    pending? =
+      Enum.any?(Autopoet.Proposals.pending(), fn {id, _} ->
+        Autopoet.Proposals.target_of(id) == target
+      end)
+
+    cooldown = Application.get_env(:autopoet, :concern_cooldown_ms, 30 * 60 * 1000)
+    last = Map.get(:persistent_term.get(@cooldown_key, %{}), target)
+    cooling? = last != nil and System.monotonic_time(:millisecond) - last < cooldown
+
+    if pending? or cooling? do
+      Autopoet.Log.puts("concern #{target} suppressed (#{if pending?, do: "proposal pending", else: "cooldown"})")
+      true
+    else
+      false
+    end
+  end
+
+  def suppress_concern?(_), do: false
+
+  defp remember_handled(%{results: results}) when is_list(results) do
+    now = System.monotonic_time(:millisecond)
+
+    handled =
+      for %{kind: :concern, target: t} <- results, into: :persistent_term.get(@cooldown_key, %{}) do
+        {t, now}
+      end
+
+    if handled != %{}, do: :persistent_term.put(@cooldown_key, handled)
+  end
+
+  defp remember_handled(_), do: :ok
 
   # Classify every file in the changeset against its CURRENT body source through the
   # real Gate (grant/ceiling/management). Any human-gated file gates the whole set —

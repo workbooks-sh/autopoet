@@ -29,6 +29,9 @@ defmodule Autopoet.Eval.LiveRunner do
 
     p = Personas.named(persona_name)
 
+    # metered surface ONLY: ignition limbs spend outside the brain wrap
+    Application.put_env(:autopoet, :ignition, false)
+
     # seed the persona world through the real intake (deterministic lane)
     Autopoet.Profile.clear()
     for {k, v} <- p.profile, do: :ok = Autopoet.Profile.put(k, v)
