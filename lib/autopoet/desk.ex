@@ -31,7 +31,12 @@ defmodule Autopoet.Desk do
   @watchlist ~w(AAPL MSFT SPY NVDA QQQ)
   @risk_cap 2_000.0
   @max_trades_day 8
-  @max_llm_day 30
+  # the desk must be BUSY (>60% of the op doing real work): a research cycle
+  # every 15min around the clock + trade cycles when open ≈ ~100-150 calls/day
+  @max_llm_day 150
+  @research_every 900
+  # the rotating research agenda — deeper research + refining methods/processes
+  @agenda ~w(deep_dive backtest refine_playbook postmortem refine_process)a
   # July = EDT. Hard offset (no tzdata dep); revisit before November (issues.log will flag).
   @et_offset -4
 
@@ -65,6 +70,9 @@ defmodule Autopoet.Desk do
       done: %{},
       last_market_cycle: 0,
       last_study: 0,
+      last_research: 0,
+      agenda_idx: 0,
+      work_cycles: 0,
       equity_open: nil,
       pnl_days: [],
       cycles: 0
@@ -73,7 +81,7 @@ defmodule Autopoet.Desk do
 
   @impl true
   def handle_call(:status, _from, s) do
-    {:reply, Map.take(s, [:day, :llm_calls, :trades, :done, :cycles, :equity_open, :pnl_days]), s}
+    {:reply, Map.take(s, [:day, :llm_calls, :trades, :done, :cycles, :equity_open, :pnl_days, :work_cycles, :agenda_idx]), s}
   end
 
   @impl true
@@ -107,29 +115,41 @@ defmodule Autopoet.Desk do
 
     case market_state() do
       :open ->
-        # trade cycle every 30 minutes while the market is open
-        if System.os_time(:second) - s.last_market_cycle >= 1_800,
-          do: trade_cycle(%{s | last_market_cycle: System.os_time(:second)}),
-          else: s
-
-      :closed_today ->
-        # weekend/holiday: study every 4h
-        if System.os_time(:second) - s.last_study >= 14_400,
-          do: study_cycle(%{s | last_study: System.os_time(:second)}),
-          else: s
-
-      :closed_now ->
+        # trade cycle every 30 minutes; research keeps running between them
         cond do
-          hour >= 7.0 and hour < 9.5 and not done?(s, :premarket) -> premarket(mark(s, :premarket))
-          hour >= 16.0 and hour < 17.5 and not done?(s, :review) -> review(mark(s, :review))
-          hour >= 21.0 and hour < 23.0 and not done?(s, :night) -> night_research(mark(s, :night))
-          true -> s
+          System.os_time(:second) - s.last_market_cycle >= 1_800 ->
+            trade_cycle(%{s | last_market_cycle: System.os_time(:second)})
+
+          research_due?(s) ->
+            research_cycle(touch_research(s))
+
+          true ->
+            s
+        end
+
+      state when state in [:closed_today, :closed_now] ->
+        cond do
+          hour >= 7.0 and hour < 9.5 and not done?(s, :premarket) and state == :closed_now ->
+            premarket(mark(s, :premarket))
+
+          hour >= 16.0 and hour < 17.5 and not done?(s, :review) and state == :closed_now ->
+            review(mark(s, :review))
+
+          # the engine: a research/refinement cycle every 15min, around the clock
+          research_due?(s) ->
+            research_cycle(touch_research(s))
+
+          true ->
+            s
         end
 
       :unknown ->
         s
     end
   end
+
+  defp research_due?(s), do: System.os_time(:second) - s.last_research >= @research_every
+  defp touch_research(s), do: %{s | last_research: System.os_time(:second)}
 
   # ── phases ──────────────────────────────────────────────────────────────────
 
@@ -175,22 +195,161 @@ defmodule Autopoet.Desk do
     end
   end
 
-  defp night_research(s) do
-    log("night research")
 
-    with {:ok, s, reply} <- think(s, :night, night_prompt(s)) do
-      append_body("fund/plan.work", "\n## Overnight notes #{s.day}\n\n" <> strip_actions(reply))
-      s
+  # ── the research engine: rotating agenda, one deep unit of work per cycle ───
+
+  defp research_cycle(s) do
+    task = Enum.at(@agenda, rem(s.agenda_idx, length(@agenda)))
+    s = %{s | agenda_idx: s.agenda_idx + 1}
+    log("research cycle: #{task} (#{s.work_cycles + 1} work cycles)")
+
+    {prompt, artifact} = research_task(task, s)
+
+    with {:ok, s, reply} <- think(s, task, prompt) do
+      append_body(artifact, "\n## #{task} #{s.day} ##{s.work_cycles + 1}\n\n" <> strip_actions(reply))
+      %{s | work_cycles: s.work_cycles + 1}
     end
   end
 
-  defp study_cycle(s) do
-    log("closed-day study")
+  defp research_task(:deep_dive, s) do
+    sym = Enum.at(@watchlist, rem(s.agenda_idx, length(@watchlist)))
 
-    with {:ok, s, reply} <- think(s, :study, study_prompt(s)) do
-      append_body("fund/journal.work", "\n## Study #{s.day}\n\n" <> strip_actions(reply))
-      s
+    {"""
+     You are the autopoet trading desk — DEEP DIVE on #{sym}. Computed stats:
+     #{stats_text(sym)}
+     Your current playbook:
+     #{read_body("fund/playbook.work")}
+
+     Produce a structural read: trend state, key levels, volatility regime, how
+     THIS name fits the playbook's setups, and one falsifiable observation to
+     verify next session. Plain prose, specific numbers.
+     """, "fund/research.work"}
+  end
+
+  defp research_task(:backtest, s) do
+    sym = Enum.at(@watchlist, rem(s.agenda_idx + 2, length(@watchlist)))
+
+    {"""
+     You are the autopoet trading desk — BACKTEST REVIEW on #{sym}. Computed
+     performance of the mechanical rules over the last 60 bars:
+     #{backtest_text(sym)}
+     Your playbook:
+     #{read_body("fund/playbook.work")}
+
+     Judge each rule honestly against these numbers: keep, modify (how,
+     exactly), or drop. End with the single highest-value refinement.
+     """, "fund/research.work"}
+  end
+
+  defp research_task(:refine_playbook, _s) do
+    {"""
+     You are the autopoet trading desk — PLAYBOOK REFINEMENT. Current playbook:
+     #{read_body("fund/playbook.work")}
+     Recent research notes:
+     #{read_body("fund/research.work")}
+     Recent journal:
+     #{read_body("fund/journal.work")}
+
+     Rewrite the playbook COMPLETE: setups you trade (entry/exit/stop, sized
+     under $#{@risk_cap}/order), setups you skip, and what you changed since the
+     last version + why. This replaces the old playbook — be complete.
+     """, "fund/playbook.work"}
+  end
+
+  defp research_task(:postmortem, s) do
+    {"""
+     You are the autopoet trading desk — POSTMORTEM #{s.day}. Trades today: #{s.trades}. Day P&L history: #{inspect(s.pnl_days)}.
+     Positions:
+     #{positions_text()}
+     Journal:
+     #{read_body("fund/journal.work")}
+
+     Honest postmortem: decisions vs outcomes, process errors (not price luck),
+     one concrete rule change. Plain prose.
+     """, "fund/journal.work"}
+  end
+
+  defp research_task(:refine_process, s) do
+    {"""
+     You are the autopoet trading desk — PROCESS REVIEW. Your operating process:
+     #{read_body("fund/process.work")}
+     Your day so far: #{s.llm_calls} research/trade calls, #{s.trades} trades, work cycles #{s.work_cycles}.
+
+     Refine the desk's own PROCESS (not the trades): research rotation, what to
+     check before entries, journal discipline, information you keep missing.
+     Rewrite the process doc COMPLETE — this replaces it.
+     """, "fund/process.work"}
+  end
+
+  # ── native-computed stats (the brain reasons over numbers we compute) ───────
+
+  defp stats_text(sym) do
+    case Autopoet.Alpaca.bars(sym, limit: 60) do
+      {:ok, %{"bars" => bars}} when is_list(bars) and length(bars) >= 20 ->
+        closes = Enum.map(bars, & &1["c"])
+        vols = Enum.map(bars, & &1["v"])
+        last = List.last(closes)
+        ma5 = mean(Enum.take(closes, -5))
+        ma20 = mean(Enum.take(closes, -20))
+        mom10 = Float.round((last / Enum.at(closes, -min(11, length(closes))) - 1) * 100, 2)
+        rets = returns(closes)
+        vol = Float.round(stdev(rets) * :math.sqrt(252) * 100, 1)
+        hi = Enum.max(Enum.take(closes, -20))
+        lo = Enum.min(Enum.take(closes, -20))
+
+        "- last #{last} | MA5 #{Float.round(ma5, 2)} | MA20 #{Float.round(ma20, 2)} (#{if ma5 > ma20, do: "5>20 up", else: "5<20 down"})\n" <>
+          "- 10d momentum #{mom10}% | ann.vol #{vol}% | 20d range #{lo}-#{hi}\n" <>
+          "- avg vol #{trunc(mean(Enum.take(vols, -20)))} | last vol #{List.last(vols)}"
+
+      _ ->
+        "- no data"
     end
+  end
+
+  defp backtest_text(sym) do
+    case Autopoet.Alpaca.bars(sym, limit: 60) do
+      {:ok, %{"bars" => bars}} when is_list(bars) and length(bars) >= 25 ->
+        closes = Enum.map(bars, & &1["c"])
+
+        # rule A: hold while MA5 > MA20 (recomputed each bar)
+        a = rule_returns(closes, fn window -> mean(Enum.take(window, -5)) > mean(Enum.take(window, -20)) end)
+        # rule B: hold after an up day
+        b = rule_returns(closes, fn window -> length(window) >= 2 and List.last(window) > Enum.at(window, -2) end)
+        bh = Float.round((List.last(closes) / hd(closes) - 1) * 100, 2)
+
+        "- buy&hold 60 bars: #{bh}%\n- rule MA5>MA20 in-market return: #{a}%\n- rule prev-day-up in-market return: #{b}%"
+
+      _ ->
+        "- no data"
+    end
+  end
+
+  defp rule_returns(closes, in_market?) do
+    {total, _} =
+      closes
+      |> Enum.with_index()
+      |> Enum.reduce({0.0, nil}, fn {c, i}, {acc, prev} ->
+        window = Enum.take(closes, i + 1)
+        held = i >= 20 and in_market?.(Enum.take(closes, i))
+        ret = if held and is_number(prev) and prev > 0, do: c / prev - 1, else: 0.0
+        {acc + ret, c}
+      end)
+
+    Float.round(total * 100, 2)
+  end
+
+  defp returns([_ | _] = closes) do
+    closes |> Enum.chunk_every(2, 1, :discard) |> Enum.map(fn [a, b] -> b / a - 1 end)
+  end
+
+  defp mean([]), do: 0.0
+  defp mean(xs), do: Enum.sum(xs) / length(xs)
+
+  defp stdev([]), do: 0.0
+
+  defp stdev(xs) do
+    m = mean(xs)
+    :math.sqrt(Enum.sum(Enum.map(xs, fn x -> (x - m) * (x - m) end)) / max(length(xs), 1))
   end
 
   # ── the brain call (budgeted) ───────────────────────────────────────────────
@@ -365,27 +524,6 @@ defmodule Autopoet.Desk do
     """
   end
 
-  defp night_prompt(s) do
-    """
-    You are the autopoet trading desk, NIGHT RESEARCH #{s.day}.
-    Bars:
-    #{bars_text()}
-
-    Deep read for tomorrow: which watchlist names have the cleanest structure,
-    key levels, what regime shift would change the plan. Plain prose.
-    """
-  end
-
-  defp study_prompt(s) do
-    """
-    You are the autopoet trading desk, MARKET CLOSED (weekend/holiday) #{s.day}.
-    Bars:
-    #{bars_text()}
-
-    Study session: review the week's structure on the watchlist, refine the
-    playbook (setups you'll trade, ones you'll skip). Plain prose.
-    """
-  end
 
   # ── plumbing ────────────────────────────────────────────────────────────────
 
@@ -408,7 +546,7 @@ defmodule Autopoet.Desk do
   defp heartbeat(s) do
     File.write!(
       Path.join(@artifacts, "state.txt"),
-      "ts: #{System.os_time(:second)}\nday: #{s.day}\ncycles: #{s.cycles}\nllm_calls: #{s.llm_calls}\ntrades: #{s.trades}\ndone: #{inspect(Map.keys(s.done) |> Enum.filter(&Map.get(s.done, &1)))}\npnl_days: #{inspect(s.pnl_days)}\n"
+      "ts: #{System.os_time(:second)}\nday: #{s.day}\ncycles: #{s.cycles}\nllm_calls: #{s.llm_calls}\ntrades: #{s.trades}\nwork_cycles: #{s.work_cycles}\nagenda_idx: #{s.agenda_idx}\ndone: #{inspect(Map.keys(s.done) |> Enum.filter(&Map.get(s.done, &1)))}\npnl_days: #{inspect(s.pnl_days)}\n"
     )
 
     File.write!(Path.join(@artifacts, "uptime.log"), "#{System.os_time(:second)}\n", [:append])
