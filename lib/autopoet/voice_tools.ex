@@ -28,7 +28,14 @@ defmodule Autopoet.VoiceTools do
         {"read-only shell — allowed commands: #{Enum.join(@read_only, ", ")}", false}
 
       true ->
-        Nexus.Shell.run(line, world_dir(), timeout_ms: 10_000, max_output: 256 * 1024)
+        # models/ (STT weights, 1.3GB) + moonshine-venv/ (490MB) live under data/ but are NOT part
+        # of the agent's readable world — loading them into the shell vfs halted the VM (wb-p28l9).
+        Nexus.Shell.run(line, world_dir(),
+          timeout_ms: 10_000,
+          max_output: 256 * 1024,
+          exclude: ["models/", "moonshine-venv/"],
+          max_file_bytes: 4 * 1024 * 1024
+        )
     end
   end
 

@@ -217,7 +217,13 @@ defmodule Autopoet.Eval.Fund do
           {:ok, %{"status" => "ACTIVE", "cash" => to_string(state.cash), "equity" => to_string(equity(state))}}
 
         String.contains?(url, "/stocks/") ->
-          [_, sym] = Regex.run(~r{/stocks/([A-Z.]+)/}, url)
+          # tolerant: brains emit lowercase / odd symbols — no crash, just no bars
+          sym =
+            case Regex.run(~r{/stocks/([^/]+)/}, url) do
+              [_, s] -> String.upcase(String.trim(s))
+              _ -> ""
+            end
+
           bars = state.tape |> Map.get(sym, []) |> visible(state.tick)
           {:ok, %{"bars" => bars}}
 
@@ -257,13 +263,20 @@ defmodule Autopoet.Eval.Fund do
     """
   end
 
-  defp prospectus_prompt(_state) do
+  defp prospectus_prompt(state) do
     """
     PHASE: prospectus
 
     Write the fund's prospectus as a `.work` file. It MUST contain the sections
     `## Thesis`, `## Universe` (one symbol per `- ` line), `## Risk` (per-order
-    cap + max positions), `## Entry / Exit` (the rules). Emit ONE block:
+    cap + max positions), `## Entry / Exit` (the rules).
+
+    CONSTRAINTS: the Universe MUST be a subset of the symbols you have data
+    for — #{inspect(Map.keys(state.tape))} — anything else is untradeable this
+    session. Per-order notional cap is $#{state.risk_cap}; write rules you can
+    execute under it.
+
+    Emit ONE block:
 
     === file: fund/prospectus.work ===
     <content>
@@ -280,6 +293,8 @@ defmodule Autopoet.Eval.Fund do
     Universe: #{inspect(prospectus[:universe])}
     Open positions: #{positions}
     Cash: #{state.cash}
+    HARD LIMIT: per-order notional cap $#{state.risk_cap} — size every order (qty × price) UNDER it or it will be refused.
+    Symbols with data available: #{inspect(Map.keys(state.tape))} — only these are tradeable this session.
 
     Re-read the latest bars for your universe if needed, then EITHER propose
     orders via `=== action: alpaca_place_order ===` blocks (fields: symbol, qty,

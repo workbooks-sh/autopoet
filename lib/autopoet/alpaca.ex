@@ -38,11 +38,19 @@ defmodule Autopoet.Alpaca do
   @doc "Market clock — is the market open right now?"
   def clock(opts \\ []), do: get("/clock", opts)
 
-  @doc "Recent bars (OHLCV) for `symbol` — the market DATA the decision rests on. `opts[:timeframe]` (default 1Day), `opts[:limit]`."
+  @doc """
+  Recent bars (OHLCV) for `symbol` — the market DATA the decision rests on.
+  `opts[:timeframe]` (default 1Day), `opts[:limit]`. Defaults `feed=iex` + a
+  90-day `start`: the free data tier returns `bars: null` without them (live
+  fund-eval finding — recent SIP data is restricted, the bare call comes back
+  empty).
+  """
   def bars(symbol, opts \\ []) do
     tf = Keyword.get(opts, :timeframe, "1Day")
     limit = Keyword.get(opts, :limit, 30)
-    get("/stocks/#{symbol}/bars?timeframe=#{tf}&limit=#{limit}", Keyword.put(opts, :base, @data))
+    feed = Keyword.get(opts, :feed, "iex")
+    start = Keyword.get(opts, :start, Date.to_iso8601(Date.add(Date.utc_today(), -90)))
+    get("/stocks/#{symbol}/bars?timeframe=#{tf}&limit=#{limit}&feed=#{feed}&start=#{start}", Keyword.put(opts, :base, @data))
   end
 
   # ── the risk-bounded order (the cage applies to trading too) ────────────────
