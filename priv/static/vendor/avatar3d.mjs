@@ -176,8 +176,11 @@ export function mount(container, cubeEl) {
 
     // face overlay glue: shift the DOM face toward the front plane's projection
     if (faceEl) {
+      // front plane (0,0,h) under rotation.x = -rx: y' = -h*sin(-rx*D) → the
+      // CSS offset (y-down) is -h*sin(rx*D). The +sin version moved the face
+      // AGAINST the body's pitch — the inverted vertical parallax.
       const fx = Math.sin(ry * D) * (SIZE / 2);
-      const fy = Math.sin(rx * D) * (SIZE / 2);
+      const fy = -Math.sin(rx * D) * (SIZE / 2);
       faceEl.style.transform = `translate(${fx.toFixed(1)}px, ${fy.toFixed(1)}px)`;
     }
 

@@ -145,6 +145,7 @@
     grin: '<path d="M30.5 44.5 Q40 56.5 49.5 44.5 Q40 48.5 30.5 44.5 Z" fill="#121316" stroke="#121316" stroke-width="1.6" stroke-linejoin="round"/>',
     smirk: '<path d="M33.5 48.5 Q41 52 47.5 45.5" stroke="#121316" stroke-width="2" stroke-linecap="round" fill="none"/>',
     surprised: '<ellipse cx="40" cy="48" rx="3.2" ry="4" stroke="#121316" stroke-width="2" fill="none"/>',
+    grim: '<path d="M34 49.5 Q40 46 46 49.5" stroke="#121316" stroke-width="2" stroke-linecap="round" fill="none"/>',
     hopeful: '<path d="M35.7 42.4c-1.18 1.26-2.17 2.74-2.36 4.5a4.4 4.4 0 0 0 1.78 4.02c1.26.9 2.88.8 4.07-.13a5.5 5.5 0 0 0 1.87-3.88c.1-.97-1.46-1.38-1.86-.5-.75 1.63.16 3.26 1.34 4.42a3.9 3.9 0 0 0 4.13.98 4.6 4.6 0 0 0 2.93-3.14 6.6 6.6 0 0 0-.82-4.87c-.64-1.11-2.37-.11-1.73 1 .92 1.6 1.18 4-.7 5.02-.7.35-1.5.36-2.12-.12-.49-.39-1.63-1.55-1.3-2.26l-1.86-.5c-.14 1.34-1.44 3.63-2.97 2.23-1.74-1.59-.22-4 1.03-5.33.88-.94-.53-2.36-1.4-1.4z" fill="#121316"/>'
   };
   var VISEMES = {
@@ -162,7 +163,8 @@
     none: '',
     raised: '<path d="M28.5 30.5 Q31 28.2 33.5 30.5 M46.5 30.5 Q49 28.2 51.5 30.5" stroke="#121316" stroke-width="2" stroke-linecap="round" fill="none"/>',
     worried: '<path d="M28.5 31.8 L33.5 29.2 M46.5 29.2 L51.5 31.8" stroke="#121316" stroke-width="2" stroke-linecap="round" fill="none"/>',
-    skeptical: '<path d="M28 29.5 Q31 27.3 34 29.5 M46.5 31.5 h5" stroke="#121316" stroke-width="2" stroke-linecap="round" fill="none"/>'
+    skeptical: '<path d="M28 29.5 Q31 27.3 34 29.5 M46.5 31.5 h5" stroke="#121316" stroke-width="2" stroke-linecap="round" fill="none"/>',
+    angry: '<path d="M28.5 28.8 L33.5 31.4 M46.5 31.4 L51.5 28.8" stroke="#121316" stroke-width="2" stroke-linecap="round" fill="none"/>'
   };
   // Hand poses render with a STAMP-UNION outline: the pose's shapes are
   // defined once (no strokes), stamped 8 times in ink at 1.6px offsets, then
@@ -590,30 +592,162 @@
     drawerLog.scrollTop = drawerLog.scrollHeight;
   }
 
-  // ────────────────────────── listener: react to YOUR words ──────────────────────────
+  // ────────────────────────── the DEEP listener ──────────────────────────
+  // The demo's full engine, wired to the LIVE moonshine stream: lexicon with
+  // negation + boosters, punctuation/caps energy, WHO-feels-it attribution
+  // (you vs someone else vs aimed-at-you), humor and question routing, and
+  // OCC-style arcs (hope→satisfaction/disappointment, fear→relief/confirmed)
+  // tracked across the conversation. Partials get face/brows/tilt instantly
+  // (one big gesture max per utterance); the final pass adds full gestures
+  // and advances the arc state.
   var LEX = {
-    joy: "happy joy love great wonderful amazing win won awesome excited glad proud beautiful perfect nice cool thanks thank",
-    sad: "sad lost lonely hurt broke broken fail failed sorry tired hard stuck confused",
-    anger: "angry mad annoyed unfair hate stupid wrong bug crash error frustrated",
-    fear: "worried scared afraid nervous anxious risk dangerous unsure",
-    surprise: "wow whoa really surprised unexpected huh what"
+    joy: "happy joy love loved great wonderful amazing win won laugh smile delight awesome fun celebrate sunshine friend friends beautiful sweet excited exciting glad proud peace calm cozy warm yay best perfect brilliant hooray relief relieved promoted promotion married engaged safe healed passed thanks thank cool nice",
+    sad: "sad cry cried crying tears lost loss lonely alone miss missed grief gloomy blue down hurt broke broken fail failed sorrow mourning empty dark goodbye died death dying sorry heartbroken quit tired stuck",
+    anger: "angry mad furious rage hate hated annoyed irritated unfair betrayed stupid damn fight fought yell yelled scream screamed slammed revenge outraged insulted cruel fired stole cheated lied wrong bug crash error frustrated",
+    fear: "afraid fear scared terrified panic worry worried anxious nervous dread horror creepy danger dangerous threat shaking trembling alarm alarmed risk unsure",
+    surprise: "surprised surprise sudden suddenly unexpected shock shocked wow whoa gasp gasped unbelievable astonished stunned nowhere really",
+    disgust: "disgust disgusting gross nasty yuck rotten filthy vile revolting foul slimy"
   };
   var W2E = {};
   Object.keys(LEX).forEach(function (e) { LEX[e].split(" ").forEach(function (w) { W2E[w] = e; }); });
-  var LISTEN_FACE = {
-    joy: ["smirk", "raised"], sad: ["neutral", "worried"], anger: ["neutral", "worried"],
-    fear: ["neutral", "worried"], surprise: ["surprised", "raised"], none: ["neutral", "raised"]
+  var NEGATORS = { not: 1, no: 1, never: 1, dont: 1, isnt: 1, wasnt: 1, wont: 1, cant: 1, didnt: 1, nobody: 1 };
+  var BOOSTERS = { very: 1, so: 1, really: 1, extremely: 1, incredibly: 1, totally: 1, absolutely: 1, deeply: 1 };
+  var FLIP = { joy: "sad", sad: "joy", anger: "joy", fear: "joy", surprise: "surprise", disgust: "joy" };
+  var HUMOR = /\b(haha+|lol|lmao|rofl|hilarious|funny|joke|joking|kidding)\b/i;
+  var THIRD = /(^|\W)(he|she|they|him|her|them|boss|coworker|neighbor|teacher|doctor|mom|dad|brother|sister|friend|guy|woman|man|dog|cat|everyone|someone)(\W|$)/i;
+  var SELF_FEEL = /(^|\W)(i|im|we|my|me|mine|our)(\W|$)|(^|\W)i'?m(\W|$)/i;
+  var AT_ME = /\b(at me|to me|on me|about me|against me|my fault)\b/i;
+  var HOPE_CUE = /\b(hope|hopes|hoping|hopefully|fingers crossed|cant wait|can'?t wait|looking forward|excited (for|about))\b/i;
+
+  function scoreText(text) {
+    var scores = { joy: 0, sad: 0, anger: 0, fear: 0, surprise: 0, disgust: 0 };
+    var energy = 1;
+    if (/!/.test(text)) energy += 0.5;
+    if (/!!+|\?!/.test(text)) energy += 0.5;
+    if (/\b[A-Z]{3,}\b/.test(text)) energy += 0.5;
+    // contrast: the clause after a but/however is the one that counts
+    var clauses = text.split(/\b(?:but|however|though|yet)\b/i);
+    clauses.forEach(function (clause, ci) {
+      var w = (ci === clauses.length - 1 && clauses.length > 1) ? 2 : 1;
+      var toks = clause.toLowerCase().replace(/'/g, "").match(/[a-z]+/g) || [];
+      var boost = 1, negate = false;
+      toks.forEach(function (t) {
+        if (BOOSTERS[t]) { boost = 2; return; }
+        if (NEGATORS[t]) { negate = true; return; }
+        var emo = W2E[t];
+        if (emo) scores[negate ? FLIP[emo] : emo] += w * boost * energy;
+        boost = 1; negate = false;
+      });
+    });
+    return scores;
+  }
+  function domOf(scores) {
+    return Object.keys(scores).filter(function (e) { return scores[e] > 0; })
+      .sort(function (a, b) { return scores[b] - scores[a]; });
+  }
+
+  // gesture vocabulary on the body vars (the 3D rig reads these)
+  function bigNod() { gesture("--nod", [9, -3, 7, -2, 0], 140); }
+  function tinyNod() { gesture("--nod", [3, 0], 150); }
+  function recoil() { gesture("--nod", [-8, 2, -5, 0], 130); }
+  function sigh() { gesture("--nod", [5, 8, 4, 0], 260); }
+  function shakeZ() { gesture("--rz", [-5, 4, -3, 0], 120); }
+  var tiltTimer = null;
+  function tiltZ(deg, ms) {
+    if (!cube) return;
+    cube.style.setProperty("--rz", deg + "deg");
+    clearTimeout(tiltTimer);
+    tiltTimer = later(setTimeout(function () { if (cube) cube.style.setProperty("--rz", "0deg"); }, ms || 1600));
+  }
+
+  // listener responses mapped onto the avatar's real controls
+  var RESPONSES = {
+    "share-joy":      function (s) { return { mouth: s >= 4 ? "grin" : "smirk", brows: "raised", g: s >= 5 ? bigNod : nod }; },
+    "happy-for":      function ()  { return { mouth: "smirk", brows: "raised", g: nod }; },
+    "relief":         function ()  { return { mouth: "happy", brows: "raised", g: bigNod }; },
+    "satisfaction":   function ()  { return { mouth: "grin", brows: "raised", g: bigNod }; },
+    "disappointment": function ()  { return { mouth: "neutral", brows: "worried", tilt: -5, g: sigh }; },
+    "fears-confirmed":function ()  { return { mouth: "neutral", brows: "worried", tilt: -4, g: shakeZ }; },
+    "downturn":       function ()  { return { mouth: "neutral", brows: "worried", tilt: -4, g: sigh }; },
+    "hope":           function ()  { return { mouth: "smirk", brows: "raised", g: tinyNod }; },
+    "sympathy":       function ()  { return { mouth: "neutral", brows: "worried", tilt: -6 }; },
+    "sympathy-them":  function ()  { return { mouth: "neutral", brows: "worried", tilt: -4 }; },
+    "concern":        function (s) { return { mouth: s >= 3 ? "surprised" : "neutral", brows: "worried" }; },
+    "indignant":      function ()  { return { mouth: "grim", brows: "angry", g: shakeZ }; },
+    "lean-in":        function (s) { return { mouth: s >= 3 ? "surprised" : "neutral", brows: "worried", tilt: 5 }; },
+    "mirror-shock":   function (s) { return { mouth: "surprised", brows: "raised", g: s >= 4 ? recoil : nod }; },
+    "grossed":        function ()  { return { mouth: "grim", brows: "skeptical", tilt: -5, g: shakeZ }; },
+    "laugh":          function ()  { return { mouth: "grin", brows: "raised", g: nod }; },
+    "nervous-laugh":  function ()  { return { mouth: "grin", brows: "worried", tilt: 3 }; },
+    "curious":        function ()  { return { mouth: "smirk", brows: "skeptical", tilt: 7, g: tinyNod }; },
+    "rhet-sympathy":  function ()  { return { mouth: "neutral", brows: "worried", tilt: -6 }; },
+    "attentive":      function ()  { return { mouth: "neutral", brows: "raised" }; }
   };
+  var KIND_FOR = { joy: "share-joy", sad: "sympathy", anger: "concern", fear: "lean-in", surprise: "mirror-shock", disgust: "grossed" };
+  var BIG_GESTURES = { "mirror-shock": 1, "indignant": 1, "laugh": 1, "relief": 1, "grossed": 1 };
+
+  var prospect = { type: null, ttl: 0 };   // hope/fear in the air, across turns
+  var utterGestured = false;               // one big gesture max per utterance
+
+  function routeListener(text, isFinal) {
+    var scores = scoreText(text);
+    var ranked = domOf(scores);
+    var dom = ranked[0], sec = ranked[1];
+    var strength = dom ? Math.round(scores[dom]) : 0;
+
+    var isQuestion = /\?\s*$/.test(text.trim());
+    var isPast = false;
+    try { if (window.nlp) isPast = nlp(text).match("#PastTense").found; } catch (e) {}
+    if (!window.nlp) isPast = /\b(\w{3,}ed|lost|died|broke|got|went|was|were|had|fell|left)\b/i.test(text);
+    if (isPast && dom && dom !== "joy") strength = Math.max(1, strength - 1);
+
+    var hadHope = prospect.type === "hope" && prospect.ttl > 0;
+    var hadFear = prospect.type === "fear" && prospect.ttl > 0;
+    var negs = { sad: 1, anger: 1, disgust: 1 };
+
+    var kind;
+    if (dom === "joy" && (hadFear || hadHope)) kind = hadHope ? "satisfaction" : "relief";
+    else if (dom && negs[dom] && hadHope) kind = "disappointment";
+    else if (dom && negs[dom] && hadFear && isPast) kind = "fears-confirmed";
+    else if (HUMOR.test(text)) kind = (dom && dom !== "joy" && dom !== "surprise") ? "nervous-laugh" : "laugh";
+    else if (isQuestion) {
+      kind = (/\b(why me|why does this|what did i do|how could)\b/i.test(text) ||
+              (dom && (dom === "sad" || dom === "fear"))) ? "rhet-sympathy" : "curious";
+    }
+    else if (HOPE_CUE.test(text) && (!dom || dom === "joy")) kind = "hope";
+    else if (!dom) kind = "attentive";
+    else {
+      var other = THIRD.test(text), self = SELF_FEEL.test(text), atMe = AT_ME.test(text);
+      if (dom === "anger")     kind = (atMe || (other && !self)) ? "indignant" : "concern";
+      else if (dom === "sad")  kind = (other && !self) ? "sympathy-them" : "sympathy";
+      else if (dom === "joy")  kind = "share-joy";
+      else kind = KIND_FOR[dom];
+    }
+
+    if (isFinal) {           // arcs advance only on the settled utterance
+      var resolved = { satisfaction: 1, relief: 1, disappointment: 1, "fears-confirmed": 1 };
+      if (resolved[kind]) prospect = { type: null, ttl: 0 };   // the arc landed — consume it
+      else if (HOPE_CUE.test(text)) prospect = { type: "hope", ttl: 3 };
+      else if (dom === "fear") prospect = { type: "fear", ttl: 3 };
+      else if (prospect.ttl > 0) prospect.ttl--;
+      else prospect.type = null;
+    }
+    return { kind: kind, strength: strength };
+  }
+
   function reactToUser(text, partial) {
-    var sc = { joy: 0, sad: 0, anger: 0, fear: 0, surprise: 0 };
-    (text.toLowerCase().match(/[a-z]+/g) || []).forEach(function (w) { if (W2E[w]) sc[W2E[w]]++; });
-    var dom = null, n = 0;
-    Object.keys(sc).forEach(function (e) { if (sc[e] > n) { n = sc[e]; dom = e; } });
-    var f = LISTEN_FACE[dom || "none"];
-    mood = f[0]; setMouth(f[0]); setBrows(f[1]);
-    if (partial) return;                       // live reactions: face only, no gesture spam
-    if (dom === "surprise") gesture("--nod", [-6, 2, -4, 0], 130);
-    else nod();
+    var r = routeListener(text, !partial);
+    var spec = (RESPONSES[r.kind] || RESPONSES.attentive)(r.strength);
+    mood = spec.mouth;
+    setMouth(spec.mouth);
+    setBrows(spec.brows);
+    if (spec.tilt) tiltZ(spec.tilt, partial ? 1200 : 1800);
+    if (spec.g) {
+      // partials: only ONE big gesture per utterance (no twitching); the
+      // final utterance always lands its gesture
+      if (!partial) spec.g();
+      else if (BIG_GESTURES[r.kind] && !utterGestured) { utterGestured = true; spec.g(); }
+    }
   }
 
   // ────────────────────────── stage movement ──────────────────────────
@@ -933,6 +1067,7 @@
       if (!window.ort) await loadScript("/static/vendor/ort.wasm.min.js");
       if (window.ort) ort.env.wasm.wasmPaths = "/static/vendor/";
       if (!window.vad) await loadScript("/static/vendor/bundle.min.js");
+      if (!window.nlp) await loadScript("/static/vendor/compromise.min.js");   // deep listener NLP
     })();
     return depsReady;
   }
@@ -975,12 +1110,17 @@
           setBrows("raised");
           captionShow("you", "…");
           speechFrames = []; lastPartial = ""; collecting = true;
-          clearInterval(partialTimer);
-          partialTimer = later(setInterval(partialTick, 700));
+          utterGestured = false;                       // one big gesture per utterance
+          clearInterval(partialTimer); clearTimeout(partialTimer);
+          // first partial lands ~350ms in (feels immediate), then 500ms cadence
+          partialTimer = later(setTimeout(function () {
+            partialTick();
+            partialTimer = later(setInterval(partialTick, 500));
+          }, 350));
         },
         onSpeechEnd: async function (audio) {
           collecting = false;
-          clearInterval(partialTimer);
+          clearInterval(partialTimer); clearTimeout(partialTimer);
           if (!mounted) return;
           if (lastPartial) captionShow("you", lastPartial);
           else captionShow("dim", "transcribing…");
