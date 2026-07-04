@@ -84,7 +84,7 @@ defmodule Autopoet.Chatterbox do
   def handle_call({:speak, text, knobs}, from, state) do
     suffix =
       knobs
-      |> Map.take(["t", "p", "k", "r", "m"])
+      |> Map.take(["t", "p", "k", "r", "m", "s"])
       |> Enum.map_join(" ", fn {k, v} -> "#{k}=#{v}" end)
 
     Port.command(state.port, String.trim("SPEAK #{Base.encode64(text)} #{suffix}") <> "\n")

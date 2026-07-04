@@ -37,10 +37,12 @@
 </head>
 <body>
 <h1>voice lab</h1>
-<div class="sub">chatterbox-turbo · tune each mood's style tag + sampler, hear it, save. saved presets drive the live avatar per mood.</div>
+<div class="sub">chatterbox-turbo · tune each mood's style tag + sampler, hear it, save. saved presets drive the live avatar per mood.<br>
+tips: put nonverbal tags MID-sentence ("the plan [chuckle] coming together"), not at the front · keep the seed fixed while comparing — same seed = same take, your change is the only variable · style tags ([happy]…) are subtler than nonverbals.</div>
 
 <div id="bar">
-  <input id="line" value="Well, look at this plan coming together. Shall we walk through it step by step?" spellcheck="false">
+  <input id="line" value="Well, look at this plan [chuckle] coming together nicely. Shall we walk through it?" spellcheck="false">
+  <input id="seed" type="number" value="42" min="0" max="99999" title="seed — same seed = same take, so the tag/dial you changed is the ONLY difference. 0 = random" style="width:90px; font:12px ui-monospace,monospace; padding:9px 10px; border:1.6px solid #121316; border-radius:999px;">
   <button class="primary" id="saveall">save presets → live avatar</button>
   <span id="status"></span>
 </div>
@@ -122,7 +124,8 @@ moodsEl.addEventListener("click", async e => {
   e.target.textContent = "…";
   setStatus(`synthesizing ${m} (chatterbox, ~5s)…`);
   try {
-    const q = `engine=chatterbox&temp=${s.t}&top_p=${s.p}&top_k=${s.k}&rep=${s.r}&min_p=${s.m}`;
+    const seed = parseInt(document.getElementById("seed").value || "0", 10);
+    const q = `engine=chatterbox&temp=${s.t}&top_p=${s.p}&top_k=${s.k}&rep=${s.r}&min_p=${s.m}&seed=${seed}`;
     const r = await fetch(`/voice/tts?${q}`, { method: "POST",
       headers: { authorization: "Bearer " + TOKEN, "content-type": "text/plain" }, body: text });
     if (!r.ok) throw new Error(await r.text());

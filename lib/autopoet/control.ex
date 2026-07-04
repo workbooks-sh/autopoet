@@ -801,7 +801,8 @@ defmodule Autopoet.Control do
                 "p" => conn.query_params["top_p"],
                 "k" => conn.query_params["top_k"],
                 "r" => conn.query_params["rep"],
-                "m" => conn.query_params["min_p"]
+                "m" => conn.query_params["min_p"],
+                "s" => conn.query_params["seed"]
               }
               |> Enum.reject(fn {_, v} -> v in [nil, ""] end)
               |> Map.new()

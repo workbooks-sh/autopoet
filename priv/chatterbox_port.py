@@ -30,7 +30,7 @@ MAX_TOKENS = 600
 # the reference implementation SAMPLES (greedy flattens paralinguistic tags
 # like [chuckle] into nothing). Defaults mirror the HF demo; every knob is
 # overridable per request: SPEAK <b64> t=0.8 p=0.95 k=1000 r=1.2 m=0
-DEFAULTS = {"t": 0.8, "p": 0.95, "k": 1000, "r": 1.2, "m": 0.0}
+DEFAULTS = {"t": 0.8, "p": 0.95, "k": 1000, "r": 1.2, "m": 0.0, "s": 0.0}
 rng = np.random.default_rng()
 
 onnxruntime.set_default_logger_severity(3)
@@ -40,9 +40,22 @@ opts.log_severity_level = 3
 def sess(name):
     return onnxruntime.InferenceSession(os.path.join(MODELS, "onnx", name), opts)
 
-cond_dec = sess("conditional_decoder.onnx")
-embed = sess("embed_tokens_quantized.onnx")
-lm = sess("language_model_q4.onnx")
+def pick(name, preferred):
+    for suffix in preferred:
+        f = f"{name}{suffix}.onnx"
+        if os.path.exists(os.path.join(MODELS, "onnx", f)):
+            return f
+    raise FileNotFoundError(name)
+
+# Measured on this machine (seed-controlled A/B): tags render fine on the q4
+# LM when embeddings are fp32, and q4's int4 kernels are ~5x faster than q8
+# (20s vs 2-6s per sentence). Default: q4 LM + fp32 embed + fp32 decoder.
+# Override with CHATTERBOX_LM=q4|q8|fp32 for experiments.
+_lm_pref = {"q4": ["_q4"], "q8": ["_quantized"], "fp32": [""]}.get(
+    os.environ.get("CHATTERBOX_LM", ""), ["_q4", "_quantized", ""])
+cond_dec = sess(pick("conditional_decoder", ["", "_quantized"]))
+embed = sess(pick("embed_tokens", ["", "_quantized"]))
+lm = sess(pick("language_model", _lm_pref))
 
 from tokenizers import Tokenizer
 tok = Tokenizer.from_file(os.path.join(MODELS, "tokenizer.json"))
@@ -73,6 +86,9 @@ kv_names = [i.name for i in lm.get_inputs() if "past_key_values" in i.name]
 
 
 def synth(text, knobs):
+    global rng
+    if knobs.get("s", 0) > 0:
+        rng = np.random.default_rng(int(knobs["s"]))   # deterministic A/B
     temperature = max(0.05, knobs["t"])
     top_p = min(1.0, max(0.01, knobs["p"]))
     top_k = int(max(1, knobs["k"]))
