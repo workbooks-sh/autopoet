@@ -107,7 +107,10 @@ defmodule Autopoet.Eval.Tasks do
   # unique PER RUN: the shared test body remembers last run's accepted clerk,
   # and re-proposing an IDENTICAL armed agent legitimately routes autonomous.
   defp l3(persona) do
-    slug = "#{clerk_slug(persona)}_#{System.unique_integer([:positive])}"
+    # os_time salt: unique_integer resets each VM, and crew.work persists in the
+    # shared test body across mix-test runs — a bare counter collides with a
+    # prior run's accepted clerk (→ spurious :gate_refused)
+    slug = "#{clerk_slug(persona)}_#{System.os_time(:millisecond)}_#{System.unique_integer([:positive])}"
 
     %{
       id: "#{persona}-l3-hire-agent",

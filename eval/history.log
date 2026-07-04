@@ -56,3 +56,51 @@
 2026-07-04T14:37:52Z · 062a84f · select · variants=9 pinned_rank=5 winner=eta0.2-d0.9999 winner_mean=0.6669 pinned_mean=0.6446
 2026-07-04T14:37:54Z · 062a84f · recall-ab/synthetic · lift=0.5000 decided=8 warm_rate=0.7500 flat_rate=0.2500
 2026-07-04T14:37:54Z · 062a84f · recall-ab/trace-2026-07-04 · lift=0.5000 decided=48 warm_rate=0.7500 flat_rate=0.2500
+2026-07-04T16:07:16Z · 83bfa55 · efficiency/bus · events_per_sec=278914 mem1_kb=29 mem2_kb=29
+2026-07-04T16:07:16Z · 83bfa55 · efficiency/cpu · us_per_event=0.2744
+2026-07-04T16:07:29Z · 83bfa55 · soak · seconds=15 events=14328 shift_alarms=56 quench_alarms=0 state_kb=165
+2026-07-04T16:07:30Z · 83bfa55 · heartbeat · latency_ms=412 sensed=2 lessons=2
+2026-07-04T16:07:30Z · 83bfa55 · replay/trace-2026-07-02 · events=24632 k=3 uniform=0.0045 hebb=0.8277 frequency=0.7912 recency=0.8106
+2026-07-04T16:07:31Z · 83bfa55 · replay/trace-2026-07-04 · events=24644 k=3 uniform=0.0002 hebb=0.8730 frequency=0.5368 recency=0.6037
+2026-07-04T16:07:31Z · 83bfa55 · replay/trace-telemetry · events=19 k=3 uniform=1.0000 hebb=0.9474 frequency=1.0000 recency=1.0000
+2026-07-04T16:07:31Z · 83bfa55 · replay/drift · events=959 k=3 uniform=0.0542 hebb=0.9135 frequency=0.1679 recency=0.1230
+2026-07-04T16:07:31Z · 83bfa55 · replay/structured · events=959 k=3 uniform=0.0782 hebb=0.7842 frequency=0.2190 recency=0.1043
+2026-07-04T16:07:32Z · 83bfa55 · select · variants=9 pinned_rank=5 winner=eta0.2-d0.9999 winner_mean=0.6669 pinned_mean=0.6446
+2026-07-04T16:07:36Z · 83bfa55 · recall-ab/trace-2026-07-04 · lift=0.5000 decided=168 warm_rate=0.7500 flat_rate=0.2500
+2026-07-04T16:07:39Z · 83bfa55 · recall-ab/synthetic · lift=0.5000 decided=8 warm_rate=0.7500 flat_rate=0.2500
+2026-07-04T16:22:34Z · 1a62551 · detector/delay · delay=19 shift_at=1920
+2026-07-04T16:22:35Z · 1a62551 · detector/fa · events=3600 rate=0.0000 alarms=0
+2026-07-04T16:22:35Z · 1a62551 · detector/severity · delay=22
+2026-07-04T16:22:35Z · 1a62551 · efficiency/bus · events_per_sec=267332 mem1_kb=29 mem2_kb=29
+2026-07-04T16:22:35Z · 1a62551 · efficiency/cpu · us_per_event=0.2700
+2026-07-04T16:22:48Z · 1a62551 · soak · seconds=15 events=14328 shift_alarms=56 quench_alarms=0 state_kb=165
+2026-07-04T16:23:12Z · 1a62551 · select · variants=10 pinned_rank=6 winner=ORDER2 order2_rank=1 winner_mean=0.7949 pinned_mean=0.6446 order2_mean=0.7949
+2026-07-04T16:23:13Z · 1a62551 · heartbeat · latency_ms=667 sensed=3 lessons=1
+2026-07-04T16:23:14Z · 1a62551 · recall-ab/trace-2026-07-04 · lift=0.5000 decided=200 warm_rate=0.7500 flat_rate=0.2500
+2026-07-04T16:23:17Z · 1a62551 · recall-ab/synthetic · lift=0.5000 decided=8 warm_rate=0.7500 flat_rate=0.2500
+2026-07-04T16:23:17Z · 1a62551 · replay/trace-2026-07-02-dev · events=24632 order2=0.9763 hebb=0.8277 frequency=0.7912 recency=0.8106 hebb_windowed=0.9374 lift_lo=0.0197 lift_hi=0.0830 miss_rank=3809 miss_semantic=370 miss_novel=66
+2026-07-04T16:23:17Z · 1a62551 · replay/trace-2026-07-04-dev · events=24644 order2=0.9681 hebb=0.8730 frequency=0.5368 recency=0.6037 hebb_windowed=1.0000 lift_lo=0.2247 lift_hi=0.4807 miss_rank=2460 miss_semantic=462 miss_novel=208
+2026-07-04T16:23:17Z · 1a62551 · replay/trace-telemetry-dev · events=22 order2=0.9545 hebb=0.9545 frequency=1.0000 recency=1.0000 hebb_windowed=0.0999 lift_lo=0.0000 lift_hi=0.0000 miss_rank=0 miss_semantic=1 miss_novel=0
+2026-07-04T16:23:17Z · 1a62551 · replay/drift · events=959 order2=0.9135 hebb=0.9135 frequency=0.1679 hebb_windowed=0.9722
+2026-07-04T16:23:17Z · 1a62551 · replay/structured · events=959 k=3 order2=0.7852 hebb=0.7842 frequency=0.2190 seeds_passed=3 hebb_windowed=0.7935 lift_lo=0.5230 lift_hi=0.6070
+2026-07-04T17:14:34Z · f49d84e · detector/fa · events=3600 rate=0.0000 alarms=0
+2026-07-04T17:14:34Z · f49d84e · detector/severity · delay=22
+2026-07-04T17:14:34Z · f49d84e · detector/delay · delay=19 shift_at=1920
+2026-07-04T17:15:32Z · f49d84e · soak · seconds=15 events=14328 shift_alarms=43 quench_alarms=0 state_kb=155
+2026-07-04T17:15:32Z · f49d84e · corpus/c1 · need=14 days=1 gate=pending
+2026-07-04T17:15:32Z · f49d84e · corpus/c4 · need=2000 gate=pending holdout_events=0
+2026-07-04T17:15:32Z · f49d84e · corpus/c2 · gate=decided decided=69 lift=0.2815
+2026-07-04T17:15:45Z · f49d84e · tasks · total=18 passed=18 l1=6/6 l2=6/6 l3=6/6
+2026-07-04T17:15:49Z · f49d84e · recall-ab/synthetic · decided=8 lift=0.5000 warm_rate=0.7500 flat_rate=0.2500
+2026-07-04T17:15:49Z · f49d84e · recall-ab/trace-2026-07-04 · decided=83 lift=0.2822 warm_rate=0.8537 flat_rate=0.5714
+2026-07-04T17:15:49Z · f49d84e · genome/birth · personas=6 delta150=-0.0011 delta800=-0.0014
+2026-07-04T17:15:49Z · f49d84e · genome/semantic · edges=6 delta150=0.0067
+2026-07-04T17:15:49Z · f49d84e · genome/fleet · edges=1 k_anon=3
+2026-07-04T17:15:51Z · f49d84e · efficiency/cpu · us_per_event=0.3628
+2026-07-04T17:15:51Z · f49d84e · efficiency/bus · state_kb=215 events_per_sec=171566
+2026-07-04T17:15:52Z · f49d84e · heartbeat · latency_ms=756 sensed=2 lessons=2
+2026-07-04T17:15:53Z · f49d84e · select · variants=10 pinned_rank=6 winner=ORDER2 order2_rank=1 winner_mean=0.7949 pinned_mean=0.6446 order2_mean=0.7949
+2026-07-04T17:15:54Z · f49d84e · replay/structured · events=959 k=3 hebb_windowed=0.7935 hebb=0.7842 frequency=0.2190 lift_lo=0.5230 lift_hi=0.6070 seeds_passed=3 order2=0.7852
+2026-07-04T17:15:54Z · f49d84e · replay/trace-2026-07-04-dev · events=24709 hebb_windowed=1.0000 hebb=0.9481 frequency=0.2007 lift_lo=0.6681 lift_hi=0.8260 recency=0.1613 order2=0.9482 miss_rank=79 miss_semantic=917 miss_novel=287
+2026-07-04T17:15:54Z · f49d84e · replay/trace-telemetry-dev · events=2 hebb_windowed=0.0050 hebb=0.5000 frequency=1.0000 lift_lo=0.0000 lift_hi=0.0000 recency=1.0000 order2=0.5000 miss_rank=0 miss_semantic=1 miss_novel=0
+2026-07-04T17:15:54Z · f49d84e · replay/drift · events=959 hebb_windowed=0.9722 hebb=0.9135 frequency=0.1679 order2=0.9135
