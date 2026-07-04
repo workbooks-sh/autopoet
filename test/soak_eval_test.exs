@@ -70,7 +70,11 @@ defmodule Autopoet.SoakEvalTest do
            "S-QUENCH FAILED: #{alarms_end - alarms_shift} alarm(s) after the new rhythm settled"
 
     assert end_events > mid_events, "S-LEARN FAILED: learning stopped after the shift"
-    assert end_mem <= settle_mem * 1.5, "S-MEM FAILED: #{settle_mem} → #{end_mem} bytes on a fixed vocabulary"
+
+    # vocabulary-bound means STATE size (words), not process heap (GC jitter):
+    # after regime C's vocabulary is fully seen, another leg only updates floats
+    # in place — the state may not keep growing
+    assert end_mem <= settle_mem * 1.25, "S-MEM FAILED: learner state #{settle_mem} → #{end_mem} words on a fixed vocabulary"
     assert drained?(learners), "S-DRAIN FAILED: learner queues not empty at soak end"
 
     for mod <- learners, do: assert(:ok = mod.snapshot())
@@ -80,7 +84,7 @@ defmodule Autopoet.SoakEvalTest do
 
     IO.puts(
       "  ✓ EVAL soak (#{total_s}s) — events +#{end_events - n0} · alarms +#{alarms_shift - alarms0} at shift, " <>
-        "0 after quench · memory #{div(settle_mem, 1024)}KB → #{div(end_mem, 1024)}KB · queues drained · snapshots on disk"
+        "0 after quench · learner state #{div(settle_mem * 8, 1024)}KB → #{div(end_mem * 8, 1024)}KB · queues drained · snapshots on disk"
     )
 
     Autopoet.Eval.History.record("soak", %{
@@ -88,7 +92,7 @@ defmodule Autopoet.SoakEvalTest do
       events: end_events - n0,
       shift_alarms: alarms_shift - alarms0,
       quench_alarms: alarms_end - alarms_shift,
-      mem_kb: div(end_mem, 1024)
+      state_kb: div(end_mem * 8, 1024)
     })
   end
 
@@ -124,13 +128,12 @@ defmodule Autopoet.SoakEvalTest do
     end
   end
 
+  # the learners' actual STATE footprint in heap words — precise and
+  # GC-independent, unlike process_info(:memory)
   defp learner_memory(learners) do
     Enum.sum(
       for mod <- learners do
-        pid = Process.whereis(mod)
-        :erlang.garbage_collect(pid)
-        {:memory, m} = Process.info(pid, :memory)
-        m
+        :erts_debug.flat_size(:sys.get_state(Process.whereis(mod)))
       end
     )
   end

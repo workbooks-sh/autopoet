@@ -44,15 +44,21 @@ defmodule Autopoet.SelectEvalTest do
       {"drift", drift_signals(15)}
     ]
 
-    result = Select.run(variants, seeds)
+    # k=1 — top-1 prediction is the discriminative regime (top-3 saturates on
+    # structured traffic and every variant ties: an instrument with no spread
+    # cannot select)
+    result = Select.run(variants, seeds, 1)
 
     # deterministic: same tournament, same leaderboard
-    assert result == Select.run(variants, seeds)
+    assert result == Select.run(variants, seeds, 1)
 
     board = result.leaderboard
     assert length(board) == 9
     assert board == Enum.sort_by(board, &(-&1.mean))
     assert Enum.all?(board, &(&1.mean > 0.0 and &1.mean <= 1.0))
+
+    assert hd(board).mean > List.last(board).mean,
+           "SELECT instrument has zero spread — seeds cannot discriminate variants"
 
     pinned_rank = Enum.find_index(board, &(&1.name == "PINNED")) + 1
     winner = result.winner
