@@ -55,8 +55,8 @@
     "#vs-graph-bg svg { width:100%; height:auto; display:block; }",
     "#vs-graph-bg .shape rect, #vs-graph-bg .shape path { fill:#fff; stroke:#121316; stroke-width:1.3; }",
     "#vs-graph-bg text { fill:#121316 !important; font-family:ui-monospace,Menlo,monospace !important; font-size:15px !important; }",
-    "#vs-graph-bg path.connection { stroke:rgba(18,19,22,.38) !important; }",
-    "#vs-graph-bg marker path, #vs-graph-bg marker polygon { fill:rgba(18,19,22,.38); stroke:rgba(18,19,22,.38); }",
+    "#vs-graph-bg path.connection { stroke:#121316 !important; stroke-width:1.7 !important; }",
+    "#vs-graph-bg marker path, #vs-graph-bg marker polygon { fill:#121316 !important; stroke:none !important; }",
     "#vs-graph-bg .m-hidden { opacity:0 !important; }",
     "#vs-graph-bg .m-pop { animation:vs-mpop .45s cubic-bezier(.34,1.5,.4,1) both; transform-box:fill-box; transform-origin:center; }",
     "@keyframes vs-mpop { from { opacity:0; transform:scale(.55);} to { opacity:1; transform:scale(1);} }",
@@ -463,7 +463,9 @@
     })();
   }
   function pointAt(elTarget, holdMs) {
+    if (!elTarget || !elTarget.isConnected) return;      // detached = nothing to point at
     var r = elTarget.getBoundingClientRect();
+    if (r.width < 2 && r.height < 2) return;             // invisible/unlaid-out target
     var T = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
     var hold2 = holdMs || 2400;
     var travel = walkTo(T);
@@ -516,7 +518,20 @@
     graphBg.innerHTML = svgText;
     graphBg.classList.add("on");
     var svg = graphBg.querySelector("svg");
-    if (svg) { svg.removeAttribute("width"); svg.removeAttribute("height"); svg.style.width = "100%"; svg.style.height = "auto"; }
+    if (svg) {
+      svg.removeAttribute("width"); svg.removeAttribute("height");
+      // fit the stage: scale by aspect so wide flows fill sideways and tall
+      // forms (sequence diagrams, stacked grids) never run out of frame
+      var vb = (svg.getAttribute("viewBox") || "").split(/\s+/).map(Number);
+      var ar = vb.length === 4 && vb[3] > 0 ? vb[2] / vb[3] : 1.6;
+      var maxW = (stageEl ? stageEl.clientWidth : innerWidth) * 0.86;
+      var maxH = (stageEl ? stageEl.clientHeight : innerHeight) * 0.56;
+      var w = Math.min(1080, maxW, maxH * ar);
+      svg.style.width = w + "px";
+      svg.style.height = (w / ar) + "px";
+      svg.style.display = "block";
+      svg.style.margin = "0 auto";
+    }
     graphBg.querySelectorAll("rect").forEach(function (r) {
       if (r.closest("mask, defs, marker, pattern")) return;   // mask/def internals are NOT canvas
       var cls = r.getAttribute("class") || "";
@@ -545,11 +560,21 @@
       } else pieces.nodes[name] = g;
       g.classList.add("m-hidden");
     });
+    // container children decode as dotted paths ("timeline.w1") but the model
+    // cues bare ids — alias the last segment when it's unambiguous
+    Object.keys(pieces.nodes).forEach(function (k) {
+      var last = k.split(".").pop();
+      if (last !== k && !(last in pieces.nodes)) pieces.nodes[last] = pieces.nodes[k];
+    });
   }
   function revealNode(name, glance) {
     var n = pieces.nodes[name];
     if (!n || !n.classList.contains("m-hidden")) return;
     n.classList.remove("m-hidden"); n.classList.add("m-pop");
+    // revealing a container shows what lives inside it
+    n.querySelectorAll(".m-hidden").forEach(function (c) {
+      c.classList.remove("m-hidden"); c.classList.add("m-pop");
+    });
     if (glance) {
       var r = n.getBoundingClientRect();
       setAttention({ x: r.left + r.width / 2, y: r.top + r.height / 2 }, 750, 1);
@@ -952,7 +977,14 @@
     if (g) {
       narration = script.replace(g[0], " ");
       try { mountGraphSVG(await compileD2(g[1].trim())); }
-      catch (e) { graphBg.classList.remove("on"); }
+      catch (e) {
+        // failed diagram → clean slate so no cue can point at stale/detached
+        // shapes (that was the "pointing above the screen" ghost)
+        graphBg.classList.remove("on");
+        graphBg.innerHTML = "";
+        pieces = { nodes: {}, edges: {} };
+        captionShow("dim", "(the diagram didn't compile — talking it through)");
+      }
     } else graphBg.classList.remove("on");
     if (playing !== runId) return;
 

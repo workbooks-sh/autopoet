@@ -1,9 +1,11 @@
 defmodule Autopoet.VoiceBrain do
   @moduledoc """
-  The voice loop's conversational brain — Groq (OpenAI-compatible chat
-  completions), the ONE cloud hop in an otherwise fully-local speech-to-speech
-  pipeline (browser Silero VAD → local Whisper/Moonshine STT → HERE → local
-  Kokoro TTS in the widget).
+  The voice loop's conversational brain — an OpenAI-compatible chat provider,
+  the ONE cloud hop in an otherwise fully-local speech-to-speech pipeline
+  (browser Silero VAD → local Whisper/Moonshine STT → HERE → local Kokoro TTS).
+  Provider ladder: Cerebras (gemma-4-31b) when CEREBRAS_API_KEY is present,
+  else Groq (llama-3.3-70b-versatile). AUTOPOET_VOICE_MODEL overrides the
+  model name either way.
 
   NOTE: `Autopoet.Providers` decrees "no Groq" for the LIMB/planner lanes —
   that decree stands there. This module is the deliberate, user-requested
@@ -16,38 +18,59 @@ defmodule Autopoet.VoiceBrain do
   D2 blocks), which the voice widget plays — voice, face, hands, diagram.
   """
 
-  @url ~c"https://api.groq.com/openai/v1/chat/completions"
-  @default_model "llama-3.3-70b-versatile"
+  # providers in preference order — both OpenAI-compatible chat completions.
+  # Cerebras (gemma-4-31b) is the current pick; Groq stays as the fallback.
+  @providers [
+    %{secret: "CEREBRAS_API_KEY", host: "api.cerebras.ai",
+      url: ~c"https://api.cerebras.ai/v1/chat/completions", model: "gemma-4-31b"},
+    %{secret: "GROQ_API_KEY", host: "api.groq.com",
+      url: ~c"https://api.groq.com/openai/v1/chat/completions", model: "llama-3.3-70b-versatile"}
+  ]
 
-  def available?, do: is_binary(Nexus.Secrets.get("GROQ_API_KEY"))
+  defp provider do
+    Enum.find_value(@providers, fn p ->
+      case Nexus.Secrets.get(p.secret) do
+        key when is_binary(key) -> {p, key}
+        _ -> nil
+      end
+    end)
+  end
 
-  def model, do: System.get_env("AUTOPOET_VOICE_MODEL") || @default_model
+  def available?, do: provider() != nil
+
+  def model do
+    System.get_env("AUTOPOET_VOICE_MODEL") ||
+      case provider() do
+        {p, _} -> p.model
+        _ -> nil
+      end
+  end
 
   @doc """
   One conversational turn. `history` = [%{"role" => "user"|"assistant", "content" => text}]
   (most recent last, caller-trimmed). Returns {:ok, reply_text} | {:error, reason}.
   """
   def reply(history) when is_list(history) do
-    case Nexus.Secrets.get("GROQ_API_KEY") do
+    case provider() do
       nil ->
         {:error, :not_configured}
 
-      key ->
+      {prov, key} ->
         messages = [%{"role" => "system", "content" => system_prompt()} | Enum.take(history, -16)]
 
         body =
           Jason.encode!(%{
-            "model" => model(),
+            "model" => System.get_env("AUTOPOET_VOICE_MODEL") || prov.model,
             "messages" => messages,
             "temperature" => 0.7,
-            "max_tokens" => 700
+            "max_tokens" => 1200
           })
 
-        request(key, body)
+        request(prov, key, body)
     end
   end
 
-  defp request(key, body) do
+  defp request(prov, key, body) do
     headers = [
       {~c"authorization", String.to_charlist("Bearer " <> key)},
       {~c"content-type", ~c"application/json"}
@@ -57,13 +80,13 @@ defmodule Autopoet.VoiceBrain do
       ssl: [
         verify: :verify_peer,
         cacerts: :public_key.cacerts_get(),
-        server_name_indication: ~c"api.groq.com",
+        server_name_indication: String.to_charlist(prov.host),
         customize_hostname_check: [match_fun: :public_key.pkix_verify_hostname_match_fun(:https)]
       ],
       timeout: 30_000
     ]
 
-    case :httpc.request(:post, {@url, headers, ~c"application/json", body}, http_opts, body_format: :binary) do
+    case :httpc.request(:post, {prov.url, headers, ~c"application/json", body}, http_opts, body_format: :binary) do
       {:ok, {{_, 200, _}, _, resp}} ->
         case Jason.decode(resp) do
           {:ok, %{"choices" => [%{"message" => %{"content" => text}} | _]}} when is_binary(text) ->
