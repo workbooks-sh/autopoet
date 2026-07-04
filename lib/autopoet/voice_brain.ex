@@ -70,6 +70,50 @@ defmodule Autopoet.VoiceBrain do
     end
   end
 
+  @doc """
+  Start a STREAMING turn: returns {:ok, request_ref} and the caller's process
+  receives raw SSE chunks as {:http, {ref, :stream, chunk}} messages
+  (:stream_start / :stream_end frame them). The control route forwards the
+  bytes straight to the widget, which parses the SSE itself — first words
+  reach the speech synth while the model is still writing.
+  """
+  def stream_req(history) when is_list(history) do
+    case provider() do
+      nil ->
+        {:error, :not_configured}
+
+      {prov, key} ->
+        messages = [%{"role" => "system", "content" => system_prompt()} | Enum.take(history, -16)]
+
+        body =
+          Jason.encode!(%{
+            "model" => System.get_env("AUTOPOET_VOICE_MODEL") || prov.model,
+            "messages" => messages,
+            "temperature" => 0.7,
+            "max_tokens" => 1200,
+            "stream" => true
+          })
+
+        headers = [
+          {~c"authorization", String.to_charlist("Bearer " <> key)},
+          {~c"content-type", ~c"application/json"}
+        ]
+
+        http_opts = [
+          ssl: [
+            verify: :verify_peer,
+            cacerts: :public_key.cacerts_get(),
+            server_name_indication: String.to_charlist(prov.host),
+            customize_hostname_check: [match_fun: :public_key.pkix_verify_hostname_match_fun(:https)]
+          ],
+          timeout: 60_000
+        ]
+
+        :httpc.request(:post, {prov.url, headers, ~c"application/json", body}, http_opts,
+          sync: false, stream: :self, body_format: :binary)
+    end
+  end
+
   defp request(prov, key, body) do
     headers = [
       {~c"authorization", String.to_charlist("Bearer " <> key)},

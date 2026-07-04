@@ -82,6 +82,21 @@
     ".vs-hand svg { width:100%; height:100%; display:block; }",
     ".vs-hand.left svg { transform:scaleX(-1); }",
     "#vs-ref-overlay { position:fixed; inset:0; pointer-events:none; z-index:8; }",
+    // the thought bubble: fills the air between 'heard you' and 'speaking'
+    "#vs-think { position:absolute; top:-58px; right:-52px; pointer-events:none;",
+    "  opacity:0; transform:translateY(6px) scale(.85); transition:opacity .25s ease, transform .25s cubic-bezier(.3,1.4,.5,1); }",
+    "#vs-think.on { opacity:1; transform:translateY(0) scale(1); }",
+    "#vs-think .bub { background:#fff; border:1.6px solid #121316; border-radius:16px;",
+    "  padding:9px 12px; display:flex; gap:5px; align-items:center; }",
+    "#vs-think .dot { width:7px; height:7px; border-radius:50%; background:#121316;",
+    "  animation:vs-think-b 1.2s infinite ease-in-out; }",
+    "#vs-think .dot:nth-child(2) { animation-delay:.15s; }",
+    "#vs-think .dot:nth-child(3) { animation-delay:.3s; }",
+    "@keyframes vs-think-b { 0%,60%,100% { transform:translateY(0); opacity:.45; }",
+    "  30% { transform:translateY(-4px); opacity:1; } }",
+    "#vs-think .t1, #vs-think .t2 { position:absolute; background:#fff; border:1.6px solid #121316; border-radius:50%; }",
+    "#vs-think .t1 { width:10px; height:10px; left:-6px; bottom:-10px; }",
+    "#vs-think .t2 { width:6px; height:6px; left:-16px; bottom:-20px; }",
     "#vs-ref-overlay path { fill:none; stroke:rgba(18,19,22,.45); stroke-width:2; stroke-linecap:round;",
     "  stroke-dasharray:5 6; animation:vs-ants .6s linear infinite; }",
     "@keyframes vs-ants { to { stroke-dashoffset:-11; } }",
@@ -602,10 +617,14 @@
       if (g && g.classList.contains("m-hidden")) { g.classList.remove("m-hidden"); g.classList.add("m-fade"); }
     });
   }
+  var d2Cache = new Map();
   function compileD2(src) {
-    return fetch("/voice/d2", { method: "POST",
+    if (d2Cache.has(src)) return d2Cache.get(src);
+    var p = fetch("/voice/d2", { method: "POST",
       headers: { authorization: "Bearer " + TOKEN, "content-type": "text/plain" }, body: src })
       .then(function (res) { if (!res.ok) throw new Error("d2 " + res.status); return res.text(); });
+    d2Cache.set(src, p);
+    return p;
   }
 
   // ────────────────────────── caption + transcript ──────────────────────────
@@ -908,8 +927,17 @@
       kWorker.postMessage({ type: "load" });
     } catch (e) { kokoro = false; }
   }
-  // synthesize one sentence → clip {buffer, duration} | null
+  // synthesize one sentence → clip {buffer, duration} | null.
+  // Cached per turn: the streaming prewarmer fires clauses while the model is
+  // still writing, and perform() then reuses the same in-flight promises.
+  var genCache = new Map();
   function kokoroGen(text) {
+    if (genCache.has(text)) return genCache.get(text);
+    var p = kokoroGenRaw(text);
+    genCache.set(text, p);
+    return p;
+  }
+  function kokoroGenRaw(text) {
     if (kokoroMode === "server") {
       return fetch("/voice/tts?voice=" + encodeURIComponent(VOICE_ID), {
         method: "POST",
@@ -1002,7 +1030,7 @@
       // clip boundaries at sentence ends AND clause breaks (,;:) once the
       // clause is ≥5 words: synthesis is ~0.6x realtime, so smaller clips =
       // the first sound arrives after one CLAUSE, not one full sentence
-      if (/[.!?]$/.test(w) || (/[,;:]$/.test(w) && counts[sN] >= 5)) {
+      if (/[.!?]$/.test(w) || (/[,;:]$/.test(w) && counts[sN] >= (sN === 0 ? 3 : 5))) {
         sText[sN] = cur; cur = ""; sN++;
       }
     });
@@ -1019,6 +1047,7 @@
       if (playing !== runId) return;
     }
 
+    stopThink();
     captionShow("", "");
     moveTo(0, stageEl.clientHeight * 0.12);
     mood = "smirk"; setMouth("smirk");
@@ -1127,6 +1156,56 @@
 
   // ────────────────────────── the conversation loop ──────────────────────────
   var history = [];
+  // ── the thinking beat: bubble + upward gaze while the brain works ──
+  var thinkT = null;
+  function startThink() {
+    clearTimeout(thinkT);
+    // let the end-of-speech reaction land first, then drift into thought
+    thinkT = later(setTimeout(function () {
+      if (!mounted || playing) return;
+      var tk = document.getElementById("vs-think");
+      if (tk) tk.classList.add("on");
+      setBrows("skeptical");
+      setMouth("neutral");
+      // eyes drift up toward the bubble
+      var r = scene && scene.getBoundingClientRect();
+      if (r) setAttention({ x: r.right - 20, y: r.top - 30 }, 6000, 1.4);
+    }, 450));
+  }
+  function stopThink() {
+    clearTimeout(thinkT);
+    var tk = document.getElementById("vs-think");
+    if (tk) tk.classList.remove("on");
+  }
+
+  // ── streaming prewarm: as the model writes, complete clauses go to the
+  //    synth and a completed @graph block goes to d2 — perform() then finds
+  //    everything already in flight. Mirrors perform's clip-boundary rule.
+  function prewarmFromPartial(text) {
+    var narration = text;
+    var gi = text.indexOf("@graph");
+    if (gi > -1) {
+      var ge = text.indexOf("@end");
+      if (ge === -1) narration = text.slice(0, gi);       // graph still being written
+      else {
+        compileD2(text.slice(gi + 6, ge).trim());          // fire the diagram NOW
+        narration = text.slice(0, gi) + " " + text.slice(ge + 4);
+      }
+    }
+    var words = narration.replace(/\[[^\]]*\]/g, " ").replace(/\[[^\]]*$/, " ")
+      .split(/\s+/).filter(Boolean);
+    var cur = [], n = 0, first = true;
+    words.forEach(function (w, i) {
+      cur.push(w); n++;
+      var boundary = /[.!?]$/.test(w) || (/[,;:]$/.test(w) && n >= (first ? 3 : 5));
+      // never prewarm the trailing fragment — it may still be growing
+      if (boundary && i < words.length - 1) {
+        if (kokoro) kokoroGen(cur.join(" "));
+        cur = []; n = 0; first = false;
+      }
+    });
+  }
+
   async function ask(userText) {
     userText = (userText || "").trim();
     if (!userText || !mounted) return;
@@ -1134,27 +1213,78 @@
     logLine("you", userText);
     reactToUser(userText);
     history.push({ role: "user", content: userText });
+    genCache.clear(); d2Cache.clear();
+    startThink();
     var ctrl = new AbortController();
-    var killer = later(setTimeout(function () { ctrl.abort(); }, 30000));
+    var killer = later(setTimeout(function () { ctrl.abort(); }, 45000));
     try {
-      var res = await fetch("/voice/brain", { method: "POST", signal: ctrl.signal,
-        headers: { authorization: "Bearer " + TOKEN, "content-type": "application/json" },
-        body: JSON.stringify({ history: history.slice(-16) }) });
+      var reply = await brainStream(ctrl.signal);
       clearTimeout(killer);
-      if (!res.ok) {
-        var e = await res.json().catch(function () { return {}; });
-        capStatus(e.error || ("brain error " + res.status));
-        mood = "neutral"; setMouth("neutral"); setBrows("none");
-        return;
+      if (reply == null) {                                 // stream route unavailable
+        reply = await brainOnce(ctrl.signal);
+        clearTimeout(killer);
       }
-      var data = await res.json();
-      history.push({ role: "assistant", content: data.reply });
-      await perform(data.reply);
+      if (reply == null) return;
+      history.push({ role: "assistant", content: reply });
+      await perform(reply);
     } catch (err) {
       clearTimeout(killer);
+      stopThink();
       capStatus("brain unreachable");
       mood = "neutral"; setMouth("neutral"); setBrows("none");
     }
+  }
+
+  // SSE from /voice/brain/stream — returns the full reply text (prewarming as
+  // it goes), or null if the route is unavailable (older server → fallback)
+  async function brainStream(signal) {
+    var res;
+    try {
+      res = await fetch("/voice/brain/stream", { method: "POST", signal: signal,
+        headers: { authorization: "Bearer " + TOKEN, "content-type": "application/json" },
+        body: JSON.stringify({ history: history.slice(-16) }) });
+    } catch (e) { return null; }
+    if (!res.ok || !res.body) return null;
+    var reader = res.body.getReader(), dec = new TextDecoder();
+    var buf = "", full = "", lastWarm = 0;
+    for (;;) {
+      var step = await reader.read();
+      if (step.done) break;
+      buf += dec.decode(step.value, { stream: true });
+      var lines = buf.split("\n");
+      buf = lines.pop();                                   // keep the partial line
+      lines.forEach(function (line) {
+        if (line.indexOf("data:") !== 0) return;
+        var payload = line.slice(5).trim();
+        if (!payload || payload === "[DONE]") return;
+        try {
+          var delta = JSON.parse(payload).choices[0].delta.content;
+          if (delta) full += delta;
+        } catch (e) {}
+      });
+      if (full.length - lastWarm > 24) {                   // warm every ~24 chars
+        lastWarm = full.length;
+        prewarmFromPartial(full);
+      }
+    }
+    if (!full) return null;
+    prewarmFromPartial(full);
+    return full.trim();
+  }
+
+  async function brainOnce(signal) {
+    var res = await fetch("/voice/brain", { method: "POST", signal: signal,
+      headers: { authorization: "Bearer " + TOKEN, "content-type": "application/json" },
+      body: JSON.stringify({ history: history.slice(-16) }) });
+    if (!res.ok) {
+      var e = await res.json().catch(function () { return {}; });
+      stopThink();
+      capStatus(e.error || ("brain error " + res.status));
+      mood = "neutral"; setMouth("neutral"); setBrows("none");
+      return null;
+    }
+    var data = await res.json();
+    return data.reply;
   }
 
   // ────────────────────────── mic + VAD ──────────────────────────
@@ -1211,6 +1341,7 @@
         },
         onSpeechStart: function () {
           if (!mounted) return;
+          stopThink();
           if (playing) stopPerform();                  // barge-in
           setBrows("raised");
           captionShow("you", "…");
@@ -1309,6 +1440,11 @@
         bg.id = facePrefix + "brows";
         faceRoot.insertBefore(bg, faceRoot.firstChild);
       }
+      // the thought bubble rides the adopted cube's container
+      var tk = document.createElement("div");
+      tk.id = "vs-think";
+      tk.innerHTML = '<div class="bub"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div><span class="t1"></span><span class="t2"></span>';
+      scene.appendChild(tk);
       // hands join the adopted cube (they ride its 3D transform)
       var hr = document.createElement("div"); hr.className = "vs-hand"; hr.id = "vs-hand-r";
       var hl = document.createElement("div"); hl.className = "vs-hand left"; hl.id = "vs-hand-l";
@@ -1317,6 +1453,10 @@
     } else {
       cube = document.getElementById("vs-cube");
       scene = document.getElementById("vs-scene");
+      var tk2 = document.createElement("div");
+      tk2.id = "vs-think";
+      tk2.innerHTML = '<div class="bub"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div><span class="t1"></span><span class="t2"></span>';
+      scene.appendChild(tk2);
       faceMount = document.getElementById("vs-face");
       facePrefix = "vs-ap-";
       hands = { r: document.getElementById("vs-hand-r"), l: document.getElementById("vs-hand-l") };
@@ -1439,6 +1579,8 @@
             if (h && h.parentNode) h.parentNode.removeChild(h);
           });
         }
+        var tkEl = document.getElementById("vs-think");
+        if (tkEl && tkEl.parentNode) tkEl.parentNode.removeChild(tkEl);
       }, delay);
       clearAll();
       root = null; overlay = null; faceMount = null;

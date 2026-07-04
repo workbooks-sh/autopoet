@@ -643,6 +643,28 @@ defmodule Autopoet.Control do
     conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(Autopoet.Voice.sync()))
   end
 
+  # streaming brain: raw SSE proxied from the provider — the widget starts
+  # synthesizing speech from the first clause while the model is still writing
+  post "/voice/brain/stream" do
+    authed!(conn, fn conn ->
+      {:ok, body, conn} = read_body(conn, length: 500_000)
+
+      with {:ok, %{"history" => history}} when is_list(history) <- Jason.decode(body),
+           {:ok, ref} <- Autopoet.VoiceBrain.stream_req(history) do
+        conn =
+          conn
+          |> put_resp_content_type("text/event-stream")
+          |> put_resp_header("cache-control", "no-cache")
+          |> send_chunked(200)
+
+        brain_stream_loop(conn, ref)
+      else
+        {:error, :not_configured} -> send_resp(conn, 503, "brain offline\n")
+        _ -> send_resp(conn, 400, "bad request\n")
+      end
+    end)
+  end
+
   # BEAM-native emotion read (GoEmotions RoBERTa): plain text in, "label score" lines out
   post "/voice/affect" do
     authed!(conn, fn conn ->
@@ -1099,6 +1121,32 @@ defmodule Autopoet.Control do
 
   defp fmt(nil), do: "-"
   defp fmt(x), do: Float.round(x * 1.0, 2)
+
+  # forward provider SSE bytes to the widget as they arrive
+  defp brain_stream_loop(conn, ref) do
+    receive do
+      {:http, {^ref, :stream_start, _headers}} ->
+        brain_stream_loop(conn, ref)
+
+      {:http, {^ref, :stream, chunk}} ->
+        case chunk(conn, chunk) do
+          {:ok, conn} -> brain_stream_loop(conn, ref)
+          {:error, _} ->
+            :httpc.cancel_request(ref)
+            conn
+        end
+
+      {:http, {^ref, :stream_end, _headers}} ->
+        conn
+
+      {:http, {^ref, {:error, _reason}}} ->
+        conn
+    after
+      60_000 ->
+        :httpc.cancel_request(ref)
+        conn
+    end
+  end
 
   defp authed!(conn, fun) do
     conn = fetch_query_params(conn)
