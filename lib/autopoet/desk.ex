@@ -27,7 +27,6 @@ defmodule Autopoet.Desk do
   require Logger
 
   @tick 60_000
-  @artifacts "eval/desk"
   @watchlist ~w(AAPL MSFT SPY NVDA QQQ)
   @risk_cap 2_000.0
   @max_trades_day 8
@@ -47,7 +46,7 @@ defmodule Autopoet.Desk do
 
   @impl true
   def init(nil) do
-    File.mkdir_p!(@artifacts)
+    File.mkdir_p!(artifacts())
 
     state =
       case Autopoet.Shadow.load("desk") do
@@ -545,17 +544,17 @@ defmodule Autopoet.Desk do
 
   defp heartbeat(s) do
     File.write!(
-      Path.join(@artifacts, "state.txt"),
+      Path.join(artifacts(), "state.txt"),
       "ts: #{System.os_time(:second)}\nday: #{s.day}\ncycles: #{s.cycles}\nllm_calls: #{s.llm_calls}\ntrades: #{s.trades}\nwork_cycles: #{s.work_cycles}\nagenda_idx: #{s.agenda_idx}\ndone: #{inspect(Map.keys(s.done) |> Enum.filter(&Map.get(s.done, &1)))}\npnl_days: #{inspect(s.pnl_days)}\n"
     )
 
-    File.write!(Path.join(@artifacts, "uptime.log"), "#{System.os_time(:second)}\n", [:append])
+    File.write!(Path.join(artifacts(), "uptime.log"), "#{System.os_time(:second)}\n", [:append])
     s
   end
 
   defp issue(msg) do
     line = "#{DateTime.to_iso8601(DateTime.utc_now())} | #{msg}\n"
-    File.write!(Path.join(@artifacts, "issues.log"), line, [:append])
+    File.write!(Path.join(artifacts(), "issues.log"), line, [:append])
     log("ISSUE: #{msg}")
   end
 
@@ -585,6 +584,10 @@ defmodule Autopoet.Desk do
   rescue
     _ -> "(no plan yet)"
   end
+
+  # artifacts dir — env-overridable so a TEST desk never clobbers the live op's
+  # heartbeat/issues files (the ops monitor's feed)
+  defp artifacts, do: System.get_env("AUTOPOET_DESK_DIR") || "eval/desk"
 
   defp num(n) when is_number(n), do: n
   defp num(s) when is_binary(s), do: (case Float.parse(s), do: ({f, _} -> f; :error -> 0))
