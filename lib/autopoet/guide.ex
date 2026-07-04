@@ -11,7 +11,17 @@ defmodule Autopoet.Guide do
 
   def dir, do: Path.join(Nexus.Paths.data_dir(), "guide")
 
-  @doc "Copy the packaged guide pages into the body (never overwrites)."
+  @doc """
+  Copy the packaged guide pages into the body (never overwrites) — PLUS the
+  LINTED general skill spine from the workbooks skills substrate when present.
+
+  The spine skills (skills/general/*.work) are source-derived and CI-linted
+  (`mix skills.lint` fails on drift), so ingesting them makes the brain's
+  format/runtime context accurate BY CONSTRUCTION — the live-tier eval's
+  "it just didn't have the right context" failure class dies at the root.
+  They land as `skill--<name>` guide pages, REFRESHED every boot (unlike the
+  hand-authored pages, the linted upstream is the source of truth).
+  """
   def seed do
     src = Path.join(:code.priv_dir(:autopoet), "guide")
     File.mkdir_p!(dir())
@@ -22,7 +32,20 @@ defmodule Autopoet.Guide do
       File.cp!(f, target)
     end
 
+    for f <- Path.wildcard(Path.join(skills_src(), "*.work")) do
+      File.cp!(f, Path.join(dir(), "skill--" <> Path.basename(f)))
+    end
+
     :ok
+  end
+
+  # the linted skills substrate: app env override (tests/deploys) → the dev
+  # sibling path baked at compile time (Mix is unavailable at release runtime) →
+  # absent (end-user installs, until the spine ships in priv)
+  @dev_skills Path.expand("../workbooks/skills/general", File.cwd!())
+
+  defp skills_src do
+    Application.get_env(:autopoet, :skills_dir, @dev_skills)
   end
 
   def pages do

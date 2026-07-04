@@ -66,6 +66,16 @@ defmodule Autopoet.GenesisEvalTest do
     assert types["guide"] >= 5, "guide pages missing from the (hidden) world"
     assert types["system"] >= 1, "limbs registry missing from the (hidden) world"
 
+    # the LINTED skill spine rides the guide (accurate-by-construction context —
+    # skills/general/*.work, CI-gated upstream by skills.lint): indexed for the
+    # planner's progressive disclosure, readable on NEED
+    if File.dir?(Application.get_env(:autopoet, :skills_dir, Path.expand("../workbooks/skills/general", File.cwd!()))) do
+      assert Enum.count(Autopoet.Guide.pages(), &String.starts_with?(&1, "skill--")) >= 5,
+             "linted skill spine not ingested into the guide"
+
+      assert Autopoet.Guide.read("skill--the-work-language") =~ "Nexus.Literate"
+    end
+
     # zero demo files anywhere: no welcome.md, no starter index/journal/todos
     body = Path.wildcard(Path.join(Nexus.Paths.data_dir(), "**/*.work"))
     vault = Path.wildcard(Path.join(Autopoet.Notes.dir(), "**/*"))
