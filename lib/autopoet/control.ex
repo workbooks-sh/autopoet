@@ -262,6 +262,43 @@ defmodule Autopoet.Control do
     end)
   end
 
+  # ── Workbooks Cloud sign-in (browser device flow) ────────────────────────────
+  # MUST come before the /auth/:provider/* wildcards below, or "cloud" is captured
+  # as an OAuth provider and refused (:not_configured). Plug matches in source order.
+  post "/auth/cloud/open" do
+    cb = "http://127.0.0.1:#{conn.port}/auth/cloud/callback"
+    url = Autopoet.Cloud.base_url() <> "/login/?device=autopoet&cb=" <> URI.encode_www_form(cb)
+    spawn(fn -> System.cmd("open", [url]) end)
+    conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(%{ok: true}))
+  end
+
+  # The cloud redirects here with the minted PAT; store it and confirm in the tab (which pings the opener).
+  get "/auth/cloud/callback" do
+    conn = fetch_query_params(conn)
+
+    case Autopoet.Cloud.put_token(conn.query_params["token"] || "") do
+      :ok ->
+        page = """
+        <!doctype html><meta charset="utf-8"><title>Connected</title>
+        <body style="font:15px system-ui;display:grid;place-items:center;height:100vh;margin:0;color:#16161a">
+        <div style="text-align:center"><h2>Connected to Workbooks Cloud ✓</h2><p style="color:#6a6f68">You can close this tab.</p></div>
+        <script>try{if(window.opener)window.opener.postMessage({apCloud:true},'*')}catch(e){};setTimeout(function(){window.close()},1200)</script>
+        """
+
+        conn |> put_resp_content_type("text/html") |> send_resp(200, page)
+
+      _ ->
+        conn |> put_resp_content_type("text/html") |> send_resp(400, "<p>Sign-in failed — no token received.</p>")
+    end
+  end
+
+  post "/auth/cloud/disconnect" do
+    authed!(conn, fn conn ->
+      Autopoet.Cloud.disconnect()
+      conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(%{ok: true}))
+    end)
+  end
+
   # ── real OAuth (github/google browser flow; cloudflare token paste) ──────────
   # These are BROWSER navigations (the system browser follows the redirect), so
   # they are NOT bearer-authed — CSRF state protects the round trip instead.
@@ -343,43 +380,6 @@ defmodule Autopoet.Control do
     }
 
     conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(body))
-  end
-
-  # ── Workbooks Cloud sign-in (browser device flow) ────────────────────────────────────────────────
-  # Open the cloud login with our localhost callback; after you authenticate the cloud mints a `wbk_`
-  # PAT and redirects to /auth/cloud/callback. Same shape as the OAuth cards: open → poll status.
-  post "/auth/cloud/open" do
-    cb = "http://127.0.0.1:#{conn.port}/auth/cloud/callback"
-    url = Autopoet.Cloud.base_url() <> "/login/?device=autopoet&cb=" <> URI.encode_www_form(cb)
-    spawn(fn -> System.cmd("open", [url]) end)
-    conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(%{ok: true}))
-  end
-
-  # The cloud redirects here with the minted PAT; store it and confirm in the tab (which pings the opener).
-  get "/auth/cloud/callback" do
-    conn = fetch_query_params(conn)
-
-    case Autopoet.Cloud.put_token(conn.query_params["token"] || "") do
-      :ok ->
-        page = """
-        <!doctype html><meta charset="utf-8"><title>Connected</title>
-        <body style="font:15px system-ui;display:grid;place-items:center;height:100vh;margin:0;color:#16161a">
-        <div style="text-align:center"><h2>Connected to Workbooks Cloud ✓</h2><p style="color:#6a6f68">You can close this tab.</p></div>
-        <script>try{if(window.opener)window.opener.postMessage({apCloud:true},'*')}catch(e){};setTimeout(function(){window.close()},1200)</script>
-        """
-
-        conn |> put_resp_content_type("text/html") |> send_resp(200, page)
-
-      _ ->
-        conn |> put_resp_content_type("text/html") |> send_resp(400, "<p>Sign-in failed — no token received.</p>")
-    end
-  end
-
-  post "/auth/cloud/disconnect" do
-    authed!(conn, fn conn ->
-      Autopoet.Cloud.disconnect()
-      conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(%{ok: true}))
-    end)
   end
 
   # ── Deploy pipeline: run this AutoPoet as a dedicated cloud machine ───────────────────────────────
@@ -631,9 +631,18 @@ defmodule Autopoet.Control do
     conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(Autopoet.Voice.sync()))
   end
 
-  # live | local — the UI picks its voice pipeline by this
+  # stage | live | local — the UI picks its voice pipeline by this.
+  # "stage" = the local speech-to-speech whiteboard (Silero VAD → local STT →
+  # Groq brain → Kokoro), preferred whenever the Groq key is configured.
   get "/voice/mode" do
-    text(conn, if(Autopoet.GeminiLive.available?(), do: "live\n", else: "local\n"))
+    mode =
+      cond do
+        Autopoet.VoiceBrain.available?() -> "stage"
+        Autopoet.GeminiLive.available?() -> "live"
+        true -> "local"
+      end
+
+    text(conn, mode <> "\n")
   end
 
   # ── the local speech-to-speech widget (VAD → Moonshine/Whisper → Groq → Kokoro) ──
