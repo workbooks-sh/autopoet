@@ -164,7 +164,37 @@ defmodule Autopoet.VoiceBrain do
     Use them sparingly, where a person would actually gesture.
 
     When (and only when) a diagram genuinely helps — explaining a system, a flow,
-    a relationship — declare ONE graph at the very start of the reply:
+    a relationship, a plan — declare AT MOST ONE diagram block at the very start
+    of the reply. There are TWO block forms; pick by content:
+
+    FORM 1 — @slide … @end (Markdown). One block = ONE new slide added to the
+    session deck (a persistent slideshow on the whiteboard that accumulates
+    across the whole conversation). REQUIRED for gantt charts, timelines,
+    roadmaps, schedules, plans, comparisons, lists, tables, and pie charts.
+    Slides are markdown: a # title, then a few bullets, a table, or ONE
+    mermaid diagram in a fenced code block. Example — a schedule ask:
+
+    @slide
+    # Website Build
+    ```mermaid
+    gantt
+      dateFormat YYYY-MM-DD
+      title Website Project
+      section Phases
+      Design   :d1, 2025-01-06, 7d
+      Build    :d2, after d1, 14d
+      Launch   :d3, after d2, 3d
+    ```
+    @end
+
+    Mermaid types available inside slides: gantt, sequenceDiagram, pie,
+    stateDiagram-v2, journey, flowchart. Keep slides SPARSE — a title plus a
+    handful of items or one diagram. The deck persists: later in the
+    conversation you may add more slides, and [slide 2] jumps the deck back
+    to slide 2 while you talk about it. Do not use [+x] reveal cues with
+    slides (you may [point <id>] at mermaid node/task ids).
+
+    FORM 2 — @graph … @end (D2 syntax), for architecture and flows:
 
     @graph
     direction: right
@@ -196,10 +226,8 @@ defmodule Autopoet.VoiceBrain do
 
     Pick the form that fits: flows and architectures as plain shapes+arrows,
     ordered phases as a grid timeline, back-and-forth protocols as a sequence
-    diagram, data models as sql_table. When the human asks for a gantt chart,
-    timeline, roadmap, schedule, or project plan you MUST use the grid form —
-    a container with grid-rows: 1 and one shape per phase, in order — never
-    plain floating boxes. Then, as you speak, build and reference
+    diagram, data models as sql_table. (Reminder: gantt/timeline/roadmap/schedule
+    asks are FORM 1 — an @slide with a mermaid gantt — never D2 boxes.) Then, as you speak, build and reference
     it with cues:
       [+a]        reveal shape a when you first mention it (use the top-level id)
       [+a->b]     reveal the edge from a to b

@@ -29,7 +29,10 @@ defmodule Autopoet.Control do
       |> String.replace("__TOKEN__", Autopoet.Discovery.token())
       |> String.replace("__CHROME__", if(Autopoet.Window.frameless?(), do: "flex", else: "none"))
 
-    conn |> put_resp_content_type("text/html") |> send_resp(200, html)
+    conn
+    |> put_resp_content_type("text/html")
+    |> put_resp_header("cache-control", "no-store")
+    |> send_resp(200, html)
   end
 
   get "/static/d3.v7.min.js" do
@@ -791,7 +794,10 @@ defmodule Autopoet.Control do
       |> File.read!()
       |> String.replace("__TOKEN__", Autopoet.Discovery.token())
 
-    conn |> put_resp_content_type("text/html") |> send_resp(200, html)
+    conn
+    |> put_resp_content_type("text/html")
+    |> put_resp_header("cache-control", "no-store")
+    |> send_resp(200, html)
   end
 
   # vendored voice runtime pieces (onnx models, worklets, esm bundles)
@@ -809,7 +815,10 @@ defmodule Autopoet.Control do
           _ -> "application/octet-stream"
         end
 
-      conn |> put_resp_content_type(mime) |> send_resp(200, File.read!(path))
+      conn
+      |> put_resp_content_type(mime)
+      |> put_resp_header("cache-control", "no-cache")
+      |> send_resp(200, File.read!(path))
     else
       send_resp(conn, 404, "no such vendor file\n")
     end

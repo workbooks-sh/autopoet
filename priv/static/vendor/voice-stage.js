@@ -49,6 +49,26 @@
     "  background-image:linear-gradient(var(--grid,rgba(18,19,22,.07)) 1px, transparent 1px),",
     "  linear-gradient(90deg, var(--grid,rgba(18,19,22,.07)) 1px, transparent 1px);",
     "  background-size:24px 24px; }",
+    // the session deck renders INTO the d2 board space (#vs-graph-bg):
+    // reveal.js embedded, transparent, chrome hidden, toon ink
+    "#vs-graph-bg .reveal { font-family:ui-monospace,Menlo,monospace; width:100%; height:100%; }",
+    "#vs-graph-bg .reveal, #vs-graph-bg .reveal .slides section { background:transparent !important; }",
+    "#vs-graph-bg .reveal .controls, #vs-graph-bg .reveal .progress, #vs-graph-bg .reveal .slide-number { display:none !important; }",
+    "#vs-graph-bg .reveal .slides section { color:#121316; text-align:left; }",
+    "#vs-graph-bg .reveal h1, #vs-graph-bg .reveal h2, #vs-graph-bg .reveal h3 { color:#121316; font-family:inherit;",
+    "  text-transform:none; letter-spacing:0; margin-bottom:.5em; }",
+    "#vs-graph-bg .reveal h1 { font-size:1.5em; } #vs-graph-bg .reveal h2 { font-size:1.15em; }",
+    "#vs-graph-bg .reveal h1:after, #vs-graph-bg .reveal h2:after { content:''; display:block; width:64px; height:3px;",
+    "  background:#121316; border-radius:2px; margin-top:10px; }",
+    "#vs-graph-bg .reveal ul, #vs-graph-bg .reveal ol { display:block; margin-left:1em; font-size:.72em; line-height:1.55; }",
+    "#vs-graph-bg .reveal li { margin:.3em 0; }",
+    "#vs-graph-bg .reveal p { font-size:.72em; }",
+    "#vs-graph-bg .reveal table { font-size:.6em; border-collapse:collapse; }",
+    "#vs-graph-bg .reveal th, #vs-graph-bg .reveal td { border:1.6px solid #121316; padding:.35em .7em; }",
+    "#vs-graph-bg .reveal pre { width:100%; box-shadow:none; background:#fff; border:1.6px solid #121316; border-radius:12px; font-size:.5em; }",
+    "#vs-graph-bg .reveal code { color:#121316; }",
+    "#vs-graph-bg .reveal .mm-slide { display:flex; justify-content:center; }",
+    "#vs-graph-bg .reveal .mm-slide svg { max-width:100%; height:auto; }",
     "#vs-graph-bg { position:absolute; left:50%; top:40%; transform:translate(-50%,-50%); z-index:3;",
     "  width:min(86%,1080px); pointer-events:none; opacity:0; transition:opacity .5s ease-out; }",
     "#vs-graph-bg.on { opacity:1; }",
@@ -82,21 +102,16 @@
     ".vs-hand svg { width:100%; height:100%; display:block; }",
     ".vs-hand.left svg { transform:scaleX(-1); }",
     "#vs-ref-overlay { position:fixed; inset:0; pointer-events:none; z-index:8; }",
-    // the thought bubble: fills the air between 'heard you' and 'speaking'
-    "#vs-think { position:absolute; top:-58px; right:-52px; pointer-events:none;",
+    // the thought CLOUD: fills the air between 'heard you' and 'speaking'
+    "#vs-think { position:absolute; top:-74px; right:-64px; width:104px; height:78px; pointer-events:none;",
     "  opacity:0; transform:translateY(6px) scale(.85); transition:opacity .25s ease, transform .25s cubic-bezier(.3,1.4,.5,1); }",
     "#vs-think.on { opacity:1; transform:translateY(0) scale(1); }",
-    "#vs-think .bub { background:#fff; border:1.6px solid #121316; border-radius:16px;",
-    "  padding:9px 12px; display:flex; gap:5px; align-items:center; }",
-    "#vs-think .dot { width:7px; height:7px; border-radius:50%; background:#121316;",
-    "  animation:vs-think-b 1.2s infinite ease-in-out; }",
+    "#vs-think svg { display:block; width:100%; height:100%; overflow:visible; }",
+    "#vs-think .dot { animation:vs-think-b 1.2s infinite ease-in-out; transform-origin:center; transform-box:fill-box; }",
     "#vs-think .dot:nth-child(2) { animation-delay:.15s; }",
     "#vs-think .dot:nth-child(3) { animation-delay:.3s; }",
     "@keyframes vs-think-b { 0%,60%,100% { transform:translateY(0); opacity:.45; }",
-    "  30% { transform:translateY(-4px); opacity:1; } }",
-    "#vs-think .t1, #vs-think .t2 { position:absolute; background:#fff; border:1.6px solid #121316; border-radius:50%; }",
-    "#vs-think .t1 { width:10px; height:10px; left:-6px; bottom:-10px; }",
-    "#vs-think .t2 { width:6px; height:6px; left:-16px; bottom:-20px; }",
+    "  30% { transform:translateY(-3px); opacity:1; } }",
     "#vs-ref-overlay path { fill:none; stroke:rgba(18,19,22,.45); stroke-width:2; stroke-linecap:round;",
     "  stroke-dasharray:5 6; animation:vs-ants .6s linear infinite; }",
     "@keyframes vs-ants { to { stroke-dashoffset:-11; } }",
@@ -530,8 +545,10 @@
   // ────────────────────────── D2 graph layer ──────────────────────────
   var graphBg = null, pieces = { nodes: {}, edges: {} };
   function mountGraphSVG(svgText) {
+    if (deckInst) { try { deckInst.destroy(); } catch (e) {} deckInst = null; }
+    graphBg.style.width = ""; graphBg.style.height = "";
     graphBg.innerHTML = svgText;
-    graphBg.classList.add("on");
+    showBoard("d2");
     var svg = graphBg.querySelector("svg");
     if (svg) {
       svg.removeAttribute("width"); svg.removeAttribute("height");
@@ -617,6 +634,155 @@
       if (g && g.classList.contains("m-hidden")) { g.classList.remove("m-hidden"); g.classList.add("m-fade"); }
     });
   }
+  // ── mermaid: the rich diagram family (gantt, sequence, pie, state) ──
+  var mmReady = null, mmSeq = 0;
+  function ensureMermaid() {
+    if (mmReady) return mmReady;
+    mmReady = loadScript("/static/vendor/mermaid.min.js").then(function () {
+      mermaid.initialize({
+        startOnLoad: false, securityLevel: "loose", theme: "base",
+        themeVariables: {
+          background: "transparent",
+          primaryColor: "#efe9fb", primaryBorderColor: "#121316", primaryTextColor: "#121316",
+          secondaryColor: "#fff3d6", tertiaryColor: "#ffffff",
+          lineColor: "#121316", textColor: "#121316",
+          fontFamily: "ui-monospace, Menlo, monospace", fontSize: "16px",
+          // gantt: purple task bars with ink borders on the paper
+          taskBkgColor: "#cfc3ec", taskBorderColor: "#121316", taskTextColor: "#121316",
+          taskTextOutsideColor: "#121316", taskTextLightColor: "#121316",
+          activeTaskBkgColor: "#efe9fb", activeTaskBorderColor: "#121316",
+          doneTaskBkgColor: "#e9e6df", doneTaskBorderColor: "#121316",
+          critBkgColor: "#f6c6c0", critBorderColor: "#121316",
+          sectionBkgColor: "rgba(142,124,195,.10)", altSectionBkgColor: "transparent",
+          sectionBkgColor2: "rgba(142,124,195,.10)",
+          gridColor: "rgba(18,19,22,.28)", todayLineColor: "#c0392b",
+          // pie
+          pie1: "#cfc3ec", pie2: "#ffe1a8", pie3: "#bfe3d0", pie4: "#f6c6c0",
+          pieOuterStrokeColor: "#121316", pieSectionTextColor: "#121316",
+          // sequence
+          actorBkg: "#ffffff", actorBorder: "#121316", actorTextColor: "#121316",
+          signalColor: "#121316", signalTextColor: "#121316",
+          labelBoxBkgColor: "#efe9fb", labelBoxBorderColor: "#121316"
+        },
+        gantt: { fontSize: 15, sectionFontSize: 15, barHeight: 28, barGap: 7,
+                 topPadding: 46, leftPadding: 96, gridLineStartPadding: 26 }
+      });
+    });
+    return mmReady;
+  }
+  async function mountMermaid(mmSrc) {
+    await ensureMermaid();
+    var out = await mermaid.render("vsmm" + (++mmSeq), mmSrc);
+    if (deckInst) { try { deckInst.destroy(); } catch (e) {} deckInst = null; }
+    graphBg.style.width = ""; graphBg.style.height = "";
+    graphBg.innerHTML = out.svg;
+    showBoard("d2");
+    var svg = graphBg.querySelector("svg");
+    if (svg) {
+      svg.style.background = "transparent";
+      svg.removeAttribute("width"); svg.removeAttribute("height");
+      var vb = (svg.getAttribute("viewBox") || "").split(/\s+/).map(Number);
+      var ar = vb.length === 4 && vb[3] > 0 ? vb[2] / vb[3] : 1.6;
+      var natural = vb.length === 4 ? vb[2] : 700;
+      var maxW = (stageEl ? stageEl.clientWidth : innerWidth) * 0.62;
+      var maxH = (stageEl ? stageEl.clientHeight : innerHeight) * 0.46;
+      var w = Math.min(natural, 820, maxW, maxH * ar);
+      svg.style.width = w + "px";
+      svg.style.height = (w / ar) + "px";
+      svg.style.display = "block";
+      svg.style.margin = "0 auto";
+    }
+    // no white slabs on the paper
+    graphBg.querySelectorAll("rect").forEach(function (r) {
+      if (r.closest("mask, defs, marker, pattern")) return;
+      var fill = (r.getAttribute("fill") || "").toUpperCase();
+      if (r.classList.contains("background") || fill === "#FFFFFF" || fill === "WHITE") r.remove();
+    });
+    // best-effort pieces so [point x] still lands: flowchart nodes + gantt bars
+    pieces = { nodes: {}, edges: {} };
+    graphBg.querySelectorAll("g.node[id]").forEach(function (n) {
+      var m = n.id.match(/^flowchart-(.+?)-\d+$/);
+      if (m) pieces.nodes[m[1]] = n;
+    });
+    graphBg.querySelectorAll("rect.task[id], .task[id]").forEach(function (n) {
+      pieces.nodes[n.id] = n;
+    });
+    // mermaid shows WHOLE — reveals are no-ops here (nothing is m-hidden)
+  }
+
+  // ── the session deck: reveal.js over a server-kept markdown scratch file.
+  //    The agent adds slides with @slide blocks; the deck persists across
+  //    turns, is browsable ([slide N]), and exports at /voice/deck/export. ──
+  var revealReady = null, deckInst = null, deckMd = "";
+  function ensureReveal() {
+    if (revealReady) return revealReady;
+    revealReady = (async function () {
+      if (!document.getElementById("vs-reveal-css")) {
+        var l = document.createElement("link");
+        l.id = "vs-reveal-css"; l.rel = "stylesheet"; l.href = "/static/vendor/reveal.css";
+        document.head.appendChild(l);
+      }
+      if (!window.Reveal) await loadScript("/static/vendor/reveal.js");
+      if (!window.RevealMarkdown) await loadScript("/static/vendor/reveal-markdown.js");
+      await ensureMermaid();
+    })();
+    return revealReady;
+  }
+  var boardMode = null;         // what currently occupies the board: "deck" | "d2" | null
+  function showBoard(which) {
+    boardMode = which;
+    if (graphBg) graphBg.classList.toggle("on", which != null);
+  }
+  async function renderDeck(md, gotoIdx) {
+    await ensureReveal();
+    var deckEl = graphBg;                          // the deck lives on the d2 board
+    if (!deckEl || !mounted) return;
+    if (deckInst) { try { deckInst.destroy(); } catch (e) {} deckInst = null; }
+    deckEl.style.width = "940px";                  // reveal needs a sized container
+    deckEl.style.height = "570px";
+    deckEl.innerHTML =
+      '<div class="reveal"><div class="slides">' +
+      '<section data-markdown data-separator="^\n---\n$"><textarea data-template></textarea></section>' +
+      '</div></div>';
+    // the markdown plugin reads the template from the DOM text node — .value
+    // does not touch it (that was the invisible-empty-deck bug)
+    deckEl.querySelector("textarea").textContent = md;
+    deckInst = new Reveal(deckEl.querySelector(".reveal"), {
+      embedded: true, plugins: [RevealMarkdown],
+      width: 920, height: 560, margin: 0.02,
+      controls: false, progress: false, keyboard: false, touch: false,
+      transition: "fade", backgroundTransition: "none", hash: false
+    });
+    await deckInst.initialize();
+    // mermaid fences → live ink diagrams at slide scale
+    var fences = deckEl.querySelectorAll("code.language-mermaid, code.mermaid");
+    for (var i = 0; i < fences.length; i++) {
+      var f = fences[i];
+      try {
+        var out = await mermaid.render("vsdk" + (++mmSeq), f.textContent);
+        var holder = document.createElement("div");
+        holder.className = "mm-slide";
+        holder.innerHTML = out.svg;
+        var pre = f.closest("pre") || f;
+        pre.parentNode.replaceChild(holder, pre);
+      } catch (e) { /* leave the fence as code */ }
+    }
+    if (deckInst.layout) deckInst.layout();
+    if (typeof gotoIdx === "number") deckInst.slide(gotoIdx);
+    showBoard("deck");
+  }
+  function deckGoto(n) {
+    if (deckInst && boardMode === "deck") deckInst.slide(Math.max(0, n - 1));
+  }
+  async function deckAdd(slideMd) {
+    var r = await fetch("/voice/deck/add", { method: "POST",
+      headers: { authorization: "Bearer " + TOKEN, "content-type": "text/plain" }, body: slideMd });
+    if (!r.ok) throw new Error("deck " + r.status);
+    deckMd = await r.text();
+    var count = deckMd.split(/\n---\n/).length;
+    await renderDeck(deckMd, count - 1);
+  }
+
   var d2Cache = new Map();
   function compileD2(src) {
     if (d2Cache.has(src)) return d2Cache.get(src);
@@ -892,7 +1058,7 @@
   // (missing model files or espeak-ng).
   var kokoro = false, kokoroMode = null;   // "server" | "worker"
   var kWorker = null, kSeq = 0, kPending = {};
-  var VOICE_ID = "am_santa";
+  var VOICE_ID = "bf_emma";
   function bootKokoro() {
     if (kokoro) return;
     fetch("/voice/tts/status").then(function (r) { return r.text(); }).then(function (s) {
@@ -1003,8 +1169,32 @@
     var runId = {};
     playing = runId;
     var narration = script, g = script.match(/@graph\s*([\s\S]*?)@end/);
-    if (g) {
-      narration = script.replace(g[0], " ");
+    var mm = script.match(/@mermaid\s*([\s\S]*?)@end/);
+    // @slide blocks (any number) append to the session deck and take the stage
+    var slides = [];
+    narration = narration.replace(/@slide\s*([\s\S]*?)@end/g, function (_, s) {
+      slides.push(s.trim()); return " ";
+    });
+    // narration NEVER contains block source, whichever forms appeared —
+    // otherwise the avatar would read d2/mermaid syntax aloud
+    narration = narration.replace(/@(?:graph|mermaid)\s*[\s\S]*?@end/g, " ");
+    if (slides.length) {
+      g = null; mm = null;
+      for (var si = 0; si < slides.length; si++) {
+        try { await deckAdd(slides[si]); }
+        catch (e) { captionShow("dim", "(couldn't add the slide)"); }
+      }
+    }
+    if (mm) {
+      g = null;
+      try { await mountMermaid(mm[1].trim()); }
+      catch (e) {
+        graphBg.classList.remove("on");
+        graphBg.innerHTML = "";
+        pieces = { nodes: {}, edges: {} };
+        captionShow("dim", "(the diagram didn't compile — talking it through)");
+      }
+    } else if (g) {
       try { mountGraphSVG(await compileD2(g[1].trim())); }
       catch (e) {
         // failed diagram → clean slate so no cue can point at stale/detached
@@ -1014,7 +1204,11 @@
         pieces = { nodes: {}, edges: {} };
         captionShow("dim", "(the diagram didn't compile — talking it through)");
       }
-    } else graphBg.classList.remove("on");
+    } else if (!slides.length) {
+      // no new board this turn: an existing deck stays (or returns to) the stage
+      if (deckMd && boardMode !== "deck") { try { await renderDeck(deckMd); } catch (e) {} }
+      else if (!deckMd) showBoard(null);
+    }
     if (playing !== runId) return;
 
     var stream = tokenize(narration);
@@ -1079,6 +1273,7 @@
       }
       else if (d === "move center") moveTo(0, stageEl.clientHeight * 0.12);
       else if (d.indexOf("mood ") === 0) { var mo = MOODS[d.slice(5).trim()]; if (mo) { mood = mo[0]; setMouth(mo[0]); setBrows(mo[1]); } }
+      else if (/^slide \d+$/.test(d)) deckGoto(parseInt(d.slice(6), 10));
       else if (d === "wave") wave();
       else if (d === "wave2") wave(true);
       else if (d === "thumbsup") thumbsUp();
@@ -1156,24 +1351,29 @@
 
   // ────────────────────────── the conversation loop ──────────────────────────
   var history = [];
-  // ── the thinking beat: bubble + upward gaze while the brain works ──
-  var thinkT = null;
+  // ── the thinking beat: cloud + upward gaze while the brain works ──
+  // classic scalloped thought-cloud (ink outline, typing dots, trail puffs)
+  var THINK_CLOUD =
+    '<svg viewBox="0 0 104 78" fill="none">' +
+    '<path d="M30 18 C33 8 47 4 54 10 C58 2 74 2 78 10 C88 6 98 14 94 23 C102 27 102 39 94 43 C96 52 86 58 78 54 C74 62 58 62 53 55 C45 61 31 57 30 48 C20 50 12 42 16 34 C8 30 10 20 18 18 C20 14 26 14 30 18 Z" ' +
+    'fill="#fff" stroke="#121316" stroke-width="2.2" stroke-linejoin="round"/>' +
+    '<circle class="dot" cx="41" cy="32" r="4" fill="#121316"/>' +
+    '<circle class="dot" cx="55" cy="32" r="4" fill="#121316"/>' +
+    '<circle class="dot" cx="69" cy="32" r="4" fill="#121316"/>' +
+    '<ellipse cx="22" cy="64" rx="6.5" ry="5" fill="#fff" stroke="#121316" stroke-width="2"/>' +
+    '<ellipse cx="11" cy="74" rx="4" ry="3" fill="#fff" stroke="#121316" stroke-width="1.8"/>' +
+    '</svg>';
   function startThink() {
-    clearTimeout(thinkT);
-    // let the end-of-speech reaction land first, then drift into thought
-    thinkT = later(setTimeout(function () {
-      if (!mounted || playing) return;
-      var tk = document.getElementById("vs-think");
-      if (tk) tk.classList.add("on");
-      setBrows("skeptical");
-      setMouth("neutral");
-      // eyes drift up toward the bubble
-      var r = scene && scene.getBoundingClientRect();
-      if (r) setAttention({ x: r.right - 20, y: r.top - 30 }, 6000, 1.4);
-    }, 450));
+    if (!mounted) return;
+    var tk = document.getElementById("vs-think");
+    if (tk) tk.classList.add("on");
+    setBrows("skeptical");
+    setMouth("neutral");
+    // eyes drift up toward the cloud
+    var r = scene && scene.getBoundingClientRect();
+    if (r) setAttention({ x: r.right - 10, y: r.top - 40 }, 8000, 1.4);
   }
   function stopThink() {
-    clearTimeout(thinkT);
     var tk = document.getElementById("vs-think");
     if (tk) tk.classList.remove("on");
   }
@@ -1182,16 +1382,14 @@
   //    synth and a completed @graph block goes to d2 — perform() then finds
   //    everything already in flight. Mirrors perform's clip-boundary rule.
   function prewarmFromPartial(text) {
-    var narration = text;
-    var gi = text.indexOf("@graph");
-    if (gi > -1) {
-      var ge = text.indexOf("@end");
-      if (ge === -1) narration = text.slice(0, gi);       // graph still being written
-      else {
-        compileD2(text.slice(gi + 6, ge).trim());          // fire the diagram NOW
-        narration = text.slice(0, gi) + " " + text.slice(ge + 4);
-      }
-    }
+    // fire what can be fired early: d2 compiles, the deck/mermaid libs warm
+    var gm = text.match(/@graph\s*([\s\S]*?)@end/);
+    if (gm) compileD2(gm[1].trim());
+    if (/@mermaid|@slide/.test(text)) { ensureMermaid(); ensureReveal(); }
+    // narration = text minus complete blocks, cut at any dangling opener
+    var narration = text.replace(/@(?:slide|graph|mermaid)\s*[\s\S]*?@end/g, " ");
+    var open = narration.search(/@(?:slide|graph|mermaid)/);
+    if (open > -1) narration = narration.slice(0, open);
     var words = narration.replace(/\[[^\]]*\]/g, " ").replace(/\[[^\]]*$/, " ")
       .split(/\s+/).filter(Boolean);
     var cur = [], n = 0, first = true;
@@ -1440,10 +1638,10 @@
         bg.id = facePrefix + "brows";
         faceRoot.insertBefore(bg, faceRoot.firstChild);
       }
-      // the thought bubble rides the adopted cube's container
+      // the thought cloud rides the adopted cube's container
       var tk = document.createElement("div");
       tk.id = "vs-think";
-      tk.innerHTML = '<div class="bub"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div><span class="t1"></span><span class="t2"></span>';
+      tk.innerHTML = THINK_CLOUD;
       scene.appendChild(tk);
       // hands join the adopted cube (they ride its 3D transform)
       var hr = document.createElement("div"); hr.className = "vs-hand"; hr.id = "vs-hand-r";
@@ -1455,7 +1653,7 @@
       scene = document.getElementById("vs-scene");
       var tk2 = document.createElement("div");
       tk2.id = "vs-think";
-      tk2.innerHTML = '<div class="bub"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div><span class="t1"></span><span class="t2"></span>';
+      tk2.innerHTML = THINK_CLOUD;
       scene.appendChild(tk2);
       faceMount = document.getElementById("vs-face");
       facePrefix = "vs-ap-";
@@ -1515,6 +1713,9 @@
     injectCSS();
     buildDOM();
     mounted = true;
+    deckMd = ""; deckInst = null;
+    fetch("/voice/deck/new", { method: "POST",
+      headers: { authorization: "Bearer " + TOKEN } }).catch(function () {});
     ensureAudio();     // created + resumed INSIDE the button gesture — sound works
     startBlink();
     startGaze();
@@ -1573,6 +1774,7 @@
         if (rootRef && rootRef.parentNode) rootRef.parentNode.removeChild(rootRef);
         var gbEl = document.getElementById("vs-graph-bg");
         if (gbEl && gbEl.parentNode) gbEl.parentNode.removeChild(gbEl);
+        if (deckInst) { try { deckInst.destroy(); } catch (e) {} deckInst = null; }
         if (oRef && oRef.parentNode) oRef.parentNode.removeChild(oRef);
         if (adopted && handRefs) {
           [handRefs.r, handRefs.l].forEach(function (h) {
@@ -1594,6 +1796,7 @@
       // glide home: back onto the self node's exact footprint, world returns
       var gb = document.getElementById("vs-graph-bg");
       if (gb) gb.classList.remove("on");
+
       var spot = hooks.selfSpot();
       sceneRef.style.transition = "transform .65s cubic-bezier(.4,.9,.4,1)";
       sceneRef.style.setProperty("--sx", spot.sx + "px");
