@@ -117,12 +117,14 @@
     "#vs-drawer-in { width:100%; border:1px solid var(--line,rgba(18,19,22,.16)); border-radius:9px;",
     "  padding:9px 12px; font:15px -apple-system,BlinkMacSystemFont,sans-serif; outline:none; }",
     "#vs-drawer-in:focus { border-color:#121316; }",
-    // transcript button dropped into the call bar
-    "#vs-tbtn { border:none; border-radius:999px; height:36px; padding:0 14px; cursor:pointer;",
-    "  display:flex; align-items:center; gap:7px; color:#e8eaf0; background:#343a42;",
+    // transcript button dropped into the call bar — the double-id selector
+    // outguns the app's generic `#callbar button` circle rule (36px/50%)
+    "#callbar #vs-tbtn { border:none; border-radius:999px; width:auto; height:36px; padding:0 14px;",
+    "  cursor:pointer; display:flex; align-items:center; gap:7px; color:#e8eaf0; background:#343a42;",
     "  font:12px -apple-system,BlinkMacSystemFont,sans-serif; }",
-    "#vs-tbtn:hover { background:#454c56; }",
-    "#vs-tbtn svg { width:14px; height:14px; }",
+    "#callbar #vs-tbtn:hover { background:#454c56; }",
+    "#callbar #vs-tbtn svg { width:14px; height:14px; flex:none; }",
+    "#callbar #vs-tbtn span { white-space:nowrap; }",
     // the D3 graph fades while the whiteboard is up
     "#stage.vs-whiteboard > svg#graph { opacity:0; transition:opacity .45s ease; }",
     "#stage.vs-whiteboard #callcaption { display:none; }"
