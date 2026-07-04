@@ -873,7 +873,7 @@
   // (missing model files or espeak-ng).
   var kokoro = false, kokoroMode = null;   // "server" | "worker"
   var kWorker = null, kSeq = 0, kPending = {};
-  var VOICE_ID = "af_heart";
+  var VOICE_ID = "am_santa";
   function bootKokoro() {
     if (kokoro) return;
     fetch("/voice/tts/status").then(function (r) { return r.text(); }).then(function (s) {
