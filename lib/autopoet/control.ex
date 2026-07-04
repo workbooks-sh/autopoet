@@ -780,7 +780,18 @@ defmodule Autopoet.Control do
 
   # BEAM-native Kokoro: the widget's primary voice. Plain text in, WAV out.
   get "/voice/tts/status" do
-    text(conn, Autopoet.Kokoro.status() <> "\n")
+    # "ready <engine>" — the widget synthesizes accordingly (tags are
+    # chatterbox-only; kokoro gets tag-stripped text)
+    cond do
+      Autopoet.Chatterbox.ready?() and System.get_env("AUTOPOET_TTS") != "kokoro" ->
+        text(conn, "ready chatterbox\n")
+
+      Autopoet.Kokoro.status() == "ready" ->
+        text(conn, "ready kokoro\n")
+
+      true ->
+        text(conn, Autopoet.Kokoro.status() <> "\n")
+    end
   end
 
   post "/voice/tts" do
@@ -789,7 +800,8 @@ defmodule Autopoet.Control do
       voice = conn.query_params["voice"] || "af_heart"
 
       engine =
-        conn.query_params["engine"] || System.get_env("AUTOPOET_TTS") || "kokoro"
+        conn.query_params["engine"] || System.get_env("AUTOPOET_TTS") ||
+          if(Autopoet.Chatterbox.ready?(), do: "chatterbox", else: "kokoro")
 
       result =
         case engine do

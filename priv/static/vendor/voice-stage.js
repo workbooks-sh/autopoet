@@ -1066,14 +1066,16 @@
   // Kokoro survives only as a FALLBACK when the server engine is off
   // (missing model files or espeak-ng).
   var kokoro = false, kokoroMode = null;   // "server" | "worker"
+  var ttsEngine = "kokoro";                // "chatterbox" | "kokoro" (server reports)
   var kWorker = null, kSeq = 0, kPending = {};
   var VOICE_ID = "bf_emma";
   function bootKokoro() {
     if (kokoro) return;
     fetch("/voice/tts/status").then(function (r) { return r.text(); }).then(function (s) {
       s = s.trim();
-      if (s === "ready") {
+      if (s.indexOf("ready") === 0) {
         kokoro = true; kokoroMode = "server";
+        ttsEngine = s.split(/\s+/)[1] || "kokoro";
         if (mounted && !playing) capStatus("ready — just talk");
       } else if (s === "loading") {
         if (mounted && !playing) capStatus("warming local voice…");
@@ -1109,6 +1111,9 @@
   //    tag + sampler knobs (tuned in /voice/lab, persisted server-side).
   //    Kokoro ignores the extra params, so this is engine-safe. ──
   var voiceMood = "neutral";
+  // sound tags ride INSIDE the synthesized text (chatterbox performs them);
+  // they are never captioned, never in the transcript, never spoken as words
+  var PARA_TAG = /^(chuckle|laugh|sigh|gasp|groan|cough|sniff|clear throat|shush|whispering|dramatic)$/;
   var MOOD_VOICE = {
     neutral:   { tag: "",            t: 0.8, p: 0.95, k: 1000, r: 1.2,  m: 0 },
     happy:     { tag: "[happy]",     t: 0.9, p: 0.95, k: 1000, r: 1.2,  m: 0 },
@@ -1149,12 +1154,19 @@
   function kokoroGenRaw(text) {
     if (kokoroMode === "server") {
       var mv = MOOD_VOICE[voiceMood] || MOOD_VOICE.neutral;
-      var q = "voice=" + encodeURIComponent(VOICE_ID) +
-        "&temp=" + mv.t + "&top_p=" + mv.p + "&top_k=" + mv.k + "&rep=" + mv.r + "&min_p=" + mv.m;
+      var q, body;
+      if (ttsEngine === "chatterbox") {
+        q = "engine=chatterbox&temp=" + mv.t + "&top_p=" + mv.p + "&top_k=" + mv.k +
+          "&rep=" + mv.r + "&min_p=" + mv.m;
+        body = (mv.tag ? mv.tag + " " : "") + text;            // style tag + inline sound tags
+      } else {
+        q = "voice=" + encodeURIComponent(VOICE_ID);
+        body = text.replace(/\[[^\]]+\]\s*/g, "");            // kokoro must never SAY a tag
+      }
       return fetch("/voice/tts?" + q, {
         method: "POST",
         headers: { authorization: "Bearer " + TOKEN, "content-type": "text/plain" },
-        body: (mv.tag ? mv.tag + " " : "") + text
+        body: body
       }).then(function (r) {
         if (!r.ok) throw new Error("tts " + r.status);
         return r.arrayBuffer();
@@ -1258,15 +1270,18 @@
     if (playing !== runId) return;
 
     var stream = tokenize(narration);
-    var words = [];
-    stream.forEach(function (s) { if (s.word) { s._wi = words.length; words.push(s.word); } });
+    var words = [], pres = [], pend = "";
+    stream.forEach(function (s) {
+      if (s.dir && PARA_TAG.test(s.dir)) { s._para = true; pend += "[" + s.dir + "] "; }
+      else if (s.word) { s._wi = words.length; pres[words.length] = pend; pend = ""; words.push(s.word); }
+    });
     if (!words.length) { stopPerform(); return; }
     logLine("poet", words.join(" "));
 
     var sentOf = [], counts = [], sText = [], sN = 0, cur = "";
     words.forEach(function (w, i) {
       sentOf[i] = sN; counts[sN] = (counts[sN] || 0) + 1;
-      cur += (cur ? " " : "") + w;
+      cur += (cur ? " " : "") + (pres[i] || "") + w;
       // clip boundaries at sentence ends AND clause breaks (,;:) once the
       // clause is ≥5 words: synthesis is ~0.6x realtime, so smaller clips =
       // the first sound arrives after one CLAUSE, not one full sentence
@@ -1303,6 +1318,7 @@
     if (pendDirs.length && groups[gi]) pendDirs.forEach(function (d) { groups[gi].items.push(d); });
 
     function fireDir(d) {
+      if (PARA_TAG.test(d)) return;          // voice-only tag — already in the audio
       if (d[0] === "+") reveal(d.slice(1));
       else if (d.indexOf("point ") === 0) {
         var pname = d.slice(6).trim();
@@ -1440,14 +1456,22 @@
     var narration = text.replace(/@(?:slide|graph|mermaid)\s*[\s\S]*?@end/g, " ");
     var open = narration.search(/@(?:slide|graph|mermaid)/);
     if (open > -1) narration = narration.slice(0, open);
-    var words = narration.replace(/\[[^\]]*\]/g, " ").replace(/\[[^\]]*$/, " ")
-      .split(/\s+/).filter(Boolean);
-    var cur = [], n = 0, first = true;
-    words.forEach(function (w, i) {
-      cur.push(w); n++;
+    // keep sound tags (they're part of the TTS text), drop stage cues —
+    // MUST build clauses exactly like perform() or the prewarm cache misses
+    narration = narration.replace(/\[([^\]]*)\]/g, function (_, d) {
+      d = d.trim();
+      // inner spaces protected so "[clear throat]" survives the token split
+      return PARA_TAG.test(d) ? "\u0001" + d.replace(/ /g, "\u0003") + "\u0002" : " ";
+    }).replace(/\[[^\]]*$/, " ");
+    var toks = narration.split(/\s+/).filter(Boolean);
+    var cur = [], n = 0, first = true, pend2 = "";
+    toks.forEach(function (w, i) {
+      if (w[0] === "\u0001") { pend2 += "[" + w.slice(1, -1).replace(/\u0003/g, " ") + "] "; return; }
+      cur.push(pend2 + w); pend2 = "";
+      n++;
       var boundary = /[.!?]$/.test(w) || (/[,;:]$/.test(w) && n >= (first ? 3 : 5));
       // never prewarm the trailing fragment — it may still be growing
-      if (boundary && i < words.length - 1) {
+      if (boundary && i < toks.length - 1) {
         if (kokoro) kokoroGen(cur.join(" "));
         cur = []; n = 0; first = false;
       }
