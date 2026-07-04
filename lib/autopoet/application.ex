@@ -94,28 +94,11 @@ defmodule Autopoet.Application do
     end
   end
 
-  # A fresh data dir gets a tiny starter workbook — the body the autopoet observes
-  # and proposes against. Never overwrites anything.
+  # GENESIS (wb-h0tjs.1, invariant I1): a fresh body starts EMPTY — no starter
+  # index/journal demo pages. The user's world is born from the intake proposal;
+  # until then the graph shows exactly the self. Only the directory is ensured.
   defp seed_workbook do
-    root = Nexus.Paths.data_dir()
-
-    if Path.wildcard(Path.join(root, "**/*.work")) == [] do
-      File.mkdir_p!(root)
-
-      File.write!(Path.join(root, "index.work"), """
-      # autopoet nexus
-
-      The local body of the autopoet desktop experiment. See [[journal]].
-      """)
-
-      File.write!(Path.join(root, "journal.work"), """
-      # Journal
-
-      Notes accumulate here. Tagged #journal.
-      """)
-
-      Autopoet.Log.puts("seeded starter workbook in #{root}")
-    end
+    File.mkdir_p!(Nexus.Paths.data_dir())
   end
 
   # Desktop-only I/O children (mic STT + realtime Voice) — dropped in the cloud.
@@ -125,7 +108,7 @@ defmodule Autopoet.Application do
     if cloud?() do
       []
     else
-      Enum.filter([Autopoet.Stt, Autopoet.Voice, Autopoet.Kokoro], fn mod ->
+      Enum.filter([Autopoet.Stt, Autopoet.Voice, Autopoet.Kokoro, Autopoet.Affect], fn mod ->
         Code.ensure_loaded?(mod) ||
           (IO.puts("autopoet: desktop I/O child #{inspect(mod)} missing — skipped") && false)
       end)

@@ -643,6 +643,21 @@ defmodule Autopoet.Control do
     conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(Autopoet.Voice.sync()))
   end
 
+  # BEAM-native emotion read (GoEmotions RoBERTa): plain text in, "label score" lines out
+  post "/voice/affect" do
+    authed!(conn, fn conn ->
+      {:ok, body, conn} = read_body(conn, length: 4_000)
+
+      case Autopoet.Affect.classify(body) do
+        {:ok, top} ->
+          text(conn, Enum.map_join(top, "\n", fn {l, s} -> "#{l} #{s}" end))
+
+        {:error, _} ->
+          send_resp(conn, 204, "")
+      end
+    end)
+  end
+
   # BEAM-native Kokoro: the widget's primary voice. Plain text in, WAV out.
   get "/voice/tts/status" do
     text(conn, Autopoet.Kokoro.status() <> "\n")

@@ -601,12 +601,12 @@
   // (one big gesture max per utterance); the final pass adds full gestures
   // and advances the arc state.
   var LEX = {
-    joy: "happy joy love loved great wonderful amazing win won laugh smile delight awesome fun celebrate sunshine friend friends beautiful sweet excited exciting glad proud peace calm cozy warm yay best perfect brilliant hooray relief relieved promoted promotion married engaged safe healed passed thanks thank cool nice",
-    sad: "sad cry cried crying tears lost loss lonely alone miss missed grief gloomy blue down hurt broke broken fail failed sorrow mourning empty dark goodbye died death dying sorry heartbroken quit tired stuck",
-    anger: "angry mad furious rage hate hated annoyed irritated unfair betrayed stupid damn fight fought yell yelled scream screamed slammed revenge outraged insulted cruel fired stole cheated lied wrong bug crash error frustrated",
-    fear: "afraid fear scared terrified panic worry worried anxious nervous dread horror creepy danger dangerous threat shaking trembling alarm alarmed risk unsure",
-    surprise: "surprised surprise sudden suddenly unexpected shock shocked wow whoa gasp gasped unbelievable astonished stunned nowhere really",
-    disgust: "disgust disgusting gross nasty yuck rotten filthy vile revolting foul slimy"
+    joy: "happy joy love loved loves great wonderful amazing win won winning laugh smile delight delighted awesome fun celebrate celebration sunshine friend friends beautiful sweet excited exciting glad proud peace calm cozy warm yay best perfect brilliant hooray relief relieved promoted promotion raise married engaged safe healed passed thanks thank grateful cool nice fantastic incredible superb lovely enjoy enjoyed delicious tasty yummy favorite blessed lucky thrilled stoked pumped rad",
+    sad: "sad cry cried crying tears lost loss lonely alone miss missed grief gloomy blue down hurt hurts hurting broke broken fail failed failing sorrow mourning empty dark goodbye died death dying sorry heartbroken quit tired exhausted stuck terrible awful horrible horrid miserable worst bad rough painful pain ache aching sick sicker ill unwell nausea nauseous vomit puking fever poisoning hospital injury injured suffering depressed depressing hopeless bummed crummy crappy lousy gutted devastated drained",
+    anger: "angry mad furious rage hate hated hates annoyed annoying irritated irritating unfair betrayed stupid damn fight fought yell yelled scream screamed slammed revenge outraged insulted cruel fired stole stolen cheated lied lying wrong bug crash crashed error broken frustrated frustrating infuriating ridiculous absurd outrageous rude disrespect disrespected ignored dismissed",
+    fear: "afraid fear fears scared terrified terrifying panic panicking worry worried worrying anxious anxiety nervous dread dreading horror creepy danger dangerous threat threatened shaking trembling alarm alarmed risk risky unsure uncertain uneasy paranoid stressed stressing overwhelmed",
+    surprise: "surprised surprise surprising sudden suddenly unexpected unexpectedly shock shocked shocking wow whoa gasp gasped unbelievable astonished stunned nowhere really seriously literally insane wild crazy",
+    disgust: "disgust disgusted disgusting gross grossed nasty yuck yucky rotten filthy vile revolting foul slimy moldy rancid stinky reeks putrid ew eww"
   };
   var W2E = {};
   Object.keys(LEX).forEach(function (e) { LEX[e].split(" ").forEach(function (w) { W2E[w] = e; }); });
@@ -689,11 +689,58 @@
   var prospect = { type: null, ttl: 0 };   // hope/fear in the air, across turns
   var utterGestured = false;               // one big gesture max per utterance
 
-  function routeListener(text, isFinal) {
-    var scores = scoreText(text);
-    var ranked = domOf(scores);
-    var dom = ranked[0], sec = ranked[1];
-    var strength = dom ? Math.round(scores[dom]) : 0;
+  // ── the REAL emotion read: GoEmotions classifier on the BEAM ──
+  // /voice/affect returns "label score" lines (~40ms). The lexicon below
+  // becomes the FALLBACK when the model is absent; the rule layer (arcs,
+  // attribution, questions, humor) always runs on top of either source.
+  var GO2EMO = {
+    admiration: "joy", amusement: "joy", anger: "anger", annoyance: "anger",
+    approval: "joy", caring: "joy", desire: "joy", disappointment: "sad",
+    disapproval: "anger", disgust: "disgust", embarrassment: "sad",
+    excitement: "joy", fear: "fear", gratitude: "joy", grief: "sad",
+    joy: "joy", love: "joy", nervousness: "fear", pride: "joy",
+    realization: "surprise", relief: "joy", remorse: "sad", sadness: "sad",
+    surprise: "surprise"
+  };
+  var GO_KIND = {   // labels that name a reaction more precisely than the family
+    amusement: "laugh", confusion: "curious", curiosity: "curious",
+    disappointment: "disappointment", optimism: "hope", relief: "relief"
+  };
+  var affectCache = { text: null, top: null };
+  function affectOf(text) {
+    if (affectCache.text === text) return Promise.resolve(affectCache.top);
+    if (typeof fetch === "undefined") return Promise.resolve(null);
+    return fetch("/voice/affect", { method: "POST",
+      headers: { authorization: "Bearer " + TOKEN, "content-type": "text/plain" }, body: text })
+      .then(function (r) { return r.status === 200 ? r.text() : ""; })
+      .then(function (t) {
+        var top = null;
+        (t || "").split("\n").some(function (line) {
+          var m = line.trim().split(" ");
+          if (m.length !== 2) return false;
+          var label = m[0], score = parseFloat(m[1]);
+          if (label === "neutral" || !(score >= 0.15)) return false;
+          top = { label: label, score: score };
+          return true;                        // lines arrive score-desc: first hit wins
+        });
+        affectCache = { text: text, top: top };
+        return top;
+      })
+      .catch(function () { return null; });
+  }
+
+  function routeListener(text, isFinal, model) {
+    var dom, strength, modelKind = null;
+    if (model) {                               // the classifier's read
+      dom = GO2EMO[model.label] || null;
+      strength = Math.max(1, Math.round(model.score * 6));
+      modelKind = GO_KIND[model.label] || null;
+    } else {                                   // lexicon fallback
+      var scores = scoreText(text);
+      var ranked = domOf(scores);
+      dom = ranked[0];
+      strength = dom ? Math.round(scores[dom]) : 0;
+    }
 
     var isQuestion = /\?\s*$/.test(text.trim());
     var isPast = false;
@@ -714,7 +761,8 @@
       kind = (/\b(why me|why does this|what did i do|how could)\b/i.test(text) ||
               (dom && (dom === "sad" || dom === "fear"))) ? "rhet-sympathy" : "curious";
     }
-    else if (HOPE_CUE.test(text) && (!dom || dom === "joy")) kind = "hope";
+    else if ((HOPE_CUE.test(text) || modelKind === "hope") && (!dom || dom === "joy")) kind = "hope";
+    else if (modelKind && !dom) kind = modelKind;
     else if (!dom) kind = "attentive";
     else {
       var other = THIRD.test(text), self = SELF_FEEL.test(text), atMe = AT_ME.test(text);
@@ -722,12 +770,14 @@
       else if (dom === "sad")  kind = (other && !self) ? "sympathy-them" : "sympathy";
       else if (dom === "joy")  kind = "share-joy";
       else kind = KIND_FOR[dom];
+      // the classifier names some reactions more precisely than the family
+      if (modelKind && kind !== "indignant" && kind !== "sympathy-them") kind = modelKind;
     }
 
     if (isFinal) {           // arcs advance only on the settled utterance
       var resolved = { satisfaction: 1, relief: 1, disappointment: 1, "fears-confirmed": 1 };
       if (resolved[kind]) prospect = { type: null, ttl: 0 };   // the arc landed — consume it
-      else if (HOPE_CUE.test(text)) prospect = { type: "hope", ttl: 3 };
+      else if (HOPE_CUE.test(text) || modelKind === "hope") prospect = { type: "hope", ttl: 3 };
       else if (dom === "fear") prospect = { type: "fear", ttl: 3 };
       else if (prospect.ttl > 0) prospect.ttl--;
       else prospect.type = null;
@@ -736,7 +786,13 @@
   }
 
   function reactToUser(text, partial) {
-    var r = routeListener(text, !partial);
+    affectOf(text).then(function (top) {
+      if (!mounted) return;
+      applyReaction(text, partial, top);
+    });
+  }
+  function applyReaction(text, partial, model) {
+    var r = routeListener(text, !partial, model);
     var spec = (RESPONSES[r.kind] || RESPONSES.attentive)(r.strength);
     mood = spec.mouth;
     setMouth(spec.mouth);
