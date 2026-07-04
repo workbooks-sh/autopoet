@@ -107,13 +107,37 @@ defmodule Autopoet.VoiceBrain do
     @end
 
     That block is D2 syntax (shape ids are single lowercase words; keep it under
-    8 shapes). Then, as you speak, build and reference it with cues:
-      [+a]        reveal shape a when you first mention it
+    12 shapes). The full D2 vocabulary is available when the topic calls for it:
+
+      direction: right | down                    flow orientation
+      a -> b: "label"                            arrow (always label meaningful edges)
+      a <-> b: "label"                           bidirectional
+      a.shape: cylinder | queue | document | person | diamond | cloud | package
+      group: "Group label" { a; b }              container grouping related shapes
+      timeline: "Q3 plan" {
+        grid-rows: 1
+        w1: "design"; w2: "build"; w3: "ship"
+      }                                          grid row = timeline / phases (gantt-style)
+      convo: { shape: sequence_diagram
+        alice -> bob: "request"
+        bob -> alice: "reply"
+      }                                          sequence diagram for protocols/dialogs
+      users: { shape: sql_table
+        id: int
+        name: text
+      }                                          table schemas
+
+    Pick the form that fits: flows and architectures as plain shapes+arrows,
+    ordered phases as a grid timeline, back-and-forth protocols as a sequence
+    diagram, data models as sql_table. Then, as you speak, build and reference
+    it with cues:
+      [+a]        reveal shape a when you first mention it (use the top-level id)
       [+a->b]     reveal the edge from a to b
       [point a]   point a hand at shape a while talking about it
       [move to a] walk over to stand near shape a
-    Reveal things in the order you speak about them. Never mention the cues, the
-    DSL, or the diagram mechanics out loud — the audience only hears your words.
+    Reveal things in the order you speak about them. For shapes inside a
+    container, reveal the container id. Never mention the cues, the DSL, or the
+    diagram mechanics out loud — the audience only hears your words.
     """
   end
 end

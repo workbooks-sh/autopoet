@@ -518,9 +518,20 @@
     var svg = graphBg.querySelector("svg");
     if (svg) { svg.removeAttribute("width"); svg.removeAttribute("height"); svg.style.width = "100%"; svg.style.height = "auto"; }
     graphBg.querySelectorAll("rect").forEach(function (r) {
+      if (r.closest("mask, defs, marker, pattern")) return;   // mask/def internals are NOT canvas
       var cls = r.getAttribute("class") || "";
       var fill = (r.getAttribute("fill") || "").toUpperCase();
-      if (/fill-N7\b/.test(cls) || fill === "#FFFFFF" || fill === "#FFF") r.remove();
+      if (/fill-N7\b/.test(cls) || fill === "#FFFFFF" || fill === "#FFF" || fill === "WHITE") r.remove();
+    });
+    // edges + arrowheads: force INK via inline style (beats d2's embedded CSS
+    // classes, which otherwise leave grey lines with mismatched blue heads)
+    graphBg.querySelectorAll(".connection").forEach(function (c) {
+      c.style.stroke = "#121316";
+      c.style.strokeWidth = "1.7px";
+    });
+    graphBg.querySelectorAll("marker polygon, marker path, marker circle").forEach(function (m) {
+      m.style.fill = "#121316";
+      m.style.stroke = "none";
     });
     pieces = { nodes: {}, edges: {} };
     graphBg.querySelectorAll("g[class]").forEach(function (g) {
