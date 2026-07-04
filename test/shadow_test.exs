@@ -39,10 +39,14 @@ defmodule Autopoet.ShadowTest do
 
   test "observability events (settled/attention) are excluded from learning" do
     before = Autopoet.Shadow.Hebb.stats().events
-    Nexus.Events.emit(%{kind: "effect.settled", hook: "x", effect: "y", status: :ok, tags: []})
+    # settles emitted here are WELL-FORMED (cause resolves) so the shared capture
+    # trace stays integrity-clean — the D4 sweeps run over this same day file
+    parent = Nexus.Events.emit(%{kind: "shadow.parent", tags: []})
+    Nexus.Events.emit(%{kind: "effect.settled", hook: "x", effect: "y", status: :ok, duration_us: 1, cause: parent[:id], tags: []})
     Nexus.Events.emit(%{kind: "autopoet.attention", reason: "drift", tags: []})
     Process.sleep(200)
-    assert Autopoet.Shadow.Hebb.stats().events == before
+    # the workload parent learns; the two observability events do not
+    assert Autopoet.Shadow.Hebb.stats().events == before + 1
   end
 
   # Phase 0 (nothing is lost): learner state survives a hard process restart.
@@ -93,8 +97,9 @@ defmodule Autopoet.ShadowTest do
   test "Outcomes ledger records effect settlements and proposal verdicts" do
     before = Autopoet.Shadow.Outcomes.stats()
 
-    Nexus.Events.emit(%{kind: "effect.settled", hook: "led-hook", effect: "led-eff", status: :ok, duration_us: 42, tags: []})
-    Nexus.Events.emit(%{kind: "effect.settled", hook: "led-hook", effect: "led-eff", status: :error, duration_us: 7, tags: []})
+    parent = Nexus.Events.emit(%{kind: "led.parent", tags: []})
+    Nexus.Events.emit(%{kind: "effect.settled", hook: "led-hook", effect: "led-eff", status: :ok, duration_us: 42, cause: parent[:id], tags: []})
+    Nexus.Events.emit(%{kind: "effect.settled", hook: "led-hook", effect: "led-eff", status: :error, duration_us: 7, cause: parent[:id], tags: []})
     Nexus.Events.emit(%{kind: "proposal.recorded", proposal: "p1", target: "led-target", tags: []})
     Nexus.Events.emit(%{kind: "proposal.accepted", proposal: "p1", target: "led-target", tags: []})
 

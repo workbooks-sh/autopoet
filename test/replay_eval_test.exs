@@ -47,6 +47,8 @@ defmodule Autopoet.ReplayEvalTest do
         "recency #{fmt(scores.recency)} · uniform #{fmt(scores.uniform)}"
     )
 
+    Autopoet.Eval.History.record("replay/structured", scores)
+
     assert scores.hebb > scores.frequency + 0.10,
            "GATE G-STRUCT FAILED: hebb #{fmt(scores.hebb)} vs frequency #{fmt(scores.frequency)} — " <>
              "learning adds nothing over popularity; stop widening actuators and diagnose"
@@ -72,6 +74,8 @@ defmodule Autopoet.ReplayEvalTest do
       "  ✓ EVAL replay/drift (n=#{scores.events}) — hebb #{fmt(scores.hebb)} · " <>
         "frequency #{fmt(scores.frequency)} · recency #{fmt(scores.recency)}"
     )
+
+    Autopoet.Eval.History.record("replay/drift", scores)
 
     assert scores.hebb > scores.frequency,
            "GATE G-DRIFT FAILED: hebb #{fmt(scores.hebb)} ≤ frequency #{fmt(scores.frequency)} after drift"
@@ -109,6 +113,8 @@ defmodule Autopoet.ReplayEvalTest do
             "  · EVAL replay/#{Path.basename(path)} (n=#{s.events}) — hebb #{fmt(s.hebb)} · " <>
               "frequency #{fmt(s.frequency)} · recency #{fmt(s.recency)} · uniform #{fmt(s.uniform)}"
           )
+
+          Autopoet.Eval.History.record("replay/trace-#{Path.basename(path, ".etfs")}", s)
       end
     end
 

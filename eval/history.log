@@ -1,0 +1,16 @@
+2026-07-04T14:20:40Z · 29b2571 · efficiency/cpu · us_per_event=0.3043
+2026-07-04T14:20:40Z · 29b2571 · efficiency/bus · events_per_sec=208189 mem1_kb=29 mem2_kb=29
+2026-07-04T14:20:54Z · 29b2571 · soak · seconds=15 events=14328 shift_alarms=56 quench_alarms=0 mem_kb=367
+2026-07-04T14:21:03Z · 29b2571 · heartbeat · latency_ms=847 sensed=7 lessons=2
+2026-07-04T14:21:05Z · 29b2571 · replay/trace-2026-07-02 · events=106122 k=3 uniform=0.0035 hebb=0.8181 frequency=0.7773 recency=0.7982
+2026-07-04T14:21:07Z · 29b2571 · replay/trace-2026-07-04 · events=51270 k=3 uniform=0.0001 hebb=0.9148 frequency=0.3634 recency=0.3475
+2026-07-04T14:21:07Z · 29b2571 · replay/structured · events=959 k=3 uniform=0.0782 hebb=0.7842 frequency=0.2190 recency=0.1043
+2026-07-04T14:21:07Z · 29b2571 · replay/drift · events=959 k=3 uniform=0.0542 hebb=0.9135 frequency=0.1679 recency=0.1230
+2026-07-04T14:22:15Z · 29b2571 · efficiency/bus · events_per_sec=272926 mem1_kb=29 mem2_kb=29
+2026-07-04T14:22:15Z · 29b2571 · efficiency/cpu · us_per_event=0.2601
+2026-07-04T14:22:27Z · 29b2571 · soak · seconds=15 events=14328 shift_alarms=57 quench_alarms=0 mem_kb=367
+2026-07-04T14:22:37Z · 29b2571 · heartbeat · sensed=8 lessons=2 latency_ms=860
+2026-07-04T14:22:37Z · 29b2571 · replay/drift · events=959 k=3 uniform=0.0542 hebb=0.9135 frequency=0.1679 recency=0.1230
+2026-07-04T14:22:38Z · 29b2571 · replay/trace-2026-07-02 · events=106122 k=3 uniform=0.0035 hebb=0.8181 frequency=0.7773 recency=0.7982
+2026-07-04T14:22:41Z · 29b2571 · replay/trace-2026-07-04 · events=69441 k=3 uniform=0.0001 hebb=0.9274 frequency=0.3164 recency=0.2874
+2026-07-04T14:22:41Z · 29b2571 · replay/structured · events=959 k=3 uniform=0.0782 hebb=0.7842 frequency=0.2190 recency=0.1043
