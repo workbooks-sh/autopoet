@@ -55,11 +55,17 @@ defmodule Autopoet.Eval.Replay do
 
   # ── prequential scoring ──────────────────────────────────────────────────────
 
+  # fading factor for the WINDOWED estimate (Gama, Sebastião & Rodrigues, ML 2013:
+  # cumulative-from-origin prequential error is provably pessimistic; only the
+  # fading/windowed estimate converges to the holdout estimate)
+  @fading 0.995
+
   @doc """
   Score all models over a signal stream. Every transition `prev → next`: each
   model predicts top-`k` from `prev` first, scores a hit if `next` is in it,
-  THEN observes. Returns `%{events, k, hebb, frequency, recency, uniform}`
-  (hit-rates in [0,1]).
+  THEN observes. Returns cumulative AND windowed (fading-factor #{@fading})
+  hit-rates per model, the hebb miss taxonomy, and a paired hebb−frequency
+  block CI (30 blocks, cluster-robust against stream autocorrelation).
   """
   def prequential(signals, k \\ 3)
   def prequential(signals, _k) when length(signals) < 3, do: :not_enough_signal
@@ -75,6 +81,8 @@ defmodule Autopoet.Eval.Replay do
       uni: [first],
       seen: MapSet.new([first]),
       hits: %{hebb: 0, o2: 0, freq: 0, rec: 0, uni: 0},
+      ff: %{hebb: nil, o2: nil, freq: nil, rec: nil, uni: nil},
+      diffs: [],
       misses: %{novel: 0, cold: 0, absent: 0, rank: 0},
       n: 0
     }
@@ -85,13 +93,16 @@ defmodule Autopoet.Eval.Replay do
         hebb_preds = Model.predict(acc.hebb, prev, k)
         hebb_hit = hit(hebb_preds, next)
 
-        hits = %{
-          hebb: acc.hits.hebb + hebb_hit,
-          o2: acc.hits.o2 + hit(Autopoet.Eval.Order2.predict_next(acc.o2, k), next),
-          freq: acc.hits.freq + hit(freq_predict(acc.freq, k), next),
-          rec: acc.hits.rec + hit(Enum.take(acc.rec, k), next),
-          uni: acc.hits.uni + hit(Enum.take(acc.uni, k), next)
+        h = %{
+          hebb: hebb_hit,
+          o2: hit(Autopoet.Eval.Order2.predict_next(acc.o2, k), next),
+          freq: hit(freq_predict(acc.freq, k), next),
+          rec: hit(Enum.take(acc.rec, k), next),
+          uni: hit(Enum.take(acc.uni, k), next)
         }
+
+        hits = Map.new(acc.hits, fn {m, v} -> {m, v + h[m]} end)
+        ff = Map.new(acc.ff, fn {m, v} -> {m, if(v, do: v + (1 - @fading) * (h[m] - v), else: h[m] / 1)} end)
 
         # the MISS TAXONOMY — why did the pathway model miss? Each class names
         # its remedy: novel → nothing predicts an unseen locus; cold/absent →
@@ -121,6 +132,8 @@ defmodule Autopoet.Eval.Replay do
           uni: if(length(acc.uni) >= 16 or next in acc.uni, do: acc.uni, else: acc.uni ++ [next]),
           seen: MapSet.put(acc.seen, next),
           hits: hits,
+          ff: ff,
+          diffs: [h.hebb - h.freq | acc.diffs],
           misses: misses,
           n: acc.n + 1
         }
@@ -134,12 +147,58 @@ defmodule Autopoet.Eval.Replay do
       frequency: final.hits.freq / final.n,
       recency: final.hits.rec / final.n,
       uniform: final.hits.uni / final.n,
+      windowed: %{
+        hebb: final.ff.hebb,
+        order2: final.ff.o2,
+        frequency: final.ff.freq,
+        recency: final.ff.rec,
+        uniform: final.ff.uni
+      },
+      lift_ci: block_ci(Enum.reverse(final.diffs)),
       misses: final.misses
     }
   end
 
+  # Paired hebb−frequency lift with a cluster-robust 95% CI: the per-event paired
+  # differences are split into 30 contiguous blocks (events within a block share
+  # trace context — clustering inflates naive SEs), CI over block means.
+  defp block_ci(diffs) do
+    n = length(diffs)
+    blocks = min(30, max(div(n, 10), 1))
+    size = max(div(n, blocks), 1)
+
+    means =
+      diffs
+      |> Enum.chunk_every(size)
+      |> Enum.map(fn c -> Enum.sum(c) / length(c) end)
+
+    b = length(means)
+    mean = Enum.sum(means) / b
+
+    if b < 3 do
+      %{lift: mean, lo: nil, hi: nil, blocks: b}
+    else
+      var = Enum.sum(for m <- means, do: (m - mean) * (m - mean)) / (b - 1)
+      se = :math.sqrt(var / b)
+      %{lift: mean, lo: mean - 1.96 * se, hi: mean + 1.96 * se, blocks: b}
+    end
+  end
+
   @doc "Prequential scores for a whole .etfs file."
   def score_trace(path, k \\ 3), do: path |> frames() |> signals() |> prequential(k)
+
+  @doc """
+  HOLDOUT DISCIPLINE (B3): odd-day traces are holdout, even-day dev. Gates and
+  tuning run on dev only; holdout is touched exactly once per pre-registered
+  decision (the C4 learning-lift claim). Iterating against the full corpus is
+  training-on-test (Kapoor et al. 2024).
+  """
+  def holdout?(path) do
+    case Regex.run(~r/(\d{4})-(\d{2})-(\d{2})/, Path.basename(path)) do
+      [_, _y, _m, d] -> rem(String.to_integer(d), 2) == 1
+      _ -> false
+    end
+  end
 
   defp hit(predictions, actual), do: if(actual in predictions, do: 1, else: 0)
 

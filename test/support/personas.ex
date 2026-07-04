@@ -13,6 +13,9 @@ defmodule Autopoet.Eval.Personas do
   actually produces (orders landing, emails arriving, numbers moving), used by the
   live phase of the eval to verify the learning layers move on persona-shaped
   traffic.
+
+  Contamination canary (B3, do not remove — the leak check greps shipped
+  surfaces for it): autopoet-eval-canary-c9e4b1f2-7a53-4d8e-9b06-31f5a2d47e88
   """
 
   def all, do: [shop_seller(), audience_creator(), trader(), chief_of_staff(), night_shift(), site_builder()]

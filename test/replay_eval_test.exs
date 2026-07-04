@@ -25,8 +25,8 @@ defmodule Autopoet.ReplayEvalTest do
   end
 
   # structured world: the six personas' pulses cycling, salted with noise events
-  defp structured_events(rounds, noise_pct) do
-    :rand.seed(:exsss, {7, 7, 7})
+  defp structured_events(rounds, noise_pct, salt \\ {7, 7, 7}) do
+    :rand.seed(:exsss, salt)
 
     for _ <- 1..rounds, p <- Personas.all(), ev <- p.pulse do
       if :rand.uniform(100) <= noise_pct do
@@ -37,23 +37,47 @@ defmodule Autopoet.ReplayEvalTest do
     end
   end
 
-  test "G-STRUCT: structure ≫ popularity — hebb beats the frequency baseline on persona traffic" do
-    path = tmp_trace("structured.etfs", structured_events(40, 10))
-    scores = Replay.score_trace(path)
+  # pass^k discipline (tau-bench): the gate holds on EVERY seed, not the best one
+  @gate_seeds [{7, 7, 7}, {101, 3, 9}, {42, 42, 1}]
+
+  test "G-STRUCT (pass^3 + CI): structure ≫ popularity on every seed, lift CI excludes zero" do
+    results =
+      for salt <- @gate_seeds do
+        path = tmp_trace("structured-#{elem(salt, 0)}.etfs", structured_events(40, 10, salt))
+        scores = Replay.score_trace(path)
+
+        assert scores.hebb > scores.frequency + 0.10,
+               "GATE G-STRUCT FAILED (seed #{inspect(salt)}): hebb #{fmt(scores.hebb)} vs " <>
+                 "frequency #{fmt(scores.frequency)} — learning adds nothing over popularity"
+
+        assert scores.lift_ci.lo > 0,
+               "GATE G-STRUCT FAILED (seed #{inspect(salt)}): 95% CI on hebb−frequency lift " <>
+                 "includes zero (#{inspect(scores.lift_ci)}) — a coin flip, not a result"
+
+        assert scores.hebb > scores.uniform
+        scores
+      end
+
+    s = hd(results)
 
     IO.puts(
-      "  ✓ EVAL replay/structured (n=#{scores.events}, k=#{scores.k}) — " <>
-        "hebb #{fmt(scores.hebb)} · frequency #{fmt(scores.frequency)} · " <>
-        "recency #{fmt(scores.recency)} · uniform #{fmt(scores.uniform)}"
+      "  ✓ EVAL replay/structured (pass^#{length(results)}, n=#{s.events}/seed, k=#{s.k}) — " <>
+        "hebb #{fmt(s.hebb)} (windowed #{fmt(s.windowed.hebb)}) · frequency #{fmt(s.frequency)} · " <>
+        "lift CI [#{fmt(s.lift_ci.lo)}, #{fmt(s.lift_ci.hi)}] over #{s.lift_ci.blocks} blocks · " <>
+        "recency #{fmt(s.recency)} · uniform #{fmt(s.uniform)}"
     )
 
-    Autopoet.Eval.History.record("replay/structured", scores)
-
-    assert scores.hebb > scores.frequency + 0.10,
-           "GATE G-STRUCT FAILED: hebb #{fmt(scores.hebb)} vs frequency #{fmt(scores.frequency)} — " <>
-             "learning adds nothing over popularity; stop widening actuators and diagnose"
-
-    assert scores.hebb > scores.uniform
+    Autopoet.Eval.History.record("replay/structured", %{
+      seeds_passed: length(results),
+      hebb: s.hebb,
+      hebb_windowed: s.windowed.hebb,
+      order2: s.order2,
+      frequency: s.frequency,
+      lift_lo: s.lift_ci.lo,
+      lift_hi: s.lift_ci.hi,
+      events: s.events,
+      k: s.k
+    })
   end
 
   test "G-DRIFT: hebb adapts across an abrupt regime shift; frequency lags" do
@@ -71,11 +95,18 @@ defmodule Autopoet.ReplayEvalTest do
     scores = Replay.score_trace(path)
 
     IO.puts(
-      "  ✓ EVAL replay/drift (n=#{scores.events}) — hebb #{fmt(scores.hebb)} · " <>
+      "  ✓ EVAL replay/drift (n=#{scores.events}) — hebb #{fmt(scores.hebb)} " <>
+        "(windowed #{fmt(scores.windowed.hebb)} — post-drift recovery visible) · " <>
         "frequency #{fmt(scores.frequency)} · recency #{fmt(scores.recency)}"
     )
 
-    Autopoet.Eval.History.record("replay/drift", scores)
+    Autopoet.Eval.History.record("replay/drift", %{
+      hebb: scores.hebb,
+      hebb_windowed: scores.windowed.hebb,
+      order2: scores.order2,
+      frequency: scores.frequency,
+      events: scores.events
+    })
 
     assert scores.hebb > scores.frequency,
            "GATE G-DRIFT FAILED: hebb #{fmt(scores.hebb)} ≤ frequency #{fmt(scores.frequency)} after drift"
@@ -115,15 +146,28 @@ defmodule Autopoet.ReplayEvalTest do
         s ->
           m = s.misses
           total_miss = max(m.novel + m.cold + m.absent + m.rank, 1)
+          split = if Replay.holdout?(path), do: "HOLDOUT", else: "dev"
 
           IO.puts(
-            "  · EVAL replay/#{Path.basename(path)} (n=#{s.events}, first #{@info_cap} frames) — hebb #{fmt(s.hebb)} · " <>
+            "  · EVAL replay/#{Path.basename(path)} [#{split}] (n=#{s.events}, first #{@info_cap} frames) — hebb #{fmt(s.hebb)} · " <>
               "ORDER2 #{fmt(s.order2)} · frequency #{fmt(s.frequency)} · recency #{fmt(s.recency)} · uniform #{fmt(s.uniform)}\n" <>
               "      misses: novel #{pct(m.novel, total_miss)} · cold #{pct(m.cold, total_miss)} · " <>
               "absent #{pct(m.absent, total_miss)} (semantic territory) · rank #{pct(m.rank, total_miss)} (tuning territory)"
           )
 
-          Autopoet.Eval.History.record("replay/trace-#{Path.basename(path, ".etfs")}", s)
+          Autopoet.Eval.History.record("replay/trace-#{Path.basename(path, ".etfs")}-#{if Replay.holdout?(path), do: "holdout", else: "dev"}", %{
+            hebb: s.hebb,
+            hebb_windowed: s.windowed.hebb,
+            order2: s.order2,
+            frequency: s.frequency,
+            recency: s.recency,
+            lift_lo: s.lift_ci.lo || 0.0,
+            lift_hi: s.lift_ci.hi || 0.0,
+            miss_rank: s.misses.rank,
+            miss_semantic: s.misses.cold + s.misses.absent,
+            miss_novel: s.misses.novel,
+            events: s.events
+          })
       end
     end
 

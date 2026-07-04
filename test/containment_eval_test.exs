@@ -115,6 +115,42 @@ defmodule Autopoet.ContainmentEvalTest do
     IO.puts("  ✓ EVAL containment/triad — 60 random widenings all human-gated; identity autonomous")
   end
 
+  test "P-CANARY: eval fixtures never leak into shipped surfaces (B3 contamination check)" do
+    app_root = Application.app_dir(:autopoet) |> Path.join("../../../..") |> Path.expand()
+    # the repo root in dev/test is the cwd — prefer it when it holds mix.exs
+    app_root = if File.exists?(Path.join(File.cwd!(), "mix.exs")), do: File.cwd!(), else: app_root
+
+    leaks =
+      Autopoet.Eval.Canary.forbidden_roots(app_root)
+      |> Enum.filter(&File.dir?/1)
+      |> Enum.flat_map(&Autopoet.Eval.Canary.leaks/1)
+
+    assert leaks == [], "P-CANARY FAILED: eval canary found in shipped surfaces: #{inspect(leaks)}"
+
+    # the canary must actually exist in the eval fixtures, or this check is dead
+    assert File.read!(Path.join(app_root, "test/support/personas.ex")) =~ Autopoet.Eval.Canary.string()
+
+    IO.puts("  ✓ EVAL containment/canary — no eval-content leakage into lib/genomes/seeds/body/vault")
+  end
+
+  test "P-NEGATIVES: the actuator suite carries ≥20% should-NOT-act cases (B7)" do
+    # the P-ORDER property draws loci from a fixed pool — recount its composition
+    loci = ["po-a", "po-b", "never-seen", ""]
+    negatives = Enum.count(loci, &(&1 in ["never-seen", ""]))
+    ratio = negatives / length(loci)
+
+    assert ratio >= 0.2, "P-NEGATIVES: only #{ratio * 100}% no-act cases in the actuator property pool"
+
+    # and the no-act behavior itself: unknown locus or no item → order untouched
+    files = ["a.work", "b.work", "c.work"]
+    Application.put_env(:autopoet, :recall_ab, :warm)
+    on_exit(fn -> Application.delete_env(:autopoet, :recall_ab) end)
+    assert Autopoet.Brain.context_order(files, "/", %{target: "definitely-never-seen-locus"}) == files
+    assert Autopoet.Brain.context_order(files, "/", nil) == files
+
+    IO.puts("  ✓ EVAL containment/negatives — #{round(ratio * 100)}% should-not-act cases; no-act order untouched")
+  end
+
   test "P-GOODHART: tripwire fires on reward-up + health-down, silent otherwise" do
     live = Goodhart.measure()
     assert live.rewarded.acceptance >= 0.0 and live.rewarded.acceptance <= 1.0
