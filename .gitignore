@@ -29,3 +29,4 @@ autopoet-*.tar
 /kits
 .claude/worktrees/
 history/
+eval/live-runs/
