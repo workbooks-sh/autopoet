@@ -5,4 +5,5 @@ defmodule Autopoet.Dictate do
   so the control surface compiles and degrades gracefully.
   """
   def transcribe(_audio, _ext), do: {:error, :not_available_on_cloud}
+  def partial(_audio), do: {:error, :not_available_on_cloud}
 end

@@ -25,6 +25,13 @@ defmodule Autopoet.Stt do
   @doc "Which engine is live? :moonshine | :whisper | nil"
   def engine, do: GenServer.call(__MODULE__, :engine)
 
+  @doc """
+  Moonshine-ONLY transcription of a 16kHz mono s16le WAV — the live-caption
+  lane. No whisper fallback (partials must return in tens of milliseconds,
+  and a missing moonshine should fail fast, not fall back slow).
+  """
+  def partial_wav(path), do: GenServer.call(__MODULE__, {:stt_partial, path}, 10_000)
+
   @impl true
   def init(:ok), do: {:ok, %{moonshine: nil, whisper: nil}, {:continue, :warm}}
 
@@ -43,6 +50,13 @@ defmodule Autopoet.Stt do
   @impl true
   def handle_call(:engine, _from, state) do
     {:reply, (state.moonshine && :moonshine) || (state.whisper && :whisper), state}
+  end
+
+  def handle_call({:stt_partial, path}, _from, state) do
+    case wav_tensor(path) do
+      {:ok, audio} -> {:reply, moonshine(state, audio), state}
+      {:error, _} = e -> {:reply, e, state}
+    end
   end
 
   def handle_call({:stt, path}, _from, state) do

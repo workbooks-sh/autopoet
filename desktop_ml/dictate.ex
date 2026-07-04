@@ -33,6 +33,25 @@ defmodule Autopoet.Dictate do
 
   def transcribe(_, _), do: {:error, :empty_audio}
 
+  @doc """
+  LIVE partial transcription (moonshine-only) of a browser-built WAV that is
+  ALREADY 16kHz mono s16le — no afconvert hop, this runs every ~700ms while
+  the human is still talking, feeding live captions + the avatar's realtime
+  reactions. Audio is deleted immediately, same as transcribe/2.
+  """
+  def partial(bytes) when is_binary(bytes) and byte_size(bytes) > 44 do
+    path = Path.join(System.tmp_dir!(), "aplive-#{System.unique_integer([:positive])}.wav")
+
+    try do
+      File.write!(path, bytes)
+      Autopoet.Stt.partial_wav(path)
+    after
+      File.rm(path)
+    end
+  end
+
+  def partial(_), do: {:error, :empty_audio}
+
   # ── engines: whisper (shipped, BEAM-native) first, moonshine venv second ────
   defp whisper(wav), do: Autopoet.Stt.transcribe_wav(wav)
 

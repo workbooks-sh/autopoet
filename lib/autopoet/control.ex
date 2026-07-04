@@ -608,6 +608,18 @@ defmodule Autopoet.Control do
     end)
   end
 
+  # live partial transcription: moonshine-only, called every ~700ms mid-utterance
+  post "/voice/dictate/live" do
+    authed!(conn, fn conn ->
+      {:ok, body, conn} = read_body(conn, length: 4_000_000)
+
+      case Autopoet.Dictate.partial(body) do
+        {:ok, transcript} -> text(conn, transcript)
+        {:error, _} -> send_resp(conn, 204, "")
+      end
+    end)
+  end
+
   post "/speak" do
     authed!(conn, fn conn ->
       {:ok, body, conn} = read_body(conn, length: 4_000)

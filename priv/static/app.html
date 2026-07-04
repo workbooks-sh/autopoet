@@ -383,9 +383,12 @@
   #modetoggle .saveseg .save:hover { background:#245cc0; color:#fff; }
   #modetoggle .saveseg kbd { background:rgba(255,255,255,.22); border-radius:4px; padding:0 4px; font:inherit; }
 
-  /* ── comm switcher: chat/voice moved UP into the top strip (next to cmd/live) ── */
-  #commtop { display:flex; gap:3px; background:#fff; border:1px solid var(--line);
-    border-radius:10px; padding:2px; }
+  /* ── comm switcher: chat/voice lives at the sidebar's foot, above the account
+     row — the frameless window chrome was overlapping (and eating clicks on)
+     its old top-strip spot ── */
+  #commtop { display:flex; gap:4px; background:#fff; border:1px solid var(--line);
+    border-radius:10px; padding:3px; margin:0 10px 6px; }
+  #commtop button { flex:1; }
   #commtop button { display:flex; align-items:center; justify-content:center; gap:5px;
     font:11px ui-monospace,monospace; border:none; background:none; color:#7a8290;
     border-radius:8px; padding:5px 9px; cursor:pointer;
@@ -523,12 +526,12 @@
      during a voice call VoiceStage adopts this same element and lets it
      float free on the whiteboard. ── */
   #self-cube { position:absolute; left:0; top:0; width:132px; height:132px; z-index:5;
-    pointer-events:none; --toon:1.6px;
-    /* 0.3px blur: WKWebView skips ZERO-blur drop-shadows entirely; with a hair
-       of blur WebKit draws them and the line still reads as solid ink */
-    filter:drop-shadow(var(--toon) 0 0.3px #121316) drop-shadow(calc(-1*var(--toon)) 0 0.3px #121316)
-           drop-shadow(0 var(--toon) 0.3px #121316) drop-shadow(0 calc(-1*var(--toon)) 0.3px #121316)
-           drop-shadow(0 16px 26px rgba(18,19,22,.05)); }
+    pointer-events:none;
+    filter:drop-shadow(0 16px 26px rgba(18,19,22,.05)); }
+  /* the toon outline is GEOMETRY, not a filter — WKWebView renders drop-shadow
+     outlines unreliably. A black squircle 1.6px proud sits just behind the
+     front face (the ink ring) and behind the back slice (the far edge). */
+  #self-cube .sc-outline { inset:-1.6px; border-radius:36.6px; background:#121316; }
   #self-cube .sc-cube { width:100%; height:100%; position:relative; transform-style:preserve-3d;
     transform:rotateX(calc(var(--rx,0deg) + var(--nod,0deg) + var(--br,0deg)))
               rotateY(var(--ry,0deg)) rotateZ(var(--rz,0deg));
@@ -1043,10 +1046,6 @@
           <button class="save" id="dosave" title="save (⌘S)"><i data-lucide="check"></i></button>
         </div>
       </div>
-      <div id="commtop">
-        <button id="comm-chat" title="chat"><i data-lucide="message-square"></i><span class="lbl">chat</span></button>
-        <button id="comm-voice" title="voice"><i data-lucide="audio-lines"></i><span class="lbl">voice</span></button>
-      </div>
     </div>
     <div id="vaultbar">
       <button class="add" id="newnote" title="new document"><img class="mic" src="/static/micons/markdown.svg" alt=""><span class="pl">+</span></button>
@@ -1055,6 +1054,10 @@
       <button class="add" id="newworkspace" title="new workspace"><span class="wshash">#</span><span class="pl">+</span></button>
     </div>
     <ul id="treeroot"></ul>
+    <div id="commtop">
+      <button id="comm-chat" title="chat"><i data-lucide="message-square"></i><span class="lbl">chat</span></button>
+      <button id="comm-voice" title="voice"><i data-lucide="audio-lines"></i><span class="lbl">voice</span></button>
+    </div>
     <div id="sidebarfoot">
       <button id="foot-profile" class="footprofile" title="account"><span class="uinitial">·</span></button>
       <div class="footgap"></div>
@@ -2277,6 +2280,13 @@ async function buildSelfCube() {
     d.style.transform = `translateZ(${z}px)`;
     cube.appendChild(d);
   }
+  for (const [z, name] of [[half - 0.4, "front"], [-half - 0.6, "back"]]) {
+    const ring = document.createElement("div");
+    ring.className = "sc-layer sc-outline";
+    ring.dataset.ring = name;
+    ring.style.transform = `translateZ(${z}px)`;
+    cube.appendChild(ring);
+  }
   const face = document.createElement("div");
   face.className = "sc-layer sc-face";
   face.style.transform = `translateZ(${half}px)`;
@@ -2313,9 +2323,6 @@ function syncSelfCube() {
   const px = t.applyX(n.x), py = t.applyY(n.y);
   const s = (96 / 132) * t.k;   // renders at the old face's 96px footprint
   selfCube.style.transform = `translate(${px - 66}px, ${py - 66}px) scale(${s.toFixed(4)})`;
-  // the toon outline is drawn pre-transform — thicken it by 1/scale so the
-  // ink line stays ~1.6px on screen at every zoom level
-  selfCube.style.setProperty("--toon", Math.min(4, 1.6 / Math.max(0.2, s)).toFixed(2) + "px");
 }
 
 let sim;
@@ -2333,6 +2340,7 @@ async function draw() {
   g.selectAll("*").remove();
   paper(g);
   const hullLayer = g.append("g");   // cluster hulls sit under links + nodes
+  window.vsHullLayer = hullLayer;    // VoiceStage fades hulls with the world
   let badgeLayer = null;             // …but their badges ride ABOVE everything (assigned after nodes)
   const byId = new Map(data.nodes.map(n => [n.id, n]));
   // clustered nodes get extra elbow room so their labels never collide inside the hull
@@ -3924,6 +3932,8 @@ function vsHideWorld() {
     .on("end", function () { d3.select(this).style("pointer-events", "none"); });
   if (linkSel) linkSel.transition("vs").duration(420).attr("opacity", 0);
   if (window.vsBadgeLayer) window.vsBadgeLayer.transition("vs").duration(420).attr("opacity", 0);
+  if (window.vsHullLayer) window.vsHullLayer.transition("vs").duration(420).attr("opacity", 0)
+    .style("pointer-events", "none");
   svg.on(".zoom", null);                                // freeze pan/zoom during the call
 }
 function vsShowWorld() {
@@ -3931,6 +3941,8 @@ function vsShowWorld() {
   nodeSel.transition("vs").duration(520).attr("opacity", 1).style("pointer-events", "all");
   if (linkSel) linkSel.transition("vs").duration(520).attr("opacity", 1);
   if (window.vsBadgeLayer) window.vsBadgeLayer.transition("vs").duration(520).attr("opacity", 1);
+  if (window.vsHullLayer) window.vsHullLayer.transition("vs").duration(520).attr("opacity", 1)
+    .style("pointer-events", "all");
   svg.call(zoomB);                                      // pan/zoom back on
 }
 

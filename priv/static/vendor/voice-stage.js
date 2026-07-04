@@ -164,7 +164,7 @@
     worried: '<path d="M28.5 31.8 L33.5 29.2 M46.5 29.2 L51.5 31.8" stroke="#121316" stroke-width="2" stroke-linecap="round" fill="none"/>',
     skeptical: '<path d="M28 29.5 Q31 27.3 34 29.5 M46.5 31.5 h5" stroke="#121316" stroke-width="2" stroke-linecap="round" fill="none"/>'
   };
-  var HS = 'fill="#fff" stroke="rgba(18,19,22,.16)"';
+  var HS = 'fill="#fff" stroke="#121316"';   // inked: the toon line is the stroke itself
   var POSES = {
     point: '<svg viewBox="0 0 30 40" fill="none"><path d="M15 2.5 C19.4 2.5 22.5 6 22.5 11 L22.5 24 C22.5 32 19.4 37.5 15 37.5 C10.6 37.5 7.5 32 7.5 24 L7.5 11 C7.5 6 10.6 2.5 15 2.5 Z" ' + HS + ' stroke-width="1.4"/><ellipse cx="24" cy="26" rx="4.4" ry="6" ' + HS + ' stroke-width="1.4"/></svg>',
     open: '<svg viewBox="0 0 30 40" fill="none"><rect x="6.5" y="15" width="19" height="19" rx="8.5" ' + HS + ' stroke-width="1.4"/><rect x="7" y="3.5" width="5.4" height="15" rx="2.7" ' + HS + ' stroke-width="1.3"/><rect x="13.2" y="1.5" width="5.4" height="17" rx="2.7" ' + HS + ' stroke-width="1.3"/><rect x="19.4" y="3.5" width="5.4" height="15" rx="2.7" ' + HS + ' stroke-width="1.3"/><ellipse cx="27.2" cy="24.5" rx="3.6" ry="5.2" ' + HS + ' stroke-width="1.3"/></svg>',
@@ -579,13 +579,14 @@
     joy: ["smirk", "raised"], sad: ["neutral", "worried"], anger: ["neutral", "worried"],
     fear: ["neutral", "worried"], surprise: ["surprised", "raised"], none: ["neutral", "raised"]
   };
-  function reactToUser(text) {
+  function reactToUser(text, partial) {
     var sc = { joy: 0, sad: 0, anger: 0, fear: 0, surprise: 0 };
     (text.toLowerCase().match(/[a-z]+/g) || []).forEach(function (w) { if (W2E[w]) sc[W2E[w]]++; });
     var dom = null, n = 0;
     Object.keys(sc).forEach(function (e) { if (sc[e] > n) { n = sc[e]; dom = e; } });
     var f = LISTEN_FACE[dom || "none"];
     mood = f[0]; setMouth(f[0]); setBrows(f[1]);
+    if (partial) return;                       // live reactions: face only, no gesture spam
     if (dom === "surprise") gesture("--nod", [-6, 2, -4, 0], 130);
     else nod();
   }
@@ -914,25 +915,62 @@
     try {
       await ensureDeps();
       if (!window.vad) { capStatus("voice detection unavailable — type in the transcript"); return; }
+      // ── LIVE lane: moonshine re-transcribes the growing utterance every
+      //    ~700ms while you're still talking — live blue caption + realtime
+      //    emotional reactions. The final full-accuracy pass runs at speech end.
+      var speechFrames = [], collecting = false, partialTimer = null, partialBusy = false, lastPartial = "";
+      function partialTick() {
+        if (!mounted || !collecting || partialBusy || !speechFrames.length) return;
+        partialBusy = true;
+        var total = 0;
+        for (var i = 0; i < speechFrames.length; i++) total += speechFrames[i].length;
+        var buf = new Float32Array(total), off = 0;
+        for (var j = 0; j < speechFrames.length; j++) { buf.set(speechFrames[j], off); off += speechFrames[j].length; }
+        var blob = wavFromRaw({ audio: buf, sampling_rate: 16000 });
+        fetch("/voice/dictate/live", { method: "POST",
+          headers: { authorization: "Bearer " + TOKEN, "content-type": "audio/wav" }, body: blob })
+          .then(function (r) { return r.status === 200 ? r.text() : ""; })
+          .then(function (t) {
+            partialBusy = false;
+            t = (t || "").trim();
+            if (!t || !collecting || !mounted) return;
+            captionShow("you", t);                     // your words, as you say them
+            if (t !== lastPartial) { lastPartial = t; reactToUser(t, true); }
+          })
+          .catch(function () { partialBusy = false; });
+      }
       micVad = await vad.MicVAD.new({
         baseAssetPath: "/static/vendor/", onnxWASMBasePath: "/static/vendor/",
+        onFrameProcessed: function (probs, frame) {
+          if (collecting && frame && frame.length) speechFrames.push(new Float32Array(frame));
+        },
         onSpeechStart: function () {
           if (!mounted) return;
           if (playing) stopPerform();                  // barge-in
           setBrows("raised");
           captionShow("you", "…");
+          speechFrames = []; lastPartial = ""; collecting = true;
+          clearInterval(partialTimer);
+          partialTimer = later(setInterval(partialTick, 700));
         },
         onSpeechEnd: async function (audio) {
+          collecting = false;
+          clearInterval(partialTimer);
           if (!mounted) return;
-          captionShow("dim", "transcribing…");
+          if (lastPartial) captionShow("you", lastPartial);
+          else captionShow("dim", "transcribing…");
           var blob = wavFromRaw({ audio: audio, sampling_rate: 16000 });
           try {
             var r = await fetch("/voice/dictate", { method: "POST",
               headers: { authorization: "Bearer " + TOKEN, "content-type": "audio/wav" }, body: blob });
             var text = (await r.text()).trim();
             if (r.ok && text && !/^refused:/.test(text)) ask(text);
+            else if (lastPartial) ask(lastPartial);    // the live lane already heard you
             else { captionHide(); capStatus("didn't catch that"); }
-          } catch (e) { captionHide(); capStatus("transcription failed"); }
+          } catch (e) {
+            if (lastPartial) ask(lastPartial);
+            else { captionHide(); capStatus("transcription failed"); }
+          }
         }
       });
       micVad.start();
