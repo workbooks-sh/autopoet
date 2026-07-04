@@ -40,6 +40,7 @@ defmodule Autopoet.MixProject do
       "test/genesis_eval_test.exs",
       "test/agent_world_eval_test.exs",
       "test/persona_eval_test.exs",
+      "test/task_suite_eval_test.exs",
       "test/replay_eval_test.exs",
       "test/integrity_eval_test.exs",
       "test/heartbeat_eval_test.exs",
