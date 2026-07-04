@@ -77,11 +77,18 @@ defmodule Autopoet.Kokoro do
   # ── engine (pure — testable without the GenServer) ─────────────────────────
 
   def dir, do: Path.join([File.cwd!(), "data", "models", "kokoro"])
-  defp model_path, do: Path.join(dir(), "model_quantized.onnx")
+
+  # fp32 beats the int8 graph ~3x on Apple Silicon CPU (dequant overhead
+  # dominates q8): measured 2.4s vs 7s per sentence. Prefer fp32 when present.
+  defp model_path do
+    fp32 = Path.join(dir(), "model_fp32.onnx")
+    if File.exists?(fp32), do: fp32, else: Path.join(dir(), "model_quantized.onnx")
+  end
 
   @doc "Load the engine from a directory of shipped files (nil if absent)."
   def load_dir(dir) do
-    model = Path.join(dir, "model_quantized.onnx")
+    fp32 = Path.join(dir, "model_fp32.onnx")
+    model = if File.exists?(fp32), do: fp32, else: Path.join(dir, "model_quantized.onnx")
     tok = Path.join(dir, "tokenizer.json")
 
     with true <- File.exists?(model),

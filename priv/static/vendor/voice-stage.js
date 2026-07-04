@@ -999,7 +999,12 @@
     words.forEach(function (w, i) {
       sentOf[i] = sN; counts[sN] = (counts[sN] || 0) + 1;
       cur += (cur ? " " : "") + w;
-      if (/[.!?]$/.test(w)) { sText[sN] = cur; cur = ""; sN++; }
+      // clip boundaries at sentence ends AND clause breaks (,;:) once the
+      // clause is ≥5 words: synthesis is ~0.6x realtime, so smaller clips =
+      // the first sound arrives after one CLAUSE, not one full sentence
+      if (/[.!?]$/.test(w) || (/[,;:]$/.test(w) && counts[sN] >= 5)) {
+        sText[sN] = cur; cur = ""; sN++;
+      }
     });
     if (cur) sText[sN] = cur;
 
