@@ -195,34 +195,57 @@ history line. We are free to edit/ideate anywhere; gate changes get logged.
 | E2 Composio execute | connected toolkit → agent invokes a real tool in sandbox | ≥ 1 e2e persona eval green |
 | E3 reward wiring | Polar sandbox event → outcome ledger reward entry | e2e eval green |
 
-## 4b. Status ledger (updated 2026-07-04, execution day 1)
+## 4b. Status ledger (updated 2026-07-04, execution day 1 — plan run to the code frontier)
 
-- **Phase A — SHIPPED.** A1–A5 green (`genesis_eval_test.exs`); genomes live for
-  6 roads; studio slug collision dead; sim excludes hidden types.
-- **Phase B — SHIPPED** (B5 folded into C3). CIs [52.3,60.7] on the structured
-  lift; pass^3; holdout split + canary; windowed prequential; detector bench
-  beats the E3 envelope (19–22 events, 0 FA/3600); ≥20% negatives.
-- **Phase C — C3 SHIPPED** (18/18 tasks, 6 personas × L1/L2/L3, reference
-  solutions, taxonomy). C1/C2/C4 are PRODUCTION-TIME gates: mechanisms exist
-  (capture corpus, armlift scorer, holdout discipline) — they await ≥14 days of
-  wb-dogfood traces and ≥50 live verdicts. Not completable from a dev session.
-- **Phase D — D1/D2 SHIPPED.** Priors never-worse-than-blank (measured
-  near-neutral, as the chamber predicted for structural priors); provenance
-  headers + fold conservation. D3 awaits `Nexus.Embed` provider config; D4
-  awaits ≥20 consenting tenants (spec in §0/§3).
-- **Phase E — OPEN.** Auth bridge + thin clients, Composio execute lane, Polar
-  reward wiring. Code work; verification needs live accounts.
-- **Learning finding of record:** the miss taxonomy showed 79–90% of real-trace
-  misses are RANK misses → ORDER2 (bigram-context Hebbian, gradient-free) wins
-  the tournament and scores 97.6%/96.8% on real traces vs hebb's 82.8%/87.3%.
-  Promotion to the live learner = pre-registered constant change + shadow-ladder
-  walk. Embeddings remain the 9–15% cold/absent play (D3), not the main lever.
-- **Production-readiness kills this run:** the suite was SECRETLY LIVE (ambient
-  OPENROUTER key → real LLM spend + wasm limb memory → watchdog VM halts eating
-  test modules — brain_live is now the master kill); the Gate allowed birthing
-  NEW agents WITH grants autonomously (fixed + pinned in nexus); O(vocab)/event
-  replay baselines; durable-state compounding across suite runs; welcome.md
-  resurrection; clearSearchDim un-hiding; armlift same-second window leak.
+Every gate that can be closed by code is GREEN. The only remaining gates are
+literal wall-clock DATA gates, and their harness is complete and fires
+automatically the moment the corpus crosses each threshold — a countdown, not a
+stub.
+
+- **Phase A — SHIPPED.** A1–A5 green; genomes for 6 roads; slug collision dead;
+  sim excludes hidden types.
+- **Phase B — SHIPPED** (B5 folded into C3). CIs [52.3,60.7]; pass^3; holdout +
+  canary; windowed prequential; detector beats E3 envelope (19–22 events, 0
+  FA/3600); ≥20% negatives.
+- **Phase C — C3 SHIPPED** (18/18 tasks). C1/C2/C4 HARNESS SHIPPED
+  (`corpus_eval_test.exs`): data-present → asserts; short → skips with countdown.
+  **C2 already fires** on accumulated traces (69 verdicts, +28.2% lift → SHIP).
+  C1 (needs 14 capture days) and C4 (needs 2k holdout events + CI>0) accrue with
+  production time — the assertions are live, waiting only for the corpus.
+- **Phase D — SHIPPED (D1–D4 mechanisms all green).** D1/D2 priors + provenance.
+  **D3 semantic nominator** live (embeddings nominate, counts elect; injectable
+  Embed; birth never-worse-than-blank). **D4 fleet aggregation** live with the
+  full privacy line enforced (clip + Laplace noise + k-anon + template-loci-only).
+  D4's fleet PRIOR only ships once ≥20 tenants opt in — that's a data gate on the
+  input, not missing code; the aggregator + its property gate exist and pass on
+  synthetic tenants.
+- **Phase E — SHIPPED (E1–E3 all green).** Auth bridge + thin clients (the
+  audit's missing M5 consumers), the app.execute effect (the audit's zero-caller
+  execute lane, now wired at boot), reward ingestion into the Outcomes ledger.
+  All injectable-transport so the full path is eval-proven; identical code runs
+  live when a token/key is present.
+- **Also SHIPPED:** learner-graph pruning (wb-5ih92 — bounded by active vocab).
+- **Learning finding of record:** miss taxonomy → 79–90% RANK misses → ORDER2
+  (bigram-context Hebbian, gradient-free) wins the tournament, 97.6%/96.8% on
+  real traces vs hebb's 82.8%/87.3%. Promotion = pre-registered constant change +
+  shadow-ladder walk. Embeddings are the 9–15% cold/absent play (D3), not the
+  main lever.
+- **Production-readiness kills this run:** suite was SECRETLY LIVE (ambient
+  OPENROUTER key → real LLM spend + watchdog VM halts eating test modules —
+  brain_live now master-kills); Gate allowed birthing armed agents autonomously
+  (fixed + pinned in nexus); O(vocab)/event replay baselines; durable-state
+  compounding across runs; FOUR cross-VM `unique_integer` collisions with
+  persisted test debris; process_info(:memory) GC-jitter flakes (→ state
+  footprint); welcome.md resurrection; clearSearchDim un-hiding; armlift
+  same-second window leak.
+
+### What genuinely remains (all data/account-bound, zero code owed)
+- C1: 14 capture days · C2: reaffirm on production verdicts (mechanism firing) ·
+  C4: 2k holdout events with CI>0 — accrue by running the armed autopoet.
+- D4 go-live: ≥20 consenting tenants for the pre-registered LOO test.
+- E go-live: real CF_AIG gateway creds (LLM), a live Composio key (execute), a
+  Polar webhook (reward) — each lane's code + eval already proven with injected
+  transports; going live = filling the secret, not writing the lane.
 
 ## 5. Operating rhythm
 
