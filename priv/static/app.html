@@ -518,6 +518,27 @@
     opacity:0; pointer-events:none; transition:opacity .2s ease, transform .22s ease; }
   #callcaption.on { opacity:1; transform:translateX(-50%) translateY(0); }
 
+  /* ── the self node's BODY: the cube avatar (extruded squircle, toon outline).
+     One HTML element riding the D3 node through tick+zoom (syncSelfCube);
+     during a voice call VoiceStage adopts this same element and lets it
+     float free on the whiteboard. ── */
+  #self-cube { position:absolute; left:0; top:0; width:132px; height:132px; z-index:5;
+    pointer-events:none; --toon:1.6px;
+    filter:drop-shadow(var(--toon) 0 0 #121316) drop-shadow(calc(-1*var(--toon)) 0 0 #121316)
+           drop-shadow(0 var(--toon) 0 #121316) drop-shadow(0 calc(-1*var(--toon)) 0 #121316)
+           drop-shadow(0 16px 26px rgba(18,19,22,.05)); }
+  #self-cube .sc-cube { width:100%; height:100%; position:relative; transform-style:preserve-3d;
+    transform:rotateX(calc(var(--rx,0deg) + var(--nod,0deg) + var(--br,0deg)))
+              rotateY(var(--ry,0deg)) rotateZ(var(--rz,0deg));
+    transition:transform .12s ease-out; cursor:pointer; pointer-events:auto; }
+  #self-cube .sc-layer { position:absolute; inset:0; border-radius:35px; }
+  #self-cube .sc-face { background:#fff; display:grid; place-items:center; }
+  #self-cube .sc-face svg { display:block; width:100%; height:100%; }
+  /* freed for a call: centered anchor + stage-movement vars (VoiceStage drives) */
+  #self-cube.vs-free { left:50%; top:50%; margin:-66px 0 0 -66px;
+    transform:translate(var(--sx,0px), var(--sy,0px)) scale(var(--sc,1));
+    transition:transform .8s cubic-bezier(.3,1,.35,1); }
+
   /* ── app-wide context menu ───────────────────────────────────────────── */
   #ctx { position:fixed; z-index:30; min-width:180px; background:#fff;
     border:1px solid var(--line); border-radius:10px; padding:5px;
@@ -2018,7 +2039,7 @@ const radius = n => n.type === "self" ? 46 : (n.type === "doc" ? 16 : n.type ===
 
 const svg = d3.select("#graph"), g = svg.append("g");
 const zoomB = d3.zoom().scaleExtent([0.25, 3])
-  .on("zoom", e => { g.attr("transform", e.transform); persistZoom(e.transform); });
+  .on("zoom", e => { g.attr("transform", e.transform); persistZoom(e.transform); syncSelfCube(); });
 svg.call(zoomB);
 // the camera survives reload
 let zoomSaveT = null;
@@ -2195,7 +2216,10 @@ async function createFace(mount, opts = {}) {
     if (!raf) raf = requestAnimationFrame(apply);
   }, { passive: true });
   function apply() {
-    raf = null; const face = el("face"), eyesPx = el("eyes-px"); if (!face || !eyesPx) return;
+    raf = null;
+    // primary face: during a call VoiceStage owns gaze/attention — stand down
+    if (!p && typeof selfCube !== "undefined" && selfCube && selfCube.dataset.free === "1") return;
+    const face = el("face"), eyesPx = el("eyes-px"); if (!face || !eyesPx) return;
     tx += (want.x - tx) * 0.35; ty += (want.y - ty) * 0.35;
     face.setAttribute("transform", `translate(${(tx*2.2).toFixed(2)} ${(ty*2.2).toFixed(2)}) skewX(${(-tx*1.8).toFixed(2)}) skewY(${(ty*1.0).toFixed(2)})`);
     eyesPx.setAttribute("transform", `translate(${(tx*0.8).toFixed(2)} ${(ty*0.8).toFixed(2)})`);
@@ -2203,12 +2227,14 @@ async function createFace(mount, opts = {}) {
   }
   // hover: hopeful ↔ neutral (as in the original)
   const hov = opts.hoverTarget || svg;
-  hov.addEventListener("mouseenter", () => setM("hopeful"));
-  hov.addEventListener("mouseleave", () => { if (!squint) setM("neutral"); });
+  const freed = () => !p && typeof selfCube !== "undefined" && selfCube && selfCube.dataset.free === "1";
+  hov.addEventListener("mouseenter", () => { if (!freed()) setM("hopeful"); });
+  hov.addEventListener("mouseleave", () => { if (!squint && !freed()) setM("neutral"); });
   // click: a quick "click-in" blip — a couple frames of squint + zigzag (confused)
   // mouth to acknowledge the click, then straight back (not held)
   const clk = opts.clickTarget || svg;
   clk.addEventListener("click", () => {
+    if (freed()) return;   // no click blips mid-call
     squint = true;
     setEyes(false);   // the squint IS the closed-dash shape — swap, no scaling
     setM("confused");
@@ -2216,6 +2242,65 @@ async function createFace(mount, opts = {}) {
     svg._react = setTimeout(() => { squint = false; setEyes(true); setM("neutral"); }, 160);
   });
   return { svg, setMouth: setM, el };
+}
+
+// ── the self node's body: the cube avatar. ONE persistent element (survives
+// draw() redraws); the svg self group stays as the physics/zoom anchor. ──
+let selfCube = null, selfCubeInner = null;
+async function ensureSelfCube() {
+  if (selfCube) return;
+  const sc = document.createElement("div");
+  sc.id = "self-cube";
+  sc.innerHTML = '<div class="sc-cube"></div>';
+  document.getElementById("stage").appendChild(sc);
+  const cube = sc.firstChild;
+  // extruded-squircle slices — the tuned lighting (dark 48 / ease .75 / warm 7)
+  const SIZE = 132, STEP = 3, half = SIZE / 2;
+  for (let z = half - STEP; z >= -half; z -= STEP) {
+    const t = (half - z) / SIZE, k = Math.pow(t, 0.75);
+    const rg = Math.round(255 - k * 48), b = Math.round(255 - k * 55);
+    const d = document.createElement("div");
+    d.className = "sc-layer";
+    d.style.background = `rgb(${rg},${rg},${b})`;
+    d.style.transform = `translateZ(${z}px)`;
+    cube.appendChild(d);
+  }
+  const face = document.createElement("div");
+  face.className = "sc-layer sc-face";
+  face.style.transform = `translateZ(${half}px)`;
+  cube.appendChild(face);
+  // the SAME primary face (#ap-* ids): mouths.json, voice visemes, hover and
+  // click reactions all keep working exactly as before — new body, same soul
+  await createFace(face, { idPrefix: "", hoverTarget: cube, clickTarget: cube });
+  // clicking the head opens the self panel (as the old node click did)
+  cube.addEventListener("click", () => {
+    if (sc.dataset.free === "1") return;   // not during a call
+    const n = worldData?.nodes?.find(n => n.id === "self");
+    if (n) showPanel(n);
+  });
+  // idle life: breathing + a light whole-body cursor tilt
+  let bt = 0;
+  setInterval(() => { bt += 0.09;
+    cube.style.setProperty("--br", (Math.sin(bt * 2 * Math.PI / 4) * 0.7).toFixed(2) + "deg"); }, 90);
+  addEventListener("mousemove", e => {
+    if (sc.dataset.free === "1") return;   // VoiceStage owns gaze during calls
+    const r = sc.getBoundingClientRect(); if (!r.width) return;
+    const tx = Math.max(-1, Math.min(1, (e.clientX - (r.left + r.width / 2)) / (innerWidth * .5)));
+    const ty = Math.max(-1, Math.min(1, (e.clientY - (r.top + r.height / 2)) / (innerHeight * .5)));
+    cube.style.setProperty("--ry", (tx * 8).toFixed(2) + "deg");
+    cube.style.setProperty("--rx", (-ty * 8).toFixed(2) + "deg");
+  }, { passive: true });
+  selfCube = sc; selfCubeInner = cube;
+}
+// world coords → screen: the cube rides the node through every tick and zoom
+function syncSelfCube() {
+  if (!selfCube || selfCube.dataset.free === "1") return;
+  const n = worldData?.nodes?.find(n => n.id === "self");
+  if (!n || n.x == null) return;
+  const t = d3.zoomTransform(svg.node());
+  const px = t.applyX(n.x), py = t.applyY(n.y);
+  const s = (96 / 132) * t.k;   // renders at the old face's 96px footprint
+  selfCube.style.transform = `translate(${px - 66}px, ${py - 66}px) scale(${s.toFixed(4)})`;
 }
 
 let sim;
@@ -2439,21 +2524,13 @@ async function draw() {
   clG.append("text").attr("class", "cl-count").attr("text-anchor", "middle").attr("dy", 4)
     .text(d => d.count);
 
-  const selfG = node.filter(d => d.id === "self");
-  const S = 96, R = 30;
-  selfG.append("clipPath").attr("id", "sq")
-    .append("rect").attr("x", -S/2).attr("y", -S/2).attr("width", S).attr("height", S).attr("rx", R);
-  selfG.append("rect").attr("x", -S/2).attr("y", -S/2).attr("width", S).attr("height", S)
-    .attr("rx", R).attr("fill", "#fff")
-    .attr("stroke", "rgba(0,0,0,.12)").attr("stroke-width", 1);
-
-  // the primary face (idPrefix "" keeps #ap-* so voice mouth-sync still finds it)
-  const clipG = selfG.append("g").attr("clip-path", "url(#sq)").node();
-  createFace(clipG, { idPrefix: "", svgAttrs: { x: -S/2, y: -S/2, width: S, height: S },
-                      hoverTarget: selfG.node(), clickTarget: selfG.node() });
+  // the self node renders as the CUBE overlay (ensureSelfCube); its svg group
+  // is only the physics/zoom anchor the cube tracks
+  ensureSelfCube();
 
   node.append("text").attr("class", "lbl").attr("text-anchor", "middle")
-    .attr("dy", d => radius(d) + 14).text(d => d.label.length > 22 ? d.label.slice(0, 21) + "…" : d.label);
+    .attr("dy", d => radius(d) + 14)
+    .text(d => d.id === "self" ? "" : (d.label.length > 22 ? d.label.slice(0, 21) + "…" : d.label));
   badgeLayer = g.append("g");   // cluster badges: topmost — edges pass BEHIND them
 
   // edge bundling: sibling links from ONE external node into a cluster share a pin —
@@ -2502,6 +2579,7 @@ async function draw() {
     routeLinks();
     node.attr("transform", d => `translate(${d.x},${d.y})`);
     drawHulls();
+    syncSelfCube();
   });
   routeLinks(); drawHulls();   // paint immediately too (a fully-restored layout barely ticks)
   // the pin hover-preview ghost rides above everything
@@ -3810,16 +3888,19 @@ let voiceMode = "local";
 const live = { ws: null, ctx: null, gain: null, playhead: 0, sources: [], amps: [],
                mic: null, micCtx: null, micOn: true, caption: "" };
 
-// ── VoiceStage hooks: the SEAMLESS graph⇄whiteboard transition ──────────────
-// The cube hatches from the graph's own self node (the head) and the rest of
-// the world recedes around it — same canvas, same paper. On hangup the cube
-// shrinks back into the node and the world returns.
-function vsSelfRect() {
-  if (!nodeSel) return null;
-  const n = nodeSel.filter(d => d.id === "self");
-  if (n.empty()) return null;
-  const sq = n.node().querySelector(":scope > rect");   // the face squircle (not the clipPath rect)
-  return sq ? sq.getBoundingClientRect() : n.node().getBoundingClientRect();
+// ── VoiceStage hooks: the SEAMLESS graph⇄call transition ────────────────────
+// The cube that lives as the graph's self node is ADOPTED by the call: the
+// world recedes, the same cube floats free on the same paper, and on hangup
+// it glides back onto its node and the world returns. One avatar, two states.
+function vsSelfSpot() {
+  // the cube's stage-relative movement vars for the self node's footprint
+  const n = worldData?.nodes?.find(n => n.id === "self");
+  const stage = document.getElementById("stage");
+  if (!n || n.x == null) return { sx: 0, sy: 0, sc: 96 / 132 };
+  const t = d3.zoomTransform(svg.node());
+  return { sx: t.applyX(n.x) - stage.clientWidth / 2,
+           sy: t.applyY(n.y) - stage.clientHeight / 2,
+           sc: (96 / 132) * t.k };
 }
 function vsHideWorld() {
   if (!nodeSel) return;
@@ -3827,8 +3908,6 @@ function vsHideWorld() {
     .on("end", function () { d3.select(this).style("pointer-events", "none"); });
   if (linkSel) linkSel.transition("vs").duration(420).attr("opacity", 0);
   if (badgeLayer) badgeLayer.transition("vs").duration(420).attr("opacity", 0);
-  // the head itself vanishes the moment the cube spawns over it
-  nodeSel.filter(d => d.id === "self").transition("vs").delay(560).duration(120).attr("opacity", 0);
   svg.on(".zoom", null);                                // freeze pan/zoom during the call
 }
 function vsShowWorld() {
@@ -3842,14 +3921,16 @@ function vsShowWorld() {
 async function startVoice() {
   voiceMode = (await (await fetch("/voice/mode")).text()).trim();
   if (voiceMode === "stage") {
-    // local speech-to-speech: the graph morphs into the whiteboard stage —
-    // cube avatar + Silero VAD + local STT + Groq brain + Kokoro voice.
-    // setComm already ran zoomTo("self"), so the camera is settling on the
-    // head; settleMs lets that finish before the hatch.
+    // local speech-to-speech: the SAME self-node cube goes free-floating —
+    // Silero VAD + local STT + Groq brain + Kokoro voice. setComm already ran
+    // zoomTo("self"); settleMs lets the camera finish before the release.
+    await ensureSelfCube();
     VoiceStage.enter({ token: TOKEN, stage: document.getElementById("stage"),
                        callbar: document.getElementById("callbar"),
                        callin: document.getElementById("callin"),
-                       selfRect: vsSelfRect, hideWorld: vsHideWorld, showWorld: vsShowWorld,
+                       adopt: { scene: selfCube, cube: selfCubeInner, prefix: "ap-" },
+                       selfSpot: vsSelfSpot, hideWorld: vsHideWorld, showWorld: vsShowWorld,
+                       resync: syncSelfCube,
                        settleMs: 620 });
     return;
   }
@@ -5078,16 +5159,18 @@ async function renderCloudPanel() {
 
   const acct = st.account || {};
   const who = acct.email || "your account";
-  let m = {};
-  try { m = await (await fetch("/cloud/machine.json")).json(); } catch (_) {}
-  const state = (m && (m.state || m.status)) || null;
+  let raw = {};
+  try { raw = await (await fetch("/cloud/machine.json")).json(); } catch (_) {}
+  const m = raw.machine || raw;                 // cloud returns {machine, record}
+  const state = m.state || m.status || null;
+  const region = m.region || (raw.record || {}).region;
   const running = state && /run|start|healthy|live|up/i.test(state);
-  const deployed = !!state && !m.error;
+  const deployed = !!state && !raw.error;
 
   body.innerHTML = `
     <div class="cp-row"><span class="cp-k">Account</span><span class="cp-v">${who}${acct.role ? ` · ${acct.role}` : ""}</span></div>
     <div class="cp-row"><span class="cp-k">Machine</span><span class="cp-v">${deployed
-        ? `<span class="cp-dot ${running ? "on" : "warn"}"></span>${state}${m.region ? " · " + m.region : ""}`
+        ? `<span class="cp-dot ${running ? "on" : "warn"}"></span>${state}${region ? " · " + region : ""}`
         : `<span class="cp-dot off"></span>not deployed`}</span></div>
     <div class="cp-actions">
       ${deployed
@@ -5128,8 +5211,9 @@ function pollMachinePanel() {
   _cpPoll = setInterval(async () => {
     n++;
     try {
-      const m = await (await fetch("/cloud/machine.json")).json();
-      const state = m && (m.state || m.status);
+      const raw = await (await fetch("/cloud/machine.json")).json();
+      const m = raw.machine || raw;
+      const state = m.state || m.status;
       if ((state && /run|start|healthy|live|up/i.test(state)) || n > 60) { clearInterval(_cpPoll); renderCloudPanel(); }
     } catch (_) {}
   }, 3000);
