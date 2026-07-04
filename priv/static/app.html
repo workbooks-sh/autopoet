@@ -656,6 +656,32 @@
     border-radius:8px; padding:7px; cursor:pointer; }
   #footpop .fp-seg button.sel { border-color:#5b8cc9; background:#f2f6fb; color:#2a3140; font-weight:600; }
   #footpop .fp-seg svg.lucide { width:13px; height:13px; }
+  /* workbooks cloud panel */
+  .cpanel-back { position:fixed; inset:0; z-index:60; background:rgba(20,28,42,.32);
+    display:grid; place-items:center; padding:20px; }
+  .cpanel { width:400px; max-width:100%; background:#fff; border:1px solid var(--line);
+    border-radius:14px; box-shadow:0 24px 60px -18px rgba(20,28,42,.4); overflow:hidden; }
+  .cpanel-h { display:flex; align-items:center; justify-content:space-between; padding:15px 18px;
+    border-bottom:1px solid #ececec; font:600 14.5px system-ui; color:#2a3140; }
+  .cpanel-x { border:none; background:none; font-size:21px; line-height:1; color:#98a0ac; cursor:pointer; padding:0 4px; }
+  .cpanel-x:hover { color:#2a3140; }
+  .cpanel-b { padding:18px; }
+  .cpanel-load, .cp-lede { font:13px/1.5 system-ui; color:#67707c; margin:0 0 14px; }
+  .cp-row { display:flex; align-items:center; justify-content:space-between; padding:9px 0; border-bottom:1px solid #f0f0f0; }
+  .cp-row:last-of-type { border-bottom:none; }
+  .cp-k { font:11px ui-monospace,monospace; letter-spacing:.04em; text-transform:uppercase; color:#98a0ac; }
+  .cp-v { font:12.5px ui-monospace,monospace; color:#2a3140; display:flex; align-items:center; gap:7px; }
+  .cp-dot { width:8px; height:8px; border-radius:50%; background:#98a0ac; flex:none; }
+  .cp-dot.on { background:#6aa84f; } .cp-dot.warn { background:#e0a63a; } .cp-dot.off { background:#c4c9d0; }
+  .cp-actions { display:flex; gap:9px; margin-top:16px; }
+  .cp-btn { flex:1; font:600 12.5px system-ui; padding:10px; border-radius:9px; border:1px solid #2a3140;
+    background:#2a3140; color:#fff; cursor:pointer; }
+  .cp-btn:hover { background:#1c2230; }
+  .cp-btn:disabled { opacity:.6; cursor:default; }
+  .cp-btn.ghost { background:#fff; color:#3a4250; border-color:var(--line); }
+  .cp-btn.ghost:hover { background:#f2f4f7; }
+  .cp-btn.ghost.danger:hover { background:#fdecea; color:#c0392b; border-color:#f3c0ba; }
+  .cp-note { font:11.5px/1.5 ui-monospace,monospace; color:#98a0ac; margin:12px 0 0; }
   /* env: key/value editor */
   #footpop .fp-env { display:flex; flex-direction:column; gap:5px; padding:4px 8px 8px; max-height:240px; overflow:auto; }
   #footpop .fp-envrow { display:flex; gap:5px; align-items:center; }
@@ -1201,6 +1227,7 @@
 <script src="/static/quiz-corpus.js"></script>
 <script src="/static/intake.js"></script>
 <script src="/static/quiz.js"></script>
+<script src="/static/vendor/voice-stage.js"></script>
 <script type="module">
   import { getStroke } from "/static/perfect-freehand.mjs";
   window.getStroke = getStroke;   // the Excalidraw-grade ink engine (pen falls back until loaded)
@@ -3783,8 +3810,49 @@ let voiceMode = "local";
 const live = { ws: null, ctx: null, gain: null, playhead: 0, sources: [], amps: [],
                mic: null, micCtx: null, micOn: true, caption: "" };
 
+// ── VoiceStage hooks: the SEAMLESS graph⇄whiteboard transition ──────────────
+// The cube hatches from the graph's own self node (the head) and the rest of
+// the world recedes around it — same canvas, same paper. On hangup the cube
+// shrinks back into the node and the world returns.
+function vsSelfRect() {
+  if (!nodeSel) return null;
+  const n = nodeSel.filter(d => d.id === "self");
+  if (n.empty()) return null;
+  const sq = n.node().querySelector(":scope > rect");   // the face squircle (not the clipPath rect)
+  return sq ? sq.getBoundingClientRect() : n.node().getBoundingClientRect();
+}
+function vsHideWorld() {
+  if (!nodeSel) return;
+  nodeSel.filter(d => d.id !== "self").transition("vs").duration(420).attr("opacity", 0)
+    .on("end", function () { d3.select(this).style("pointer-events", "none"); });
+  if (linkSel) linkSel.transition("vs").duration(420).attr("opacity", 0);
+  if (badgeLayer) badgeLayer.transition("vs").duration(420).attr("opacity", 0);
+  // the head itself vanishes the moment the cube spawns over it
+  nodeSel.filter(d => d.id === "self").transition("vs").delay(560).duration(120).attr("opacity", 0);
+  svg.on(".zoom", null);                                // freeze pan/zoom during the call
+}
+function vsShowWorld() {
+  if (!nodeSel) return;
+  nodeSel.transition("vs").duration(520).attr("opacity", 1).style("pointer-events", "all");
+  if (linkSel) linkSel.transition("vs").duration(520).attr("opacity", 1);
+  if (badgeLayer) badgeLayer.transition("vs").duration(520).attr("opacity", 1);
+  svg.call(zoomB);                                      // pan/zoom back on
+}
+
 async function startVoice() {
   voiceMode = (await (await fetch("/voice/mode")).text()).trim();
+  if (voiceMode === "stage") {
+    // local speech-to-speech: the graph morphs into the whiteboard stage —
+    // cube avatar + Silero VAD + local STT + Groq brain + Kokoro voice.
+    // setComm already ran zoomTo("self"), so the camera is settling on the
+    // head; settleMs lets that finish before the hatch.
+    VoiceStage.enter({ token: TOKEN, stage: document.getElementById("stage"),
+                       callbar: document.getElementById("callbar"),
+                       callin: document.getElementById("callin"),
+                       selfRect: vsSelfRect, hideWorld: vsHideWorld, showWorld: vsShowWorld,
+                       settleMs: 620 });
+    return;
+  }
   startVoicePoll();
   if (voiceMode !== "live") { say("voice link up. I'm here."); return; }
   const ws = new WebSocket(`ws://127.0.0.1:${location.port}/voice/live?token=${TOKEN}`);
@@ -3810,6 +3878,7 @@ async function startVoice() {
   ws.onclose = () => { if (commState === "voice" && voiceMode === "live") showCaption("voice link dropped"); };
 }
 function stopVoice() {
+  if (voiceMode === "stage") { VoiceStage.exit(); return; }
   stopVoicePoll();
   clearGrounding();
   if (voiceMode === "live") {
@@ -4042,6 +4111,7 @@ document.getElementById("callin").addEventListener("keydown", async e => {
   const inp = e.target, msg = inp.value.trim();
   if (!msg) return;
   inp.value = "";
+  if (voiceMode === "stage") { VoiceStage.ask(msg); return; }
   if (voiceMode === "live" && live.ws?.readyState === 1) {
     live.caption = "";
     clearGrounding();   // typed input counts as the human talking
@@ -4963,13 +5033,107 @@ document.getElementById("foot-settings").onclick = e => {
     </div>
     <div class="fp-note">// dark theme in progress</div>
     <div class="fp-sep"></div>
+    <button class="fp-item" data-act="cloud"><i data-lucide="cloud"></i>workbooks cloud…</button>
     <button class="fp-item" data-act="more"><i data-lucide="sliders-horizontal"></i>app settings…</button>`);
   document.querySelectorAll("#footpop .fp-seg button").forEach(b => b.onclick = () => {
     applyTheme(b.dataset.theme);
     document.querySelectorAll("#footpop .fp-seg button").forEach(x => x.classList.toggle("sel", x === b));
   });
+  document.querySelector('#footpop [data-act="cloud"]').onclick = () => { closeFootPop(); openCloudPanel(); };
   document.querySelector('#footpop [data-act="more"]').onclick = () => { closeFootPop(); toast("app settings — coming soon"); };
 };
+
+// ── Workbooks Cloud management panel (sign-in status · deploy · machine status) ──────────────────
+async function openCloudPanel() {
+  document.getElementById("cloudpanel")?.remove();
+  const el = document.createElement("div");
+  el.id = "cloudpanel";
+  el.className = "cpanel-back";
+  el.innerHTML = `<div class="cpanel" role="dialog" aria-label="Workbooks Cloud">
+      <div class="cpanel-h"><span>Workbooks Cloud</span><button class="cpanel-x" aria-label="Close">×</button></div>
+      <div class="cpanel-b" id="cpanel-body"><div class="cpanel-load">loading…</div></div>
+    </div>`;
+  document.body.appendChild(el);
+  el.addEventListener("click", e => { if (e.target === el || e.target.closest(".cpanel-x")) el.remove(); });
+  renderCloudPanel();
+}
+
+async function renderCloudPanel() {
+  const body = document.getElementById("cpanel-body");
+  if (!body) return;
+  let st = {};
+  try { st = await (await fetch("/cloud/status.json")).json(); } catch (_) {}
+
+  if (!st.signed_in) {
+    body.innerHTML = `
+      <p class="cp-lede">Sign in to run this AutoPoet in the cloud — always-on, reachable from anywhere.</p>
+      <button class="cp-btn" id="cp-signin">Sign in to Workbooks Cloud</button>`;
+    document.getElementById("cp-signin").onclick = async () => {
+      await authedPost("/auth/cloud/open");
+      body.innerHTML = `<p class="cp-lede">Finish sign-in in your browser…</p>`;
+      pollCloudPanel();
+    };
+    return;
+  }
+
+  const acct = st.account || {};
+  const who = acct.email || "your account";
+  let m = {};
+  try { m = await (await fetch("/cloud/machine.json")).json(); } catch (_) {}
+  const state = (m && (m.state || m.status)) || null;
+  const running = state && /run|start|healthy|live|up/i.test(state);
+  const deployed = !!state && !m.error;
+
+  body.innerHTML = `
+    <div class="cp-row"><span class="cp-k">Account</span><span class="cp-v">${who}${acct.role ? ` · ${acct.role}` : ""}</span></div>
+    <div class="cp-row"><span class="cp-k">Machine</span><span class="cp-v">${deployed
+        ? `<span class="cp-dot ${running ? "on" : "warn"}"></span>${state}${m.region ? " · " + m.region : ""}`
+        : `<span class="cp-dot off"></span>not deployed`}</span></div>
+    <div class="cp-actions">
+      ${deployed
+        ? `<button class="cp-btn ghost" id="cp-refresh">Refresh status</button>`
+        : `<button class="cp-btn" id="cp-deploy">Deploy to cloud</button>`}
+      <button class="cp-btn ghost danger" id="cp-disc">Disconnect</button>
+    </div>
+    <p class="cp-note" id="cp-note"></p>`;
+
+  const deploy = document.getElementById("cp-deploy");
+  if (deploy) deploy.onclick = async () => {
+    deploy.disabled = true; deploy.textContent = "Deploying…";
+    try {
+      const r = await authedPost("/cloud/deploy", "");
+      if (r.ok) { note("Provisioning your machine — cloning the autopoet image…"); pollMachinePanel(); }
+      else { const t = await r.text(); note("Deploy needs setup: " + t.trim()); deploy.disabled = false; deploy.textContent = "Deploy to cloud"; }
+    } catch (e) { note("Deploy failed."); deploy.disabled = false; deploy.textContent = "Deploy to cloud"; }
+  };
+  document.getElementById("cp-refresh")?.addEventListener("click", renderCloudPanel);
+  document.getElementById("cp-disc").onclick = async () => {
+    await authedPost("/auth/cloud/disconnect");
+    renderCloudPanel();
+  };
+}
+
+function note(t) { const n = document.getElementById("cp-note"); if (n) n.textContent = t; }
+
+let _cpPoll = null;
+function pollCloudPanel() {
+  clearInterval(_cpPoll); let n = 0;
+  _cpPoll = setInterval(async () => {
+    n++;
+    try { const st = await (await fetch("/cloud/status.json")).json(); if (st.signed_in || n > 90) { clearInterval(_cpPoll); renderCloudPanel(); } } catch (_) {}
+  }, 2000);
+}
+function pollMachinePanel() {
+  clearInterval(_cpPoll); let n = 0;
+  _cpPoll = setInterval(async () => {
+    n++;
+    try {
+      const m = await (await fetch("/cloud/machine.json")).json();
+      const state = m && (m.state || m.status);
+      if ((state && /run|start|healthy|live|up/i.test(state)) || n > 60) { clearInterval(_cpPoll); renderCloudPanel(); }
+    } catch (_) {}
+  }, 3000);
+}
 
 // env · integrations (dev-local key/values for now)
 const getEnv = () => { try { return JSON.parse(localStorage.getItem("ap-env") || "[]"); } catch (_) { return []; } };
