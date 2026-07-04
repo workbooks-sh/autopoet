@@ -2324,6 +2324,19 @@ async function draw() {
     saveHidden();
   }
   worldData = data;
+  // GENESIS I3: hidden types leave the SIMULATION entirely — plumbing takes no
+  // layout space. worldData keeps the full set (search list, filter counts,
+  // notifications); un-hiding a type re-draws it into the world.
+  {
+    const simNodes = data.nodes.filter(n => !hiddenTypes.has(n.type));
+    const simIds = new Set(simNodes.map(n => n.id));
+    const simLinks = (data.links || []).filter(l => {
+      const s = l.source && l.source.id !== undefined ? l.source.id : l.source;
+      const t = l.target && l.target.id !== undefined ? l.target.id : l.target;
+      return simIds.has(s) && simIds.has(t);
+    });
+    data = { ...data, nodes: simNodes, links: simLinks };
+  }
   renderNotifications();
   g.selectAll("*").remove();
   paper(g);
@@ -3137,9 +3150,10 @@ function openFilterPop() {
     refreshIcons();
   };
   p.querySelectorAll("#flt-showsec input[type=checkbox]").forEach(cb => cb.onchange = () => {
-    cb.checked ? hiddenTypes.delete(cb.dataset.t) : hiddenTypes.add(cb.dataset.t); saveHidden(); applyFilter();
+    cb.checked ? hiddenTypes.delete(cb.dataset.t) : hiddenTypes.add(cb.dataset.t);
+    saveHidden(); draw();   // hidden types live outside the sim — re-draw the world
   });
-  document.getElementById("flt-all").onclick = () => { hiddenTypes.clear(); saveHidden(); applyFilter(); closeFilterPop(); };
+  document.getElementById("flt-all").onclick = () => { hiddenTypes.clear(); saveHidden(); closeFilterPop(); draw(); };
 }
 
 // ── cluster interactions: lasso · AI · gather · panel · ctx ──
@@ -3618,6 +3632,8 @@ document.getElementById("searchin").addEventListener("input", e => {
 function zoomTo(id, panel = true) {
   const n = worldData.nodes.find(n => n.id === id);
   if (!n) return;
+  // a hidden-type node has no sim position — open its panel instead of flying
+  if (n.x == null) { if (panel) showPanel(n); return; }
   const stage = document.getElementById("stage");
   const t = d3.zoomIdentity.translate(stage.clientWidth / 2 - n.x * 1.25, stage.clientHeight / 2 - n.y * 1.25).scale(1.25);
   svg.transition().duration(550).call(zoomB.transform, t);

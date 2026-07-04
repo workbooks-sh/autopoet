@@ -1,0 +1,19 @@
+# <%= @page %>
+
+## what this is
+Order flow for <%= @ws %> — one order, one line: date, item, buyer, amount, status. The crew reads this page before touching anything money-shaped.
+
+## how it fills
+<%= @fills %> Once shopify is connected, orders land here on their own; until then, log them by hand — the format below is the contract.
+
+## first moves
+<%= @moves %>
+
+## open orders
+| date | item | buyer | amount | status |
+|---|---|---|---|---|
+| — | (first order lands here) | — | — | open |
+
+## done
+| date | item | amount |
+|---|---|---|

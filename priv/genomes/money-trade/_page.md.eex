@@ -1,0 +1,15 @@
+# <%= @page %>
+
+## what this is
+The <%= @page %> page of your <%= @ws %> — starting code from your setup answers. Trading pages are logs, not opinions: entries, exits, and the reason you'd repeat or never repeat each one.
+
+## how it fills
+<%= @fills %> The lookout alerts ONCE per real move — repeated pings train you to ignore them, so it won't.
+
+## first moves
+<%= @moves %>
+
+## journal
+| date | ticker | in | out | why |
+|---|---|---|---|---|
+| — | (first trade lands here) | — | — | — |

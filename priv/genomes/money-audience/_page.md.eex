@@ -1,0 +1,13 @@
+# <%= @page %>
+
+## what this is
+The <%= @page %> page of your <%= @ws %> — starting code built from your setup answers. Your voice is the asset here; everything on this page should sound like you.
+
+## how it fills
+<%= @fills %> The producer drafts IN YOUR VOICE — feed it three real posts you're proud of and it stops sounding like a bot.
+
+## first moves
+<%= @moves %>
+
+## the queue
+- [ ] (your next post idea — one line, the producer expands it)

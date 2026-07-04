@@ -1,0 +1,15 @@
+# <%= @page %>
+
+## what this is
+The <%= @page %> page of your <%= @ws %> shop — starting code built from your setup answers, yours to edit. Money pages stay boring on purpose: one line per fact, dates on everything.
+
+## how it fills
+<%= @fills %>
+
+## first moves
+<%= @moves %>
+
+## running tally
+| date | what happened | amount |
+|---|---|---|
+| — | your first entry lands here | — |

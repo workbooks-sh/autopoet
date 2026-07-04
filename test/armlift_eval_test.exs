@@ -66,7 +66,13 @@ defmodule Autopoet.ArmLiftEvalTest do
     Application.delete_env(:autopoet, :brain_llm)
     Process.sleep(500)
 
-    window = Replay.frames(todays_trace()) |> Enum.filter(&((&1[:at] || 0) >= t0))
+    # scope to THIS experiment's own targets — the at-timestamp has second
+    # resolution, so a neighboring test in the same second could leak in
+    window =
+      Replay.frames(todays_trace())
+      |> Enum.filter(&((&1[:at] || 0) >= t0))
+      |> Enum.filter(&String.starts_with?(to_string(&1[:target] || ""), uniq))
+
     scores = ArmLift.score(window)
 
     assert scores.warm.proposals == 4

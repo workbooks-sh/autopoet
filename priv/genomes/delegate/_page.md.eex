@@ -1,0 +1,13 @@
+# <%= @page %>
+
+## what this is
+The <%= @page %> page of your <%= @ws %> — starting code from your setup answers. You run a fleet: work goes in the queue, reports come back by morning, the foreman kills overruns.
+
+## how it fills
+<%= @fills %> Every report cites sources — an uncited claim is a deleted claim.
+
+## first moves
+<%= @moves %>
+
+## the queue
+1. (top question — the fleet takes it tonight)

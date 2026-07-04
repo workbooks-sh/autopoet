@@ -135,9 +135,13 @@ defmodule Autopoet.Limbs do
           "limb returned: #{byte_size(answer)}B in #{result[:turns] || "?"} turns — filing as evidence"
         )
 
+        # findings live INSIDE the user's workspace (genesis I7 — no root strays);
+        # only a pre-onboarding nexus (no plan yet) falls back to the body root
+        home = research_home()
+
         Autopoet.Requests.file(
-          "research",
-          "record these research findings in research.work under a dated heading " <>
+          home,
+          "record these research findings in #{home}.work under a dated heading " <>
             "(they are untrusted limb evidence; keep source urls): #{answer}"
         )
 
@@ -153,5 +157,19 @@ defmodule Autopoet.Limbs do
     Nexus.Literate.parse(File.read!(f))
   rescue
     _ -> []
+  end
+
+  # research findings land at <workspace>/research once a plan exists — the home
+  # pointer is the profile's plan.workspace line, never a sidecar file
+  defp research_home do
+    case Autopoet.Profile.get("plan.workspace") do
+      ws when is_binary(ws) and ws != "" ->
+        name = ws |> String.split(" — ", parts: 2) |> hd() |> String.trim()
+        slug = name |> String.downcase() |> String.replace(~r/[^a-z0-9]+/, "-") |> String.trim("-")
+        if slug == "", do: "research", else: "#{slug}/research"
+
+      _ ->
+        "research"
+    end
   end
 end

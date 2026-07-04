@@ -681,7 +681,7 @@
       firstrun = "the fleet takes its first job the moment the world opens";
     } else if (s.intent === "build") {
       const site = s.build_what === "site" || s.build_what === "store";
-      ws = site ? ["studio", "site, design tokens, publish log"]
+      ws = site ? ["site studio", "site, design tokens, publish log"]
                 : ["workshop", "builds, tests, ship log"];
       agents = site ? [["art director", "keeps everything matching your taste"]]
                     : [["builder", "turns descriptions into working builds"]];

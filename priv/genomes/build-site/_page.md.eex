@@ -1,0 +1,13 @@
+# <%= @page %>
+
+## what this is
+The <%= @page %> page of your <%= @ws %> — starting code from your setup answers. Taste is the spec here: what you put on this page IS the design system the art director enforces.
+
+## how it fills
+<%= @fills %> Every new page gets styled to match what's already here — so make the first entry count.
+
+## first moves
+<%= @moves %>
+
+## the taste board
+- (one thing you love the look of — a site, a poster, a typeface; the art director studies these)

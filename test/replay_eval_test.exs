@@ -100,17 +100,21 @@ defmodule Autopoet.ReplayEvalTest do
     assert torn == whole - 1
   end
 
+  # accumulated day-traces run to 100k+ events; the informational sweep scores a
+  # bounded window and SAYS so (no silent caps)
+  @info_cap 25_000
+
   test "production traces (informational): score whatever the capture layer has recorded" do
     traces = Path.wildcard(Path.join(Autopoet.Capture.dir(), "*.etfs"))
 
     for path <- Enum.take(traces, 3) do
-      case Replay.score_trace(path) do
+      case path |> Replay.frames() |> Enum.take(@info_cap) |> Replay.signals() |> Replay.prequential() do
         :not_enough_signal ->
           IO.puts("  · EVAL replay/#{Path.basename(path)} — not enough signal")
 
         s ->
           IO.puts(
-            "  · EVAL replay/#{Path.basename(path)} (n=#{s.events}) — hebb #{fmt(s.hebb)} · " <>
+            "  · EVAL replay/#{Path.basename(path)} (n=#{s.events}, first #{@info_cap} frames) — hebb #{fmt(s.hebb)} · " <>
               "frequency #{fmt(s.frequency)} · recency #{fmt(s.recency)} · uniform #{fmt(s.uniform)}"
           )
 

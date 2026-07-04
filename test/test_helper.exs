@@ -4,7 +4,18 @@
 # learners (no terminate → no re-persist); the supervisor restarts them cold.
 File.rm_rf!(Autopoet.Shadow.dir())
 
-for name <- [Autopoet.Shadow.Hebb, Autopoet.Shadow.Surprise, Autopoet.Shadow.Outcomes],
+# The request queue reloads .req files at boot (production: a restart must not
+# eat a filed issue). In tests that durability compounds: every run's leftover
+# requests get drained into every later run's heartbeat cycles — unbounded
+# cross-run garbage that eventually blows the beat eval's latency budget. Cold.
+File.rm_rf!(Autopoet.Requests.dir())
+
+# Same compounding through the DURABLE telemetry ledger (phase 0.1): failing
+# units recorded by past runs re-sense as concerns in every later heartbeat —
+# each cycle proposes for the whole history. Trials share no state; wipe.
+File.rm_rf!(Path.join(Nexus.Paths.durable_dir(), "telemetry"))
+
+for name <- [Autopoet.Shadow.Hebb, Autopoet.Shadow.Surprise, Autopoet.Shadow.Outcomes, Autopoet.Requests, Nexus.Telemetry],
     pid = Process.whereis(name),
     is_pid(pid) do
   Process.exit(pid, :kill)

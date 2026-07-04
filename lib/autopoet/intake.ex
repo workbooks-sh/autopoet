@@ -388,30 +388,70 @@ defmodule Autopoet.Intake do
     if pending_proposal() do
       :already
     else
-      ws = plan.workspace
-
-      changes =
-        %{
-          "#{ws.name}/.workspace" => "",
-          "#{ws.name}/index.md" => vault_index(plan),
-          "#{ws.name}/first-proposal.md" => brief(profile, plan)
-        }
-        |> Map.merge(
-          for page <- ws.pages, into: %{} do
-            {"#{ws.name}/#{slug(page)}.md", vault_page(plan, page)}
-          end
-        )
-
-      Autopoet.Proposals.record(%{target: "intake", kind: "intake.brief"}, changes)
+      Autopoet.Proposals.record(
+        %{target: "intake", kind: "intake.brief"},
+        first_changes(profile, plan)
+      )
     end
   end
 
-  # A vault page is STARTING CODE, not a placeholder (genesis I4): three
-  # protected sections a human can work with immediately. Deterministic from the
-  # plan (Lane A, zero-LLM); Lane B rewrites the prose under the headings only.
-  defp vault_page(plan, page) do
+  @doc """
+  The complete first-proposal change set — the GENERATED VAULT (genesis I4/I5).
+  Pure function of profile+plan: the golden-manifest source the genesis evals
+  assert against.
+  """
+  def first_changes(profile, plan) do
     ws = plan.workspace
 
+    %{
+      "#{ws.name}/.workspace" => "",
+      "#{ws.name}/index.md" => vault_index(plan),
+      "#{ws.name}/first-proposal.md" => brief(profile, plan)
+    }
+    |> Map.merge(
+      for page <- ws.pages, into: %{} do
+        {"#{ws.name}/#{slug(page)}.md", vault_page(profile, plan, page)}
+      end
+    )
+  end
+
+  # ── the genome: road-specific starting code (genesis I4, wb-h0tjs.2) ────────
+  # A vault page is STARTING CODE, not a placeholder: three protected sections a
+  # human can work with immediately. Resolution: the intent-road's genome
+  # template (priv/genomes/<key>/<page-slug>.md.eex, else <key>/_page.md.eex),
+  # else the generic. Deterministic EEx, zero-LLM (Lane A); Lane B rewrites the
+  # prose under the headings only.
+
+  @doc false
+  def genome_key(profile) do
+    case profile["intent"] do
+      "money" -> "money-#{profile["money_road"] || "sell"}"
+      "productivity" -> "productivity"
+      "delegate" -> "delegate"
+      "build" -> if profile["build_what"] in ["site", "store"], do: "build-site", else: "build-tool"
+      _ -> "blank"
+    end
+  end
+
+  defp vault_page(profile, plan, page) do
+    assigns = page_assigns(plan, page)
+    key = genome_key(profile)
+    dir = Path.join(:code.priv_dir(:autopoet), "genomes/#{key}")
+
+    template =
+      Enum.find(
+        [Path.join(dir, "#{slug(page)}.md.eex"), Path.join(dir, "_page.md.eex")],
+        &File.exists?/1
+      )
+
+    if template do
+      EEx.eval_file(template, assigns: assigns)
+    else
+      generic_vault_page(assigns)
+    end
+  end
+
+  defp page_assigns(plan, page) do
     fills =
       case plan.agents do
         [] ->
@@ -443,17 +483,29 @@ defmodule Autopoet.Intake do
       |> Enum.with_index(1)
       |> Enum.map_join("\n", fn {m, i} -> "#{i}. #{m}" end)
 
+    [
+      page: page,
+      ws: plan.workspace.title,
+      crew: Enum.map_join(plan.agents, ", ", & &1.name),
+      rules: plan.rules,
+      connect: plan.connect,
+      fills: fills,
+      moves: moves
+    ]
+  end
+
+  defp generic_vault_page(a) do
     """
-    # #{page}
+    # #{a[:page]}
 
     ## what this is
-    The #{page} page of your #{ws.title} workspace — starting code built from your setup answers, yours to edit.
+    The #{a[:page]} page of your #{a[:ws]} workspace — starting code built from your setup answers, yours to edit.
 
     ## how it fills
-    #{fills}
+    #{a[:fills]}
 
     ## first moves
-    #{moves}
+    #{a[:moves]}
     """
   end
 

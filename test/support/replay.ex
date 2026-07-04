@@ -91,7 +91,8 @@ defmodule Autopoet.Eval.Replay do
           hebb: Model.observe(acc.hebb, next),
           freq: freq_observe(acc.freq, next),
           rec: rec_observe(acc.rec, next),
-          uni: if(next in acc.uni, do: acc.uni, else: acc.uni ++ [next]),
+          # first-k-seen anchor: storage capped — predictions never take more
+          uni: if(length(acc.uni) >= 16 or next in acc.uni, do: acc.uni, else: acc.uni ++ [next]),
           hits: hits,
           n: acc.n + 1
         }
@@ -126,20 +127,46 @@ defmodule Autopoet.Eval.Replay do
   defp decode(_torn_or_empty, acc), do: Enum.reverse(acc)
 
   # ── frequency baseline: decayed global counts (same decay as the model, fair) ─
+  # O(1) per event: uniform multiplicative decay preserves RANKING, so counts are
+  # stored scale-shifted (increment 1/d^t) and only the bumped locus can change
+  # rank — a small cached top list stays exact. Periodic renormalization keeps the
+  # scale finite. (The naive full-map-decay + full-sort version was O(vocab) per
+  # event and timed out on 100k-event production traces — a real harness bug.)
 
-  defp freq_new, do: %{counts: %{}, t: 0}
+  @freq_top 8
+  @freq_rescale 1.0e12
+
+  defp freq_new, do: %{counts: %{}, epoch: 0, t: 0, top: []}
 
   defp freq_observe(f, sig) do
     d = Model.decay()
-    counts = Map.new(f.counts, fn {s, c} -> {s, c * d} end)
-    %{counts: Map.update(counts, sig, 1.0, &(&1 + 1.0)), t: f.t + 1}
+    scale = :math.pow(1.0 / d, f.t - f.epoch)
+
+    f =
+      if scale > @freq_rescale do
+        norm = :math.pow(d, f.t - f.epoch)
+        counts = Map.new(f.counts, fn {s, c} -> {s, c * norm} end)
+        top = counts |> Enum.sort_by(fn {_, c} -> -c end) |> Enum.take(@freq_top)
+        %{f | counts: counts, epoch: f.t, top: top}
+      else
+        f
+      end
+
+    scale = :math.pow(1.0 / d, f.t - f.epoch)
+    c = Map.get(f.counts, sig, 0.0) + scale
+
+    top =
+      [{sig, c} | Enum.reject(f.top, fn {s, _} -> s == sig end)]
+      |> Enum.sort_by(fn {_, v} -> -v end)
+      |> Enum.take(@freq_top)
+
+    %{f | counts: Map.put(f.counts, sig, c), t: f.t + 1, top: top}
   end
 
-  defp freq_predict(f, k) do
-    f.counts |> Enum.sort_by(fn {_, c} -> -c end) |> Enum.take(k) |> Enum.map(&elem(&1, 0))
-  end
+  defp freq_predict(f, k), do: f.top |> Enum.take(k) |> Enum.map(&elem(&1, 0))
 
-  # ── recency baseline: distinct loci, most recent first ──────────────────────
+  # ── recency baseline: distinct loci, most recent first (windowed to 32 — exact
+  # for any k ≤ 32, O(window) per event instead of O(vocab)) ────────────────────
 
-  defp rec_observe(list, sig), do: [sig | List.delete(list, sig)]
+  defp rec_observe(list, sig), do: [sig | Enum.reject(list, &(&1 == sig))] |> Enum.take(32)
 end

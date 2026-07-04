@@ -135,6 +135,66 @@ defmodule Autopoet.GenesisEvalTest do
     IO.puts("  ✓ GENESIS A2/A3/A5 — #{length(pages)} sectioned pages, brief nested, machinery classified hidden")
   end
 
+  # per-genome flavor markers — proof the road's template resolved, not the generic
+  @genome_marker %{
+    "money-sell" => "running tally",
+    "money-audience" => "your voice",
+    "money-trade" => "journal",
+    "productivity" => "mornings back",
+    "delegate" => "fleet",
+    "build-site" => "taste"
+  }
+
+  test "A2 golden manifests: every persona's first proposal is EXACTLY its manifest; genomes resolve" do
+    for p <- Personas.all() do
+      plan = Autopoet.Intake.parse_plan(p.profile)
+      changes = Autopoet.Intake.first_changes(p.profile, plan)
+      ws = plan.workspace.name
+
+      expected =
+        MapSet.new(
+          ["#{ws}/.workspace", "#{ws}/index.md", "#{ws}/first-proposal.md"] ++
+            Enum.map(plan.workspace.pages, &"#{ws}/#{slug(&1)}.md")
+        )
+
+      assert MapSet.new(Map.keys(changes)) == expected,
+             "#{p.name}: manifest drift — got #{inspect(Enum.sort(Map.keys(changes)))}"
+
+      # every page is sectioned starting code carrying its road's genome flavor
+      key = Autopoet.Intake.genome_key(p.profile)
+      marker = Map.fetch!(@genome_marker, key)
+
+      for page <- plan.workspace.pages, rel = "#{ws}/#{slug(page)}.md" do
+        src = changes[rel]
+
+        for section <- ["## what this is", "## how it fills", "## first moves"] do
+          assert src =~ section, "#{p.name}/#{rel}: missing #{section}"
+        end
+
+        # a page carries its road's flavor UNLESS a named-page genome shadows it
+        named = Path.join([:code.priv_dir(:autopoet), "genomes/#{key}", "#{slug(page)}.md.eex"])
+
+        unless File.exists?(named) do
+          assert String.downcase(src) =~ marker,
+                 "#{p.name}/#{rel}: generic page — genome #{key} did not resolve"
+        end
+      end
+    end
+
+    # the flagship named-page genome beats the road default
+    shop = Personas.named("shop-seller")
+    plan = Autopoet.Intake.parse_plan(shop.profile)
+    orders = Autopoet.Intake.first_changes(shop.profile, plan)["shop/orders.md"]
+    assert orders =~ "Order flow", "orders.md.eex flagship genome did not resolve"
+    assert orders =~ "## open orders"
+
+    # cross-persona slug uniqueness (the studio collision is dead)
+    names = for p <- Personas.all(), do: Autopoet.Intake.parse_plan(p.profile).workspace.name
+    assert names == Enum.uniq(names), "workspace slug collision: #{inspect(names -- Enum.uniq(names))}"
+
+    IO.puts("  ✓ GENESIS A2 — 6/6 golden manifests exact; genomes resolve per road; slugs unique")
+  end
+
   test "A4: rejecting the first proposal leaves a clean void; intake re-proposes" do
     p = Personas.named("trader")
 

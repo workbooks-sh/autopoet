@@ -192,7 +192,7 @@ defmodule Autopoet.Eval.Personas do
     %{
       name: "site-builder",
       story: "grows a personal studio site; every page must match an exacting taste",
-      workspace: "studio",
+      workspace: "site-studio",
       first_agent: "art_director",
       connect_head: "cloudflare",
       note: "no stock imagery ever — placeholder art is worse than blank space",
@@ -203,7 +203,7 @@ defmodule Autopoet.Eval.Personas do
         "speak" => "little",
         "leash" => "fenced",
         "taste.notes" => "no stock imagery ever — placeholder art is worse than blank space",
-        "plan.workspace" => "studio — site, design tokens, publish log",
+        "plan.workspace" => "site studio — site, design tokens, publish log",
         "plan.agent.1" => "art director — keeps everything matching your taste",
         "plan.rule.1" => "when i add a page, style it to my taste and stage a preview",
         "plan.connect" => "cloudflare, github",
@@ -212,8 +212,8 @@ defmodule Autopoet.Eval.Personas do
       },
       pulse: [
         %{kind: "page.added", target: "site"},
-        %{kind: "doc.touch", doc: "studio/site.work"},
-        %{kind: "doc.touch", doc: "studio/design-tokens.work"},
+        %{kind: "doc.touch", doc: "site-studio/site.work"},
+        %{kind: "doc.touch", doc: "site-studio/design-tokens.work"},
         %{kind: "page.added", target: "site"}
       ]
     }

@@ -1,0 +1,13 @@
+# <%= @page %>
+
+## what this is
+The <%= @page %> page of your <%= @ws %> — starting code built from your setup answers. This desk exists to give you your mornings back: what lands here is triaged, drafted, or filed before you look.
+
+## how it fills
+<%= @fills %> Drafts are DRAFTS — nothing sends without you.
+
+## first moves
+<%= @moves %>
+
+## today
+- [ ] (the chief of staff stages the day here — add anything it should not miss)
