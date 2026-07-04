@@ -85,6 +85,11 @@ defmodule Autopoet.Shadow.Hebb.Model do
     %{m | g: g, prev: sig, t: m.t + 1, n: m.n + 1}
   end
 
+  @doc "Observe an explicit src→dst transition (composite-context experiments — e.g. an order-2 model keying edges on bigram contexts). Same arithmetic, caller supplies the source."
+  def observe_edge(m, src, dst) do
+    %{m | g: bump(m.g, src, dst, m.t, cfg(m)), t: m.t + 1, n: m.n + 1}
+  end
+
   @doc "Predict the next locus after `from`: 1-hop successors by decayed weight, best-first."
   def predict(m, from, k) do
     m
@@ -223,19 +228,13 @@ defmodule Autopoet.Shadow.Hebb do
   defp persist(s), do: Autopoet.Shadow.save("hebb", Map.take(s, [:g, :prev, :t, :n]))
 end
 
-defmodule Autopoet.Shadow.Surprise do
+defmodule Autopoet.Shadow.Surprise.Model do
   @moduledoc """
-  Live surprise predictor + the PINNED drift detector (chamber E3, replay-corrected):
-  EMA fast(0.02)/slow(0.002) ratio > 1.10 sustained 15 events AND fast > 1.0 bit —
-  drift must be relative AND material. On alarm: a log line + an
-  `autopoet.attention` event (broadcast-recorded by capture; excluded from learning).
-
-  `:drift_sustain` app env overrides the sustain in tests ONLY — production runs the
-  pinned constant.
-
-  State survives reboots via `Autopoet.Shadow.save/load` (snapshot `surprise.etf`).
+  The PURE surprise predictor + PINNED drift detector arithmetic (chamber E3,
+  replay-corrected) — factored out so the detector-benchmark eval measures the
+  REAL detector, never a reimplementation. `observe/3` returns `{state, alarm?}`;
+  the GenServer owns bus/log/emit, the eval drives streams directly.
   """
-  use GenServer
 
   @decay 0.995
   @alpha 0.5
@@ -244,6 +243,48 @@ defmodule Autopoet.Shadow.Surprise do
   @a_slow 0.002
   @ratio 1.10
   @floor 1.0
+
+  def new, do: %{model: %{}, prev: :none, t: 0, n: 0, f: nil, s: nil, run: 0, alarms: 0}
+
+  @doc "Observe one signal with the pinned constants; `{state', alarm_fired?}`."
+  def observe(st, sig, sustain \\ 15) do
+    {counts, total, tl} = Map.get(st.model, st.prev, {%{}, 0.0, st.t})
+    d = :math.pow(@decay, st.t - tl)
+    p = (Map.get(counts, sig, 0.0) * d + @alpha) / (total * d + @alpha * @vocab_hint)
+    x = -:math.log2(p)
+
+    counts = Map.new(counts, fn {k, c} -> {k, c * d} end) |> Map.update(sig, 1.0, &(&1 + 1.0))
+    model = Map.put(st.model, st.prev, {counts, total * d + 1.0, st.t})
+
+    f = if st.f, do: st.f + @a_fast * (x - st.f), else: x
+    s = if st.s, do: st.s + @a_slow * (x - st.s), else: x
+    run = if f > @ratio * s and f > @floor, do: st.run + 1, else: 0
+
+    st = %{st | model: model, prev: sig, t: st.t + 1, n: st.n + 1, f: f, s: s, run: run}
+
+    if run == sustain,
+      do: {%{st | alarms: st.alarms + 1, run: 0}, true},
+      else: {st, false}
+  end
+end
+
+defmodule Autopoet.Shadow.Surprise do
+  @moduledoc """
+  Live surprise predictor + the PINNED drift detector (chamber E3, replay-corrected):
+  EMA fast(0.02)/slow(0.002) ratio > 1.10 sustained 15 events AND fast > 1.0 bit —
+  drift must be relative AND material. On alarm: a log line + an
+  `autopoet.attention` event (broadcast-recorded by capture; excluded from learning).
+  All arithmetic lives in `Surprise.Model` (pure — shared verbatim with the
+  detector-benchmark eval).
+
+  `:drift_sustain` app env overrides the sustain in tests ONLY — production runs the
+  pinned constant.
+
+  State survives reboots via `Autopoet.Shadow.save/load` (snapshot `surprise.etf`).
+  """
+  use GenServer
+
+  alias Autopoet.Shadow.Surprise.Model
 
   def start_link(_), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
   def stats, do: GenServer.call(__MODULE__, :stats)
@@ -259,12 +300,10 @@ defmodule Autopoet.Shadow.Surprise do
     Nexus.Events.subscribe()
     Autopoet.Shadow.schedule_save()
 
-    base = %{model: %{}, prev: :none, t: 0, n: 0, f: nil, s: nil, run: 0, alarms: 0}
-
     state =
       case Autopoet.Shadow.load("surprise") do
-        {:ok, saved} -> Map.merge(base, saved)
-        :none -> base
+        {:ok, saved} -> Map.merge(Model.new(), saved)
+        :none -> Model.new()
       end
 
     {:ok, state}
@@ -273,7 +312,25 @@ defmodule Autopoet.Shadow.Surprise do
   @impl true
   def handle_info({:event, ev}, st) do
     if Autopoet.Shadow.workload?(ev) do
-      {:noreply, observe(st, Autopoet.Shadow.signal(ev))}
+      case Model.observe(st, Autopoet.Shadow.signal(ev), sustain()) do
+        {st, true} ->
+          Autopoet.Log.puts(
+            "ATTENTION: workload drift — surprise fast #{Float.round(st.f, 2)} vs slow #{Float.round(st.s, 2)} bits (alarm ##{st.alarms})"
+          )
+
+          Nexus.Events.emit(%{
+            kind: "autopoet.attention",
+            reason: "drift",
+            fast: st.f,
+            slow: st.s,
+            tags: []
+          })
+
+          {:noreply, st}
+
+        {st, false} ->
+          {:noreply, st}
+      end
     else
       {:noreply, st}
     end
@@ -300,40 +357,6 @@ defmodule Autopoet.Shadow.Surprise do
   def terminate(_reason, st), do: persist(st)
 
   defp persist(st), do: Autopoet.Shadow.save("surprise", st)
-
-  defp observe(st, sig) do
-    {counts, total, tl} = Map.get(st.model, st.prev, {%{}, 0.0, st.t})
-    d = :math.pow(@decay, st.t - tl)
-    p = (Map.get(counts, sig, 0.0) * d + @alpha) / (total * d + @alpha * @vocab_hint)
-    x = -:math.log2(p)
-
-    counts = Map.new(counts, fn {k, c} -> {k, c * d} end) |> Map.update(sig, 1.0, &(&1 + 1.0))
-    model = Map.put(st.model, st.prev, {counts, total * d + 1.0, st.t})
-
-    f = if st.f, do: st.f + @a_fast * (x - st.f), else: x
-    s = if st.s, do: st.s + @a_slow * (x - st.s), else: x
-    run = if f > @ratio * s and f > @floor, do: st.run + 1, else: 0
-
-    st = %{st | model: model, prev: sig, t: st.t + 1, n: st.n + 1, f: f, s: s, run: run}
-
-    if run == sustain() do
-      Autopoet.Log.puts(
-        "ATTENTION: workload drift — surprise fast #{Float.round(f, 2)} vs slow #{Float.round(s, 2)} bits (alarm ##{st.alarms + 1})"
-      )
-
-      Nexus.Events.emit(%{
-        kind: "autopoet.attention",
-        reason: "drift",
-        fast: f,
-        slow: s,
-        tags: []
-      })
-
-      %{st | alarms: st.alarms + 1, run: 0}
-    else
-      st
-    end
-  end
 end
 
 defmodule Autopoet.Shadow.Outcomes.Model do

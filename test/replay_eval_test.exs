@@ -113,9 +113,14 @@ defmodule Autopoet.ReplayEvalTest do
           IO.puts("  · EVAL replay/#{Path.basename(path)} — not enough signal")
 
         s ->
+          m = s.misses
+          total_miss = max(m.novel + m.cold + m.absent + m.rank, 1)
+
           IO.puts(
             "  · EVAL replay/#{Path.basename(path)} (n=#{s.events}, first #{@info_cap} frames) — hebb #{fmt(s.hebb)} · " <>
-              "frequency #{fmt(s.frequency)} · recency #{fmt(s.recency)} · uniform #{fmt(s.uniform)}"
+              "ORDER2 #{fmt(s.order2)} · frequency #{fmt(s.frequency)} · recency #{fmt(s.recency)} · uniform #{fmt(s.uniform)}\n" <>
+              "      misses: novel #{pct(m.novel, total_miss)} · cold #{pct(m.cold, total_miss)} · " <>
+              "absent #{pct(m.absent, total_miss)} (semantic territory) · rank #{pct(m.rank, total_miss)} (tuning territory)"
           )
 
           Autopoet.Eval.History.record("replay/trace-#{Path.basename(path, ".etfs")}", s)
@@ -126,4 +131,5 @@ defmodule Autopoet.ReplayEvalTest do
   end
 
   defp fmt(rate), do: :erlang.float_to_binary(rate * 100, decimals: 1) <> "%"
+  defp pct(n, d), do: :erlang.float_to_binary(n * 100 / d, decimals: 0) <> "%"
 end

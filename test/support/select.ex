@@ -14,30 +14,42 @@ defmodule Autopoet.Eval.Select do
 
   alias Autopoet.Shadow.Hebb.Model
 
+  @doc """
+  Run the tournament. A variant is `%{name, cfg}` (plain Hebb.Model) or
+  `%{name, cfg, entrant: module}` — any module with `new/1`, `observe/2`,
+  `predict_next/2` competes on identical terms (how alternative ARCHITECTURES
+  earn their way in: one more row, never a rewrite).
+  """
   def run(variants, seeds, k \\ 3) do
     board =
-      for %{name: name, cfg: cfg} <- variants do
+      for v <- variants do
         per_seed =
           for {seed_name, signals} <- seeds, into: %{} do
-            {seed_name, score(signals, cfg, k)}
+            {seed_name, score(signals, entrant(v), k)}
           end
 
         mean = Enum.sum(Map.values(per_seed)) / max(map_size(per_seed), 1)
-        %{name: name, cfg: cfg, mean: mean, per_seed: per_seed}
+        %{name: v.name, cfg: v.cfg, mean: mean, per_seed: per_seed}
       end
       |> Enum.sort_by(&(-&1.mean))
 
     %{leaderboard: board, winner: hd(board), k: k}
   end
 
-  @doc "Prequential top-k hit-rate for ONE cfg over one signal stream (the real Model arithmetic)."
-  def score([first | rest], cfg, k) when length(rest) >= 2 do
+  @doc "Prequential top-k hit-rate for ONE entrant over one signal stream."
+  def score([first | rest], {new_fun, obs_fun, pred_fun}, k) when length(rest) >= 2 do
     {hits, n, _m} =
-      Enum.reduce(rest, {0, 0, Model.observe(Model.new(cfg), first)}, fn next, {hits, n, m} ->
-        hit = if next in Model.predict(m, m.prev, k), do: 1, else: 0
-        {hits + hit, n + 1, Model.observe(m, next)}
+      Enum.reduce(rest, {0, 0, obs_fun.(new_fun.(), first)}, fn next, {hits, n, m} ->
+        hit = if next in pred_fun.(m, k), do: 1, else: 0
+        {hits + hit, n + 1, obs_fun.(m, next)}
       end)
 
     hits / n
   end
+
+  defp entrant(%{entrant: mod, cfg: cfg}),
+    do: {fn -> mod.new(cfg) end, &mod.observe/2, &mod.predict_next/2}
+
+  defp entrant(%{cfg: cfg}),
+    do: {fn -> Model.new(cfg) end, &Model.observe/2, fn m, k -> Model.predict(m, m.prev, k) end}
 end

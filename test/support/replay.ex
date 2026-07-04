@@ -69,31 +69,59 @@ defmodule Autopoet.Eval.Replay do
 
     init = %{
       hebb: Model.observe(Model.new(), first),
+      o2: Autopoet.Eval.Order2.observe(Autopoet.Eval.Order2.new(), first),
       freq: freq_observe(freq_new(), first),
       rec: rec_observe([], first),
       uni: [first],
-      hits: %{hebb: 0, freq: 0, rec: 0, uni: 0},
+      seen: MapSet.new([first]),
+      hits: %{hebb: 0, o2: 0, freq: 0, rec: 0, uni: 0},
+      misses: %{novel: 0, cold: 0, absent: 0, rank: 0},
       n: 0
     }
 
     final =
       Enum.reduce(rest, init, fn next, acc ->
         prev = acc.hebb.prev
+        hebb_preds = Model.predict(acc.hebb, prev, k)
+        hebb_hit = hit(hebb_preds, next)
 
         hits = %{
-          hebb: acc.hits.hebb + hit(Model.predict(acc.hebb, prev, k), next),
+          hebb: acc.hits.hebb + hebb_hit,
+          o2: acc.hits.o2 + hit(Autopoet.Eval.Order2.predict_next(acc.o2, k), next),
           freq: acc.hits.freq + hit(freq_predict(acc.freq, k), next),
           rec: acc.hits.rec + hit(Enum.take(acc.rec, k), next),
           uni: acc.hits.uni + hit(Enum.take(acc.uni, k), next)
         }
 
+        # the MISS TAXONOMY — why did the pathway model miss? Each class names
+        # its remedy: novel → nothing predicts an unseen locus; cold/absent →
+        # the semantic-nominator's territory (embeddings propose, counts elect);
+        # rank → η/decay tuning (the select tournament's territory).
+        misses =
+          if hebb_hit == 1 do
+            acc.misses
+          else
+            class =
+              cond do
+                not MapSet.member?(acc.seen, next) -> :novel
+                hebb_preds == [] -> :cold
+                acc.hebb |> Model.decayed_edges(prev) |> List.keymember?(next, 0) -> :rank
+                true -> :absent
+              end
+
+            Map.update!(acc.misses, class, &(&1 + 1))
+          end
+
         %{
           hebb: Model.observe(acc.hebb, next),
+          o2: Autopoet.Eval.Order2.observe(acc.o2, next),
           freq: freq_observe(acc.freq, next),
           rec: rec_observe(acc.rec, next),
           # first-k-seen anchor: storage capped — predictions never take more
           uni: if(length(acc.uni) >= 16 or next in acc.uni, do: acc.uni, else: acc.uni ++ [next]),
+          seen: MapSet.put(acc.seen, next),
           hits: hits,
+          misses: misses,
           n: acc.n + 1
         }
       end)
@@ -102,9 +130,11 @@ defmodule Autopoet.Eval.Replay do
       events: final.n,
       k: k,
       hebb: final.hits.hebb / final.n,
+      order2: final.hits.o2 / final.n,
       frequency: final.hits.freq / final.n,
       recency: final.hits.rec / final.n,
-      uniform: final.hits.uni / final.n
+      uniform: final.hits.uni / final.n,
+      misses: final.misses
     }
   end
 

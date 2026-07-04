@@ -37,7 +37,13 @@ defmodule Autopoet.SelectEvalTest do
           decay <- [0.995, pinned.decay, 0.9999] do
         name = if eta == pinned.eta and decay == pinned.decay, do: "PINNED", else: "eta#{eta}-d#{decay}"
         %{name: name, cfg: %{eta: eta, decay: decay}}
-      end
+      end ++
+        [
+          # the miss-taxonomy candidate: 79-90% of real-trace misses are RANK
+          # misses — context depth, not semantics. Order-2 with backoff competes
+          # on identical terms (architecture rows, not architecture debates).
+          %{name: "ORDER2", cfg: %{}, entrant: Autopoet.Eval.Order2}
+        ]
 
     seeds = [
       {"structured", structured_signals(30, 10, {29, 29, 29})},
@@ -53,7 +59,7 @@ defmodule Autopoet.SelectEvalTest do
     assert result == Select.run(variants, seeds, 1)
 
     board = result.leaderboard
-    assert length(board) == 9
+    assert length(board) == 10
     assert board == Enum.sort_by(board, &(-&1.mean))
     assert Enum.all?(board, &(&1.mean > 0.0 and &1.mean <= 1.0))
 
@@ -63,17 +69,23 @@ defmodule Autopoet.SelectEvalTest do
     pinned_rank = Enum.find_index(board, &(&1.name == "PINNED")) + 1
     winner = result.winner
 
+    order2 = Enum.find(board, &(&1.name == "ORDER2"))
+    order2_rank = Enum.find_index(board, &(&1.name == "ORDER2")) + 1
+
     Autopoet.Eval.History.record("select", %{
       winner: winner.name,
       winner_mean: winner.mean,
       pinned_rank: pinned_rank,
       pinned_mean: Enum.find(board, &(&1.name == "PINNED")).mean,
+      order2_rank: order2_rank,
+      order2_mean: order2.mean,
       variants: length(board)
     })
 
     IO.puts(
       "  ✓ EVAL select — winner #{winner.name} (mean #{fmt(winner.mean)}) · " <>
-        "PINNED ranks #{pinned_rank}/9 (#{fmt(Enum.find(board, &(&1.name == "PINNED")).mean)}) · " <>
+        "PINNED ranks #{pinned_rank}/#{length(board)} (#{fmt(Enum.find(board, &(&1.name == "PINNED")).mean)}) · " <>
+        "ORDER2 ranks #{order2_rank} (#{fmt(order2.mean)}) · " <>
         "spread #{fmt(List.last(board).mean)}–#{fmt(hd(board).mean)}"
     )
 
