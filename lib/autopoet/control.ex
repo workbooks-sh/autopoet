@@ -748,6 +748,36 @@ defmodule Autopoet.Control do
     end)
   end
 
+  # ── the voice lab: tune each mood's style tag + sampler dials, hear it,
+  #    save. Presets persist as plain text (data/voice-moods.txt) and drive
+  #    the live avatar's per-mood delivery. ──
+  get "/voice/lab" do
+    html =
+      [:code.priv_dir(:autopoet), "static", "voicelab.html"]
+      |> Path.join()
+      |> File.read!()
+      |> String.replace("__TOKEN__", Autopoet.Discovery.token())
+
+    conn
+    |> put_resp_content_type("text/html")
+    |> put_resp_header("cache-control", "no-store")
+    |> send_resp(200, html)
+  end
+
+  @moods_file Path.join([File.cwd!(), "data", "voice-moods.txt"])
+
+  get "/voice/moods" do
+    text(conn, (File.read(@moods_file) |> elem(1) |> to_string()) <> "")
+  end
+
+  post "/voice/moods/save" do
+    authed!(conn, fn conn ->
+      {:ok, body, conn} = read_body(conn, length: 20_000)
+      File.write!(@moods_file, String.trim(body) <> "\n")
+      text(conn, "ok\n")
+    end)
+  end
+
   # BEAM-native Kokoro: the widget's primary voice. Plain text in, WAV out.
   get "/voice/tts/status" do
     text(conn, Autopoet.Kokoro.status() <> "\n")
