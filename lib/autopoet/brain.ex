@@ -51,32 +51,54 @@ defmodule Autopoet.Brain do
         ctx = context(item)
         {plan, pages} = plan_with_disclosure(complete, item, ctx)
 
-        with {:ok, text} <- complete.(:draft, draft_prompt(item, ctx, plan, pages)),
-             {writes, appends} <- parse_files(text),
-             true <- map_size(writes) + map_size(appends) > 0 do
-          # The body is the agent's OWN structure — write it DIRECTLY (snapshotted +
-          # undoable). The vault is the human's; suggesting edits THERE goes through a
-          # gated proposal. EXCEPTION (containment, found by the heartbeat eval): a
-          # changeset touching the structural triad (grant/ceiling/management) must
-          # NEVER land ungated — limbs re-register from the body, so a direct write
-          # would arm a self-widened grant. Triad-touching changesets become a PENDING
-          # proposal; the human verb applies them through the same Gate.
-          case triad_reasons(writes, appends) do
-            [] ->
-              {:ok, _hid} = Autopoet.Body.apply(writes, appends)
-              {:ok, Map.merge(writes, appends)}
+        case complete.(:draft, draft_prompt(item, ctx, plan, pages)) do
+          {:ok, text} ->
+            # ACTIONS (wb-siutv.2): a draft may carry `=== action: <name> ===`
+            # intents — the brain DOING, not just authoring. Safe actions (reads,
+            # drafts) perform now; gated ones (send/commit/trade/create) become
+            # proposals through the same human gate.
+            routed = route_actions(text, item)
+            {writes, appends} = parse_files(text)
 
-            reasons ->
-              id = Autopoet.Proposals.record(%{target: item[:target], kind: "triad.gated", reasons: inspect(reasons)}, writes, appends)
-              Autopoet.Log.puts("brain: triad-gated (#{inspect(reasons)}) — held as proposal #{id}, nothing written")
-              {:ok, Map.merge(writes, appends)}
-          end
-        else
+            cond do
+              map_size(writes) + map_size(appends) > 0 ->
+                # The body is the agent's OWN structure — write it DIRECTLY
+                # (undoable). A changeset touching the structural triad
+                # (grant/ceiling/management) must NEVER land ungated — it becomes
+                # a PENDING proposal the human applies through the Gate.
+                case triad_reasons(writes, appends) do
+                  [] ->
+                    {:ok, _hid} = Autopoet.Body.apply(writes, appends)
+                    {:ok, Map.merge(writes, appends)}
+
+                  reasons ->
+                    id = Autopoet.Proposals.record(%{target: item[:target], kind: "triad.gated", reasons: inspect(reasons)}, writes, appends)
+                    Autopoet.Log.puts("brain: triad-gated (#{inspect(reasons)}) — held as proposal #{id}, nothing written")
+                    {:ok, Map.merge(writes, appends)}
+                end
+
+              routed != [] ->
+                Autopoet.Log.puts("brain: routed #{length(routed)} action(s) for #{item[:target]}")
+                {:ok, %{actions: routed}}
+
+              true ->
+                Autopoet.Log.puts("brain: no usable change for #{item[:target]}")
+                :skip
+            end
+
           other ->
-            Autopoet.Log.puts("brain: no usable change for #{item[:target]} (#{inspect(other)})")
+            Autopoet.Log.puts("brain: draft failed for #{item[:target]} (#{inspect(other)})")
             :skip
         end
     end
+  end
+
+  # Route any `=== action: … ===` intents the draft carried. Best-effort: a
+  # failed action never breaks the cycle.
+  defp route_actions(text, _item) do
+    Autopoet.Actions.route_intents(text)
+  rescue
+    _ -> []
   end
 
   @doc "Notify sink for human-gated items — already recorded as proposals; log the reasons."
@@ -481,7 +503,24 @@ defmodule Autopoet.Brain do
     Rules: to ADD to an existing file, ALWAYS use `append:` — never reproduce or
     placeholder existing content (placeholders destroy files). Minimal change;
     no commentary outside the blocks.
+
+    You may ALSO take ACTIONS through connected tools. To act, emit a block:
+
+    === action: <name> ===
+    {"arg": "value"}
+
+    Safe actions (reads, drafts) run immediately; outward actions (send, commit,
+    create, trades) are held as proposals for the human to approve. Available:
+    #{action_vocabulary()}
     """
+  end
+
+  # the action vocabulary, compact: name — description (safe|gated)
+  defp action_vocabulary do
+    Autopoet.Actions.vocabulary()
+    |> Enum.map_join("\n", fn a -> "- #{a.name} — #{a.description} (#{a.safety})" end)
+  rescue
+    _ -> "(none available)"
   end
 
   @doc false

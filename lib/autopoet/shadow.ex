@@ -18,7 +18,7 @@ defmodule Autopoet.Shadow do
   never a crash.
   """
 
-  @observability ~w(effect.settled autopoet.attention recall.ab reward.landed app.executed treasury.charged treasury.refused treasury.earned treasury.funded)
+  @observability ~w(effect.settled autopoet.attention recall.ab reward.landed app.executed treasury.charged treasury.refused treasury.earned treasury.funded action.performed action.proposed)
 
   def workload?(ev), do: to_string(ev[:kind]) not in @observability
 
