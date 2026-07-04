@@ -119,7 +119,18 @@ defmodule Autopoet.Application do
   end
 
   # Desktop-only I/O children (mic STT + realtime Voice) — dropped in the cloud.
-  defp desktop_io, do: if(cloud?(), do: [], else: [Autopoet.Stt, Autopoet.Voice, Autopoet.Kokoro])
+  # Filtered to modules that actually exist so a mid-refactor tree (a renamed or
+  # deleted I/O module) degrades to missing audio, never a boot crash.
+  defp desktop_io do
+    if cloud?() do
+      []
+    else
+      Enum.filter([Autopoet.Stt, Autopoet.Voice, Autopoet.Kokoro], fn mod ->
+        Code.ensure_loaded?(mod) ||
+          (IO.puts("autopoet: desktop I/O child #{inspect(mod)} missing — skipped") && false)
+      end)
+    end
+  end
 
   @doc "Is this the cloud profile (a vendored Fly machine), not the desktop?"
   def cloud?, do: System.get_env("AUTOPOET_TARGET") == "cloud"

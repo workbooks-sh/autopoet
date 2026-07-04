@@ -52,10 +52,22 @@ defmodule Autopoet.Brain do
              {writes, appends} <- parse_files(text),
              true <- map_size(writes) + map_size(appends) > 0 do
           # The body is the agent's OWN structure — write it DIRECTLY (snapshotted +
-          # undoable). The vault is the human's; suggesting edits THERE is the only path
-          # that still goes through a gated proposal.
-          {:ok, _hid} = Autopoet.Body.apply(writes, appends)
-          {:ok, Map.merge(writes, appends)}
+          # undoable). The vault is the human's; suggesting edits THERE goes through a
+          # gated proposal. EXCEPTION (containment, found by the heartbeat eval): a
+          # changeset touching the structural triad (grant/ceiling/management) must
+          # NEVER land ungated — limbs re-register from the body, so a direct write
+          # would arm a self-widened grant. Triad-touching changesets become a PENDING
+          # proposal; the human verb applies them through the same Gate.
+          case triad_reasons(writes, appends) do
+            [] ->
+              {:ok, _hid} = Autopoet.Body.apply(writes, appends)
+              {:ok, Map.merge(writes, appends)}
+
+            reasons ->
+              id = Autopoet.Proposals.record(%{target: item[:target], kind: "triad.gated", reasons: inspect(reasons)}, writes, appends)
+              Autopoet.Log.puts("brain: triad-gated (#{inspect(reasons)}) — held as proposal #{id}, nothing written")
+              {:ok, Map.merge(writes, appends)}
+          end
         else
           other ->
             Autopoet.Log.puts("brain: no usable change for #{item[:target]} (#{inspect(other)})")
@@ -67,6 +79,33 @@ defmodule Autopoet.Brain do
   @doc "Notify sink for human-gated items — already recorded as proposals; log the reasons."
   def notify(item, reasons) do
     Autopoet.Log.puts("human-gated: #{item[:target]} — #{inspect(reasons)}")
+  end
+
+  # Classify every file in the changeset against its CURRENT body source through the
+  # real Gate (grant/ceiling/management). Any human-gated file gates the whole set —
+  # a changeset is one intention, and splitting it would land half a thought.
+  defp triad_reasons(writes, appends) do
+    root = Autopoet.Body.root()
+
+    writes
+    |> Enum.map(fn {rel, new_src} -> {rel, current(root, rel), new_src} end)
+    |> Enum.concat(Enum.map(appends, fn {rel, added} ->
+      old = current(root, rel)
+      {rel, old, old <> "\n" <> added}
+    end))
+    |> Enum.flat_map(fn {rel, old_src, new_src} ->
+      case Nexus.Autopoet.Gate.classify(rel, old_src, new_src) do
+        {:human_gated, reasons} -> reasons
+        _ -> []
+      end
+    end)
+  end
+
+  defp current(root, rel) do
+    case File.read(Path.join(root, rel)) do
+      {:ok, src} -> src
+      _ -> ""
+    end
   end
 
   # ── completion backends ─────────────────────────────────────────────────────

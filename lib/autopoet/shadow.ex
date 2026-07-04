@@ -323,6 +323,46 @@ defmodule Autopoet.Shadow.Surprise do
   end
 end
 
+defmodule Autopoet.Shadow.Outcomes.Model do
+  @moduledoc """
+  The PURE outcome-ledger fold — the exact counting the live ledger runs,
+  factored out so integrity sweeps replay a trace through the REAL arithmetic
+  (conservation: replaying a capture must reproduce the live ledger).
+  State map is the GenServer's state verbatim (`effects/proposals/n`).
+  """
+
+  @proposal_kinds ~w(proposal.recorded proposal.accepted proposal.rejected proposal.reverted)
+
+  def new, do: %{effects: %{}, proposals: %{}, n: 0}
+
+  def proposal_kinds, do: @proposal_kinds
+
+  @doc "Fold ONE event into the ledger (identity for non-feedback events)."
+  def reduce(s, %{kind: "effect.settled"} = ev) do
+    key = {to_string(ev[:hook]), to_string(ev[:effect])}
+
+    cell =
+      Map.get(s.effects, key, %{ok: 0, error: 0, us: 0})
+      |> Map.update!(if(ev[:status] == :ok, do: :ok, else: :error), &(&1 + 1))
+      |> Map.update!(:us, &(&1 + (ev[:duration_us] || 0)))
+
+    %{s | effects: Map.put(s.effects, key, cell), n: s.n + 1}
+  end
+
+  def reduce(s, %{kind: kind} = ev) when kind in @proposal_kinds do
+    verdict = kind |> String.split(".") |> List.last() |> String.to_atom()
+    target = to_string(ev[:target] || ev[:proposal] || "?")
+
+    cell =
+      Map.get(s.proposals, target, %{recorded: 0, accepted: 0, rejected: 0, reverted: 0})
+      |> Map.update!(verdict, &(&1 + 1))
+
+    %{s | proposals: Map.put(s.proposals, target, cell), n: s.n + 1}
+  end
+
+  def reduce(s, _ev), do: s
+end
+
 defmodule Autopoet.Shadow.Outcomes do
   @moduledoc """
   The outcome/reward ledger — the feedback half of the loop (Autopoiesis v3
@@ -334,13 +374,14 @@ defmodule Autopoet.Shadow.Outcomes do
     * `proposal.recorded|accepted|rejected|reverted` — the human reward stream
       (accept/reject IS the first labeled reward signal), per proposal target.
 
-  Read it via `stats/0` (dashboard, evals) or `ledger/0` (full detail). State is
-  durable (`outcomes.etf`) like every learner: reward history survives reboots.
-  Pure observer: consumes feedback, emits nothing, mutates nothing.
+  All counting lives in `Outcomes.Model` (pure — shared verbatim with the
+  integrity sweeps). Read via `stats/0` (dashboard, evals) or `ledger/0` (full
+  detail). State is durable (`outcomes.etf`) like every learner. Pure observer:
+  consumes feedback, emits nothing, mutates nothing.
   """
   use GenServer
 
-  @proposal_kinds ~w(proposal.recorded proposal.accepted proposal.rejected proposal.reverted)
+  alias Autopoet.Shadow.Outcomes.Model
 
   def start_link(_), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
   def stats, do: GenServer.call(__MODULE__, :stats)
@@ -355,41 +396,17 @@ defmodule Autopoet.Shadow.Outcomes do
     Nexus.Events.subscribe()
     Autopoet.Shadow.schedule_save()
 
-    base = %{effects: %{}, proposals: %{}, n: 0}
-
     state =
       case Autopoet.Shadow.load("outcomes") do
-        {:ok, saved} -> Map.merge(base, saved)
-        :none -> base
+        {:ok, saved} -> Map.merge(Model.new(), saved)
+        :none -> Model.new()
       end
 
     {:ok, state}
   end
 
   @impl true
-  def handle_info({:event, %{kind: "effect.settled"} = ev}, s) do
-    key = {to_string(ev[:hook]), to_string(ev[:effect])}
-
-    cell =
-      Map.get(s.effects, key, %{ok: 0, error: 0, us: 0})
-      |> Map.update!(if(ev[:status] == :ok, do: :ok, else: :error), &(&1 + 1))
-      |> Map.update!(:us, &(&1 + (ev[:duration_us] || 0)))
-
-    {:noreply, %{s | effects: Map.put(s.effects, key, cell), n: s.n + 1}}
-  end
-
-  def handle_info({:event, %{kind: kind} = ev}, s) when kind in @proposal_kinds do
-    verdict = kind |> String.split(".") |> List.last() |> String.to_atom()
-    target = to_string(ev[:target] || ev[:proposal] || "?")
-
-    cell =
-      Map.get(s.proposals, target, %{recorded: 0, accepted: 0, rejected: 0, reverted: 0})
-      |> Map.update!(verdict, &(&1 + 1))
-
-    {:noreply, %{s | proposals: Map.put(s.proposals, target, cell), n: s.n + 1}}
-  end
-
-  def handle_info({:event, _ev}, s), do: {:noreply, s}
+  def handle_info({:event, ev}, s), do: {:noreply, Model.reduce(s, ev)}
 
   def handle_info(:shadow_save, s) do
     persist(s)
