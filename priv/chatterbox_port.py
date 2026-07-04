@@ -27,11 +27,10 @@ SILENCE_TOKEN = 4299
 NUM_KV_HEADS = 16
 HEAD_DIM = 64
 MAX_TOKENS = 600
-REP_PENALTY = 1.2
 # the reference implementation SAMPLES (greedy flattens paralinguistic tags
-# like [chuckle] into nothing) — temperature + top-p per the torch pipeline
-TEMPERATURE = 0.8
-TOP_P = 0.95
+# like [chuckle] into nothing). Defaults mirror the HF demo; every knob is
+# overridable per request: SPEAK <b64> t=0.8 p=0.95 k=1000 r=1.2 m=0
+DEFAULTS = {"t": 0.8, "p": 0.95, "k": 1000, "r": 1.2, "m": 0.0}
 rng = np.random.default_rng()
 
 onnxruntime.set_default_logger_severity(3)
@@ -73,7 +72,12 @@ kv_dtype = np.float16 if any(i.type == "tensor(float16)" for i in lm.get_inputs(
 kv_names = [i.name for i in lm.get_inputs() if "past_key_values" in i.name]
 
 
-def synth(text):
+def synth(text, knobs):
+    temperature = max(0.05, knobs["t"])
+    top_p = min(1.0, max(0.01, knobs["p"]))
+    top_k = int(max(1, knobs["k"]))
+    rep = max(1.0, knobs["r"])
+    min_p = max(0.0, knobs["m"])
     ids = np.array([tok.encode(text).ids], dtype=np.int64)
     gen = np.array([[START_SPEECH_TOKEN]], dtype=np.int64)
     past = {k: np.zeros([1, NUM_KV_HEADS, 0, HEAD_DIM], dtype=kv_dtype) for k in kv_names}
@@ -86,16 +90,18 @@ def synth(text):
                                              position_ids=pos, **past))
         logits = logits[:, -1, :]
         score = np.take_along_axis(logits, gen, axis=1)
-        score = np.where(score < 0, score * REP_PENALTY, score / REP_PENALTY)
+        score = np.where(score < 0, score * rep, score / rep)
         np.put_along_axis(logits, gen, score, axis=1)
-        # temperature + top-p sampling
-        z = logits[0] / TEMPERATURE
+        # temperature → top-k → min-p → top-p sampling
+        z = logits[0] / temperature
         z = z - z.max()
         probs = np.exp(z)
         probs /= probs.sum()
-        order = np.argsort(-probs)
+        order = np.argsort(-probs)[:top_k]
+        if min_p > 0:
+            order = order[probs[order] >= min_p * probs[order[0]]]
         csum = np.cumsum(probs[order])
-        keep = order[: max(1, int(np.searchsorted(csum, TOP_P) + 1))]
+        keep = order[: max(1, int(np.searchsorted(csum, top_p) + 1))]
         kp = probs[keep] / probs[keep].sum()
         nxt = np.array([[rng.choice(keep, p=kp)]], dtype=np.int64)
         gen = np.concatenate((gen, nxt), axis=-1)
@@ -129,8 +135,15 @@ for line in sys.stdin:
     if not line.startswith("SPEAK "):
         continue
     try:
-        text = base64.b64decode(line[6:]).decode("utf-8")
-        wav = synth(text)
+        parts = line[6:].split(" ")
+        text = base64.b64decode(parts[0]).decode("utf-8")
+        knobs = dict(DEFAULTS)
+        for kv in parts[1:]:
+            if "=" in kv:
+                key, val = kv.split("=", 1)
+                if key in knobs:
+                    knobs[key] = float(val)
+        wav = synth(text, knobs)
         sys.stdout.write("WAV " + base64.b64encode(wav).decode("ascii") + "\n")
     except Exception as e:  # noqa: BLE001 — the port must never die mid-session
         sys.stdout.write("ERR " + str(e)[:200].replace("\n", " ") + "\n")

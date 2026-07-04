@@ -33,9 +33,13 @@ defmodule Autopoet.Chatterbox do
     end
   end
 
-  @doc "Synthesize → {:ok, wav_binary} | {:error, reason}. Queues behind in-flight work."
-  def speak(text) do
-    GenServer.call(__MODULE__, {:speak, text}, 90_000)
+  @doc """
+  Synthesize → {:ok, wav_binary} | {:error, reason}. Queues behind in-flight
+  work. Sampler knobs (all optional, HF-demo defaults):
+  temp 0.8 · top_p 0.95 · top_k 1000 · rep 1.2 · min_p 0
+  """
+  def speak(text, knobs \\ %{}) do
+    GenServer.call(__MODULE__, {:speak, text, knobs}, 90_000)
   catch
     :exit, _ -> {:error, :not_running}
   end
@@ -72,11 +76,18 @@ defmodule Autopoet.Chatterbox do
   def handle_call(:ready?, _from, %{ready: r} = state), do: {:reply, r, state}
   def handle_call(:ready?, _from, state), do: {:reply, false, state}
 
-  def handle_call({:speak, _}, _from, :off), do: {:reply, {:error, :not_installed}, :off}
-  def handle_call({:speak, _}, _from, %{ready: false} = s), do: {:reply, {:error, :not_ready}, s}
+  def handle_call({:speak, _, _}, _from, :off), do: {:reply, {:error, :not_installed}, :off}
 
-  def handle_call({:speak, text}, from, state) do
-    Port.command(state.port, "SPEAK " <> Base.encode64(text) <> "\n")
+  def handle_call({:speak, _, _}, _from, %{ready: false} = s),
+    do: {:reply, {:error, :not_ready}, s}
+
+  def handle_call({:speak, text, knobs}, from, state) do
+    suffix =
+      knobs
+      |> Map.take(["t", "p", "k", "r", "m"])
+      |> Enum.map_join(" ", fn {k, v} -> "#{k}=#{v}" end)
+
+    Port.command(state.port, String.trim("SPEAK #{Base.encode64(text)} #{suffix}") <> "\n")
     {:noreply, %{state | queue: :queue.in(from, state.queue)}}
   end
 

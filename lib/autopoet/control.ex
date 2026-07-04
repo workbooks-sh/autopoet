@@ -764,7 +764,19 @@ defmodule Autopoet.Control do
       result =
         case engine do
           "chatterbox" ->
-            case Autopoet.Chatterbox.speak(body) do
+            # sampler knobs pass straight through: ?temp=&top_p=&top_k=&rep=&min_p=
+            knobs =
+              %{
+                "t" => conn.query_params["temp"],
+                "p" => conn.query_params["top_p"],
+                "k" => conn.query_params["top_k"],
+                "r" => conn.query_params["rep"],
+                "m" => conn.query_params["min_p"]
+              }
+              |> Enum.reject(fn {_, v} -> v in [nil, ""] end)
+              |> Map.new()
+
+            case Autopoet.Chatterbox.speak(body, knobs) do
               {:ok, _} = ok -> ok
               # quality engine down → the fast engine still answers
               {:error, _} -> Autopoet.Kokoro.speak(body, voice)
