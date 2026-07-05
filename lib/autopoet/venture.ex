@@ -65,6 +65,7 @@ defmodule Autopoet.Venture do
       last_slot: 0,
       genesis_step: 0,
       genesis_proposed: false,
+      identity_proposed: false,
       agenda_idx: 0,
       work_cycles: 0,
       deploys: 0,
@@ -100,10 +101,73 @@ defmodule Autopoet.Venture do
   defp step(s) do
     if System.os_time(:second) - s.last_slot >= @slot_every do
       s = %{s | last_slot: System.os_time(:second)}
-      if charter?(), do: venture_cycle(s), else: genesis_step(s)
+
+      cond do
+        not charter?() -> genesis_step(s)
+        # IDENTITY: one slot, once — the venture claims its own domain, email
+        # proxies, and X presence (a PROPOSAL; the human agent executes the
+        # DNS/routing on acceptance). Runs before the first build.
+        not identity?() and not s.identity_proposed -> identity_step(s)
+        true -> venture_cycle(s)
+      end
     else
       s
     end
+  end
+
+  defp identity_step(s) do
+    log("IDENTITY — claiming domain + email + X presence (proposal)")
+
+    with {:ok, s, reply} <- think(s, :identity, identity_prompt(), max_tokens: 1800) do
+      id =
+        Autopoet.Proposals.record(
+          %{target: "venture/identity.work", kind: "venture.identity", source: "venture-identity"},
+          %{"venture/identity.work" => reply}
+        )
+
+      File.write!(Path.join(artifacts(), "proposals.log"), "#{DateTime.to_iso8601(DateTime.utc_now())} | #{id} | venture.identity | domain+email+x\n", [:append])
+      log("IDENTITY PROPOSED (#{id})")
+      %{s | identity_proposed: true, work_cycles: s.work_cycles + 1}
+    end
+  end
+
+  # identity is REAL once the accepted identity doc exists (vault-first, like
+  # the charter — the human-executed copy)
+  defp identity? do
+    vault = Path.join(Autopoet.Notes.dir(), "venture/identity.work")
+    File.exists?(vault) or not String.starts_with?(read_body("venture/identity.work"), "(no")
+  rescue
+    _ -> false
+  end
+
+  defp identity_prompt do
+    zones =
+      case File.read(Path.join(artifacts(), "zones.txt")) do
+        {:ok, t} -> t
+        _ -> "(no zone inventory — propose a purchase, minimal budget ~$15)"
+      end
+
+    """
+    You are the venture desk. Your charter:
+    #{charter()}
+
+    Claim your venture's IDENTITY. Available infrastructure:
+    #{zones}
+
+    Propose, as a document the human will execute verbatim:
+    ## Domain
+    (ONE choice: an available zone or subdomain of one — say exactly which and
+    why it fits the brand; a new purchase only if the fit is truly poor)
+    ## Email
+    (2-3 proxy addresses on that domain — e.g. hello@, founders@ — and what
+    each is for; mail routes via Cloudflare Email Routing + a Google Workspace
+    alias for sending)
+    ## X presence
+    (the @zaiusai rebrand: display name, 160-char bio, avatar concept, the
+    pinned post text — ready to apply)
+    ## Site
+    (the final URL where the landing page should live on that domain)
+    """
   end
 
   # ── GENESIS: find the niche from REAL feedback, then charter ────────────────
