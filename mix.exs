@@ -114,7 +114,10 @@ defmodule Autopoet.MixProject do
       # The Workbooks runtime as a LIBRARY (the typeaway pattern): event bus, store,
       # scheduler, the v2 autopoet worker/gate/leases, Llm + the admission money
       # boundary. Nothing autopoet-desktop-specific ever goes into the nexus repo.
-      {:nexus, path: "../workbooks/nexus"},
+      # co-located as a SUBMODULE inside the workbooks monorepo (workbooks/autopoet)
+      # → nexus is a sibling at ../nexus (was ../workbooks/nexus when this lived
+      # as a standalone sibling repo).
+      {:nexus, path: "../nexus"},
       # realtime voice: browser ⇄ Plug WebSocket (websock_adapter over Bandit) and
       # Elixir ⇄ Gemini Live wss client (mint_web_socket)
       {:websock_adapter, "~> 0.5"},
