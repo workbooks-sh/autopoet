@@ -70,6 +70,7 @@ defmodule Autopoet.Venture do
       work_cycles: 0,
       deploys: 0,
       site_url: nil,
+      last_signups: 0,
       cycles: 0
     }
   end
@@ -374,10 +375,27 @@ defmodule Autopoet.Venture do
   # FEEDBACK: real practitioner reactions from the live web (+X when connected)
   defp feedback_cycle(s) do
     with {:ok, s, harvest} <- web_research(s, "reactions, complaints, and feature demands about: #{String.slice(charter_section("Niche"), 0, 300)} — real posts from practitioners"),
-         {:ok, s, reply} <- think(s, :feedback, feedback_prompt(harvest <> x_harvest(s)), max_tokens: 1600) do
+         {:ok, s, reply} <- think(s, :feedback, feedback_prompt(harvest <> x_harvest(s) <> inbox_harvest()), max_tokens: 1600) do
       append_body("venture/feedback.work", "\n## feedback #{s.day} ##{s.work_cycles + 1}\n\n" <> reply)
       %{s | work_cycles: s.work_cycles + 1}
     end
+  end
+
+  # the venture's OWN inbox (citeflows@agentmail.to): inbound replies are real
+  # qualitative feedback — validation metric #2. Skips cleanly if unconfigured.
+  defp inbox_harvest do
+    case Autopoet.AgentMail.messages("citeflows@agentmail.to") do
+      {:ok, %{"messages" => msgs}} when is_list(msgs) and msgs != [] ->
+        "\n\n--- YOUR INBOX (citeflows@agentmail.to) ---\n" <>
+          Enum.map_join(Enum.take(msgs, 8), "\n", fn m ->
+            "FROM #{m["from"] || "?"}: #{String.slice(m["subject"] || "", 0, 80)} — #{String.slice(m["preview"] || m["text"] || "", 0, 160)}"
+          end)
+
+      _ ->
+        ""
+    end
+  rescue
+    _ -> ""
   end
 
   # X recent-search: live practitioner posts on the niche. Skips cleanly when
@@ -444,6 +462,7 @@ defmodule Autopoet.Venture do
   # MEASURE: the market judges — site signals → reward ledger
   defp measure_cycle(s) do
     signals = site_signals(s)
+    s = %{s | last_signups: Process.get(:venture_signup_count, Map.get(s, :last_signups, 0))}
 
     if signals != [] do
       Autopoet.Market.ingest(signals)
@@ -490,9 +509,30 @@ defmodule Autopoet.Venture do
     _ -> nil
   end
 
-  # site signals: waitlist/analytics when wired; empty until then (the measure
-  # prompt journals honestly about having no data yet)
-  defp site_signals(_s), do: []
+  # REAL site signals: the live waitlist count (citeflows.com/api/waitlist/count,
+  # KV-backed). Delta since last measure → signup signals for the reward ledger.
+  defp site_signals(s) do
+    :inets.start()
+    :ssl.start()
+
+    case :httpc.request(:get, {~c"https://citeflows.com/api/waitlist/count", []}, [timeout: 10_000], body_format: :binary) do
+      {:ok, {{_, 200, _}, _, body}} ->
+        count = case Integer.parse(String.trim(to_string(body))) do
+          {n, _} -> n
+          _ -> 0
+        end
+
+        prev = Map.get(s, :last_signups, 0)
+        delta = count - prev
+        Process.put(:venture_signup_count, count)
+        if delta > 0, do: [%{kind: :signup, target: "citeflows", value: delta}], else: []
+
+      _ ->
+        []
+    end
+  rescue
+    _ -> []
+  end
 
   # ── the charter ─────────────────────────────────────────────────────────────
 
@@ -603,11 +643,25 @@ defmodule Autopoet.Venture do
     reference the primary as /assets/primary-icon.svg or inline the chosen mark.
     Brand doc: #{String.slice(read_body("venture/logo.work"), 0, 600)}
 
-    Produce the COMPLETE landing page for the product (or a sharp iteration of
-    the current one, folding in feedback): single self-contained HTML file —
-    inline CSS, mobile-first (logo may reference /assets/*.svg), a waitlist
-    form (mailto: or form action to /api/waitlist placeholder is fine for now),
-    honest copy that speaks the ICP's language from your research. Emit ONE block:
+    STANDING NOTES from your human reviewer (binding for site copy too):
+    #{marketing_notes()}
+
+    HARD REQUIREMENTS for every page you ship:
+    - FULLY self-contained: ALL CSS inline in <style>. NO CDN scripts (a blocked
+      CDN renders your page as bare inputs — it happened). System font stack.
+    - PRACTICE YOUR OWN PREACHING (you sell GEO): JSON-LD (Organization +
+      SoftwareApplication) in <script type="application/ld+json">, semantic
+      HTML5 sections, meta description + OpenGraph tags, honest claims only —
+      every statistic attributed or framed as hypothesis, ON THE PAGE TOO.
+    - The waitlist form MUST be: <form action="/api/waitlist" method="POST">
+      with an email input — this endpoint is LIVE and counts toward your
+      validation test. Do not alter its action.
+    - Never emit or reference files other than index.html — /assets/*.svg (your
+      logo) and _worker.js (infrastructure) already exist; reference the logo,
+      never regenerate infra.
+
+    Produce the COMPLETE landing page (or a sharp iteration folding in
+    feedback), honest copy that speaks the ICP's language. Emit ONE block:
 
     === html ===
     <the complete html>
