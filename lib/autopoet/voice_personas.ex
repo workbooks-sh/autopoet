@@ -30,7 +30,31 @@ defmodule Autopoet.VoicePersonas do
     "baritone" => "Rich baritone male voice, brisk vivid delivery, fiction audiobooks.",
     "editor" => "Dry witty female voice, forties, brisk delivery, essay narration.",
     "captain" => "Weathered male voice, fifties, brisk calm delivery, aviation radio.",
-    "velvet" => "Smooth low male voice, brisk gentle delivery, meditation guides."
+    "velvet" => "Smooth low male voice, brisk gentle delivery, meditation guides.",
+
+    # ── accent experiments (owner-requested) ──
+    "albion" => "Refined British male voice, forties, brisk dry delivery, history documentaries.",
+    "sterling" => "Deep British male voice, brisk confident delivery, luxury advertisements.",
+    "rosalind" => "Warm British female voice, thirties, brisk delivery, garden shows.",
+    "tempest" => "Sharp British female voice, brisk witty delivery, panel comedy.",
+    "outback" => "Rugged Australian male voice, brisk friendly delivery, wildlife documentaries.",
+    "bondi" => "Laid-back Australian male voice, brisk delivery, surf commentary.",
+    "sheila" => "Bright Australian female voice, brisk warm delivery, travel vlogs.",
+    "matilda" => "Confident Australian female voice, brisk delivery, cooking shows.",
+
+    # ── character experiments (cartoon rule waived deliberately) ──
+    "elder" => "Very old raspy male voice, quick frail delivery, folk tales.",
+    "granny" => "Very old female voice, quick crackly delivery, fireside stories.",
+    "robot" => "Monotone robotic synthetic voice, brisk precise delivery, computer announcements.",
+    "sozzled" => "Slurring drunk male voice, wobbly cheerful delivery, pub stories.",
+
+    # ── accent experiments round 2 (owner-requested) ──
+    "smooth" => "Smooth deep Black male voice, brisk soulful delivery, radio DJ.",
+    "verse" => "Warm Black male voice, rhythmic brisk delivery, spoken word.",
+    "queen" => "Rich confident Black female voice, brisk delivery, talk shows.",
+    "hype" => "Quick energetic Black male voice, urban inflection, street interviews.",
+    "colonel" => "Folksy elderly southern gentleman voice, brisk drawl, chicken commercials.",
+    "magnolia" => "Sweet southern belle female voice, brisk charming delivery, hospitality videos."
   }
 
   @doc "The description for a persona name, or nil."
