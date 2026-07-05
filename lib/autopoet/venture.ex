@@ -116,6 +116,8 @@ defmodule Autopoet.Venture do
     if System.os_time(:second) - s.last_slot >= slot_every() do
       s = %{s | last_slot: System.os_time(:second)}
 
+      s = dashboard(s)
+
       cond do
         not charter?() -> genesis_step(s)
         # IDENTITY: one slot, once — the venture claims its own domain, email
@@ -131,6 +133,27 @@ defmodule Autopoet.Venture do
     else
       s
     end
+  end
+
+  # the project's dashboard node — what the human clicks in the desktop graph.
+  # Direct body write (the agent's own structure), refreshed once per slot.
+  defp dashboard(s) do
+    doc = """
+    # #{slug()} — dashboard
+
+    - status: #{if charter?(), do: "chartered", else: "genesis #{s.genesis_step}/3"}
+    - site: #{s.site_url || "(not deployed)"}
+    - work cycles: #{s.work_cycles} · llm today: #{s.llm_calls} · deploys: #{s.deploys}
+    - day: #{s.day}
+
+    Charter: [[projects/#{slug()}/charter]] · Journal: [[projects/#{slug()}/journal]] ·
+    Feedback: [[projects/#{slug()}/feedback]] · Logo: [[projects/#{slug()}/logo]]
+    """
+
+    write_body("#{prefix()}/index.work", doc)
+    s
+  rescue
+    _ -> s
   end
 
   defp identity_step(s) do

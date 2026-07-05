@@ -181,6 +181,12 @@ defmodule Autopoet.PipelineEvalTest do
 
     assert await(fn -> Autopoet.Venture.status(slug).site_url == "https://pipeline-eval.example" end, 10_000), "deploy seam url never recorded"
 
+    # 5b · the DASHBOARD node (graph visibility) — projects/<slug>/index.work
+    # written via Body.apply, the same path every graph-visible file uses
+    assert await(fn -> File.exists?(Path.join(Autopoet.Body.root(), "projects/#{slug}/index.work")) end, 10_000), "dashboard node never landed"
+    dash = File.read!(Path.join(Autopoet.Body.root(), "projects/#{slug}/index.work"))
+    assert dash =~ "dashboard" and dash =~ "site:" and dash =~ "[[projects/#{slug}/charter]]"
+
     # 6 · ctl status + archive close the lifecycle
     assert ctl(:get, "/projects/#{slug}/status").resp_body =~ "chartered=true"
     assert ctl(:post, "/projects/#{slug}/archive").resp_body =~ "archived"

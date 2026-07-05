@@ -1,0 +1,70 @@
+defmodule Autopoet.Shopify do
+  @moduledoc """
+  Shopify lane (lifecycle-plan §4) — the custom-app token flow (NOT OAuth /
+  app-review): the store owner pastes a scoped Admin API access token, so a
+  commerce venture reads/writes products + orders with zero review friction.
+  A `needs-human` checklist item (the human creates the custom app + pastes the
+  token); after that the agent operates.
+
+  READS are safe; WRITES (create product, fulfill) are OUTWARD — gate at the
+  call site (proposal), same as posts. Config: SHOPIFY_STORE (my-shop.myshopify.com)
+  + SHOPIFY_TOKEN. Injectable `:transport` for evals.
+  """
+
+  @version "2025-01"
+
+  def configured?, do: is_binary(store()) and is_binary(token())
+
+  @doc "List products (read, safe)."
+  def products(opts \\ []), do: get("/products.json?limit=#{opts[:limit] || 20}", opts)
+
+  @doc "Recent orders (read, safe)."
+  def orders(opts \\ []), do: get("/orders.json?status=any&limit=#{opts[:limit] || 20}", opts)
+
+  @doc "Shop info — the connect-time probe (proves the token + shows the store)."
+  def shop(opts \\ []), do: get("/shop.json", opts)
+
+  @doc "Create a product — OUTWARD: gate at the call site."
+  def create_product(%{} = product, opts \\ []) do
+    post("/products.json", %{"product" => product}, opts)
+  end
+
+  defp get(path, opts), do: request(:get, path, nil, opts)
+  defp post(path, body, opts), do: request(:post, path, body, opts)
+
+  defp request(method, path, body, opts) do
+    case Keyword.get(opts, :transport) do
+      fun when is_function(fun, 3) ->
+        fun.(method, path, body)
+
+      _ ->
+        if configured?() do
+          live(method, "https://#{store()}/admin/api/#{@version}#{path}", body)
+        else
+          {:skip, :not_configured}
+        end
+    end
+  end
+
+  defp live(method, url, body) do
+    :inets.start()
+    :ssl.start()
+    h = [{~c"x-shopify-access-token", String.to_charlist(token())}, {~c"accept", ~c"application/json"}]
+
+    req =
+      case method do
+        :get -> {String.to_charlist(url), h}
+        :post -> {String.to_charlist(url), h, ~c"application/json", String.to_charlist(Jason.encode!(body || %{}))}
+      end
+
+    case :httpc.request(method, req, [timeout: 30_000], body_format: :binary) do
+      {:ok, {{_, code, _}, _, resp}} when code in 200..299 -> {:ok, Jason.decode!(to_string(resp))}
+      {:ok, {{_, code, _}, _, resp}} -> {:error, {:http, code, String.slice(to_string(resp), 0, 200)}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp store, do: System.get_env("SHOPIFY_STORE") || safe("SHOPIFY_STORE")
+  defp token, do: System.get_env("SHOPIFY_TOKEN") || safe("SHOPIFY_TOKEN")
+  defp safe(k), do: (try do: Nexus.Secrets.get(k), rescue: (_ -> nil))
+end

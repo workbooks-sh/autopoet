@@ -1,0 +1,95 @@
+defmodule Autopoet.SelfServe do
+  @moduledoc """
+  Self-serve identity (lifecycle-plan §2) — the AgentMail keystone generalized:
+  an agent with its own inbox completes email-verified signups ALONE. The
+  proven mechanic (it read + processed its own Cloudflare verification email)
+  as a capability:
+
+    `await_verification(inbox, matcher, opts)` — poll the inbox for a message
+    matching `matcher` (subject regex), extract the first verification-looking
+    link, and CONFIRM it (browser-UA GET). Outcomes are honest:
+      {:verified, url}      — link answered 2xx/3xx; the loop closed itself
+      {:needs_human, url}   — bot-wall/challenge (403/5xx/timeout): the exact
+                              link is returned as a needs-human card, never
+                              thrashed against
+      {:no_mail, nil}       — nothing arrived within the window
+
+  FREE services only ride this autonomously (locked decision #3); anything
+  paid/KYC is the checklist's needs-human lane by construction. Injectable
+  `:mail` + `:confirm` transports for evals.
+  """
+
+  @default_wait_ms 60_000
+  @poll_ms 5_000
+
+  def await_verification(inbox, matcher, opts \\ []) do
+    deadline = System.monotonic_time(:millisecond) + Keyword.get(opts, :wait_ms, @default_wait_ms)
+    mail = Keyword.get(opts, :mail, &default_mail/1)
+    confirm = Keyword.get(opts, :confirm, &default_confirm/1)
+    poll(inbox, matcher, deadline, mail, confirm, opts)
+  end
+
+  defp poll(inbox, matcher, deadline, mail, confirm, opts) do
+    case find_link(mail.(inbox), matcher) do
+      nil ->
+        if System.monotonic_time(:millisecond) > deadline do
+          {:no_mail, nil}
+        else
+          Process.sleep(Keyword.get(opts, :poll_ms, @poll_ms))
+          poll(inbox, matcher, deadline, mail, confirm, opts)
+        end
+
+      url ->
+        case confirm.(url) do
+          :ok -> {:verified, url}
+          _ -> {:needs_human, url}
+        end
+    end
+  end
+
+  # newest matching message → first verification-looking link in its body
+  defp find_link(messages, matcher) when is_list(messages) do
+    messages
+    |> Enum.find(fn m -> (m["subject"] || "") =~ matcher end)
+    |> case do
+      nil ->
+        nil
+
+      m ->
+        body = to_string(m["text"] || "") <> to_string(m["html"] || "")
+
+        case Regex.run(~r/https:\/\/[^\s"'<>\)]*(?:verify|confirm|activate|validate)[^\s"'<>\)]*/i, body) ||
+               Regex.run(~r/https:\/\/[^\s"'<>\)]+token=[^\s"'<>\)]+/i, body) do
+          [url | _] -> url
+          _ -> nil
+        end
+    end
+  end
+
+  defp find_link(_, _), do: nil
+
+  defp default_mail(inbox) do
+    case Autopoet.AgentMail.messages(inbox) do
+      {:ok, %{"messages" => msgs}} when is_list(msgs) -> msgs
+      _ -> []
+    end
+  end
+
+  # a browser-shaped GET; bot-walls answer 403/challenge → needs-human
+  defp default_confirm(url) do
+    :inets.start()
+    :ssl.start()
+
+    headers = [
+      {~c"user-agent", ~c"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"},
+      {~c"accept", ~c"text/html,application/xhtml+xml"}
+    ]
+
+    case :httpc.request(:get, {String.to_charlist(URI.encode(url)), headers}, [timeout: 20_000, autoredirect: true], body_format: :binary) do
+      {:ok, {{_, code, _}, _, _}} when code in 200..399 -> :ok
+      _ -> :blocked
+    end
+  rescue
+    _ -> :blocked
+  end
+end

@@ -121,3 +121,29 @@ Open questions for the owner:
    the surfaces pass now REMOVES connection tiles from onboarding rather than adding
    them, and adds the payment/tokens step; grant matrix + checklist + digest are the
    only connection surfaces, all in-app.
+
+---
+
+## 6 · EXECUTED (2026-07-05, goal-hook)
+
+- **Spine** (§1): Autopoet.Projects + Autopoet.Desks + parameterized Venture — many
+  projects, one organism. spine_test.
+- **Full pipeline** (proven e2e, in `mix eval`): pipeline_eval — ctl → conversational
+  birth → genesis → typed integration checklist (required charter section) → digest →
+  accept → identity → logo → build (JSON-LD + waitlist) → deploy → DASHBOARD node in the
+  graph → archive. All production machinery, seams for LLM/search/deploy.
+- **CLI control** of a running app AND the packaged prod release: Control plug +
+  autopoetctl gain projects/new/status/archive/desk-start/desk-stop/digest. Live smoke
+  green against `mix run` AND `_build/prod/rel/autopoet/bin/autopoet` (one boot fix:
+  WB_SESSION_SECRET required on a release — added to .env).
+- **Self-serve** (§2): Autopoet.SelfServe — the AgentMail verify loop generalized
+  (verified / needs-human on bot-wall / no_mail). lanes_eval.
+- **Purchase lanes** (§4): Autopoet.Registrar (Porkbun, Treasury-gated money verb) +
+  Autopoet.Shopify (custom-app token, gated writes). Both skip-clean. lanes_eval.
+- **Featured six**: Connections reordered — google/cloudflare/github/polar/meta/agentmail
+  front; openrouter dropped; alpaca/shopify drawer. lanes_eval.
+- Full suite 136 + doctest, 0 failures.
+- REMAINING (next round, not blocking): desktop UI rendering of the graph
+  dashboard/preview/digest (the DATA + nodes exist; the frontend views consume them);
+  wiring SelfServe/Registrar/Shopify into the genesis checklist-resolver so `self-serve`
+  items auto-execute and `needs-human` items render cards.

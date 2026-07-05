@@ -54,7 +54,13 @@ defmodule Autopoet.Connections do
   # (wb-siutv): AI credits flow through the Workbooks Cloudflare LLM gateway, so
   # a per-user OpenRouter key isn't the default path — it stays available but is
   # not featured. Alpaca joins as the finance/trading connection.
-  @providers ~w(github google cloudflare polar meta alpaca openrouter)
+  # featured six FIRST (lifecycle-plan): AgentMail promoted (email built-in),
+  # OpenRouter dropped from the front (AI rides the Workbooks gateway);
+  # X/Alpaca/Shopify are drawer/second-row.
+  @providers ~w(google cloudflare github polar meta agentmail alpaca shopify openrouter)
+
+  @doc "Ordered provider list — first six are the featured tiles."
+  def providers, do: @providers
 
   @doc "All connected providers, for the state endpoint."
   def all, do: for(p <- @providers, connected?(p), do: p)
