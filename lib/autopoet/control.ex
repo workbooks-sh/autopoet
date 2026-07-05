@@ -1097,6 +1097,14 @@ defmodule Autopoet.Control do
     end)
   end
 
+  # the pose-engine playground — feel a voice's motion vector before phase 2
+  get "/voices/playground" do
+    conn
+    |> put_resp_content_type("text/html")
+    |> put_resp_header("cache-control", "no-store")
+    |> send_resp(200, Autopoet.VoicePlayground.html())
+  end
+
   # ── the voice roster: persistent verdicts + takes, served BY the app ──────
   get "/voices/roster" do
     conn
