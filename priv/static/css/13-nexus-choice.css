@@ -65,3 +65,19 @@
   .nx-status svg { width:14px; height:14px; }
   .nx-step { font:600 10px ui-monospace,monospace; letter-spacing:.09em; text-transform:uppercase;
     color:#8a8f88; background:#f4f6f8; border-radius:7px; padding:4px 10px; align-self:flex-start; }
+
+  /* quiet text links (the de-emphasized escape hatches under the confirm card) */
+  .nx-quiet { font:11.5px ui-monospace,monospace; color:#8a8f88; text-decoration:underline;
+    text-underline-offset:2.5px; text-decoration-color:#c9cfd8; cursor:pointer; }
+  .nx-quiet:hover { color:#1c2230; text-decoration-color:#1c2230; }
+  .nx-quietrow { display:flex; gap:18px; flex-wrap:wrap; margin-top:2px; }
+  .nx-picks { display:flex; flex-direction:column; gap:8px; }
+  .nx-offline { color:#8a8f88; }
+
+  /* ghost skeleton — fixed height, replaced in place (no layout jump) */
+  .nx-ghost { height:118px; display:grid; place-items:center; position:relative; overflow:hidden; }
+  .nx-ghost::after { content:""; position:absolute; inset:0;
+    background:linear-gradient(100deg, transparent 32%, rgba(20,30,50,.05) 50%, transparent 68%);
+    background-size:220% 100%; animation:nx-shimmer 1.4s linear infinite; }
+  @keyframes nx-shimmer { from { background-position:180% 0; } to { background-position:-80% 0; } }
+  .nx-ghosttext { font:12px ui-monospace,monospace; color:#8a8f88; }

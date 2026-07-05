@@ -594,6 +594,8 @@ async function showPlanMode() {
 // poll the subscription until it's active. The SAME flow the dashboard exposes.
 function showQuiz() { showPower(); }
 function showSlides() {
+  // deck start → refresh the power prefetch so step 1 paints with live data
+  if (typeof firePowerPrefetch === "function") firePowerPrefetch();
   document.querySelector("#onboard .obinner").style.display = "none";
   document.getElementById("obsteps").style.display = "none";
   const deck = document.getElementById("obslides");
@@ -683,13 +685,22 @@ function signInWithWorkbooks() {
   _cloudPoll = setInterval(async () => {
     try {
       const st = await (await fetch("/auth/state.json")).json();
-      if (st.authenticated) { clearInterval(_cloudPoll); _cloudPoll = null; initAuth(); }
+      if (st.authenticated) {
+        clearInterval(_cloudPoll); _cloudPoll = null;
+        // sign-in success → warm the power screen (status + tiers) right now
+        if (typeof firePowerPrefetch === "function") firePowerPrefetch();
+        initAuth();
+      }
     } catch (_) {}
   }, 2000);
 }
 // same-process fallback (if ever opened as a child window)
 window.addEventListener("message", e => {
-  if (e.data && e.data.apCloud) { if (_cloudPoll) clearInterval(_cloudPoll); initAuth(); }
+  if (e.data && e.data.apCloud) {
+    if (_cloudPoll) clearInterval(_cloudPoll);
+    if (typeof firePowerPrefetch === "function") firePowerPrefetch();
+    initAuth();
+  }
 });
 document.getElementById("ob-workbooks").onclick = signInWithWorkbooks;
 initAuth();

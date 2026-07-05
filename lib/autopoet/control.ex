@@ -310,20 +310,15 @@ defmodule Autopoet.Control do
   end
 
   # is the agent powered? — an ACTIVE machine subscription, an EXISTING nexus
-  # (already provisioned on the account), or a local key
-  get "/power/status" do
-    sub =
-      case Autopoet.Cloud.get("/api/platform/billing/subscription") do
-        {:ok, %{"status" => "active"} = s} -> s
-        _ -> nil
-      end
+  # (already provisioned on the account), or a local key.
+  # The two cloud reads run CONCURRENTLY (5s cap each, crash-safe) behind a ~30s
+  # micro-cache, so the onboarding prefetch + pollPowered's 2.5s polling don't
+  # hammer the control plane. Response shape is unchanged.
+  @power_cache_key {__MODULE__, :power_status_cache}
+  @power_cache_ms 30_000
 
-    nexuses =
-      case Autopoet.Cloud.get("/api/platform/nexuses") do
-        {:ok, %{"nexuses" => l}} when is_list(l) -> l
-        {:ok, l} when is_list(l) -> l
-        _ -> []
-      end
+  get "/power/status" do
+    {sub, nexuses} = cloud_power_state()
 
     # two separate axes: COMPUTE (where it runs — chosen in step 1, persisted)
     # and INFERENCE (how it thinks — gateway via cloud, or a local key).
@@ -351,6 +346,71 @@ defmodule Autopoet.Control do
         nexuses: nexuses
       })
     )
+  end
+
+  # {subscription, nexuses} — both cloud calls in parallel, micro-cached.
+  # A failed read caches only briefly (5s) so a retry goes live again.
+  defp cloud_power_state do
+    now = System.system_time(:millisecond)
+
+    case :persistent_term.get(@power_cache_key, nil) do
+      {state, ts, ttl} when now - ts < ttl ->
+        state
+
+      _ ->
+        sub_task = Task.async(fn -> cloud_sub_safe() end)
+        nex_task = Task.async(fn -> cloud_nexuses_safe() end)
+        sub_r = power_task_get(sub_task)
+        nex_r = power_task_get(nex_task)
+
+        sub =
+          case sub_r do
+            {:ok, s} -> s
+            :error -> nil
+          end
+
+        nexuses =
+          case nex_r do
+            {:ok, l} -> l
+            :error -> []
+          end
+
+        state = {sub, nexuses}
+        ok? = sub_r != :error and nex_r != :error
+        :persistent_term.put(@power_cache_key, {state, now, if(ok?, do: @power_cache_ms, else: 5_000)})
+        state
+    end
+  end
+
+  defp power_task_get(task) do
+    case Task.yield(task, 5_000) || Task.shutdown(task, :brutal_kill) do
+      {:ok, v} -> v
+      _ -> :error
+    end
+  end
+
+  defp cloud_sub_safe do
+    case Autopoet.Cloud.get("/api/platform/billing/subscription") do
+      {:ok, %{"status" => "active"} = s} -> {:ok, s}
+      {:ok, _} -> {:ok, nil}
+      _ -> :error
+    end
+  rescue
+    _ -> :error
+  catch
+    :exit, _ -> :error
+  end
+
+  defp cloud_nexuses_safe do
+    case Autopoet.Cloud.get("/api/platform/nexuses") do
+      {:ok, %{"nexuses" => l}} when is_list(l) -> {:ok, l}
+      {:ok, l} when is_list(l) -> {:ok, l}
+      _ -> :error
+    end
+  rescue
+    _ -> :error
+  catch
+    :exit, _ -> :error
   end
 
   # the account's existing nexuses — the "use the one you already have" lane
@@ -955,12 +1015,31 @@ defmodule Autopoet.Control do
     text(conn, Autopoet.Kokoro.status() <> "\n")
   end
 
+  # TWO local engines behind one route. Kokoro (82M, instant) is the default;
+  # Qwen3-TTS 1.7B-4bit/MLX (premium: instruction-directed delivery, 10 langs,
+  # 1.83x RT) serves when engine=qwen OR when it's ready and engine is unset
+  # (auto-upgrade — never boots implicitly; POST /voice/tts/qwen/boot first).
   post "/voice/tts" do
     authed!(conn, fn conn ->
       {:ok, body, conn} = read_body(conn, length: 4_000)
-      voice = conn.query_params["voice"] || "af_heart"
+      conn = fetch_query_params(conn)
+      q = conn.query_params
+      engine = q["engine"]
+      use_qwen = engine == "qwen" or (engine == nil and Autopoet.QwenTts.ready?())
 
-      case Autopoet.Kokoro.speak(body, voice) do
+      result =
+        if use_qwen do
+          case Autopoet.QwenTts.speak(body, q["voice"] || "Ryan", q["instruct"]) do
+            {:ok, wav} -> {:ok, wav}
+            # premium engine down mid-flight → the instant engine still answers
+            _ when engine != "qwen" -> Autopoet.Kokoro.speak(body, "af_heart")
+            err -> err
+          end
+        else
+          Autopoet.Kokoro.speak(body, q["voice"] || "af_heart")
+        end
+
+      case result do
         {:ok, wav} ->
           conn |> put_resp_content_type("audio/wav") |> send_resp(200, wav)
 
@@ -971,6 +1050,18 @@ defmodule Autopoet.Control do
           send_resp(conn, 422, "speak failed: #{inspect(reason)}\n")
       end
     end)
+  end
+
+  # boot the premium engine (heavy: ~30s load, ~5.4GB resident) — explicit, never implicit
+  post "/voice/tts/qwen/boot" do
+    authed!(conn, fn conn ->
+      Autopoet.QwenTts.ensure()
+      text(conn, Autopoet.QwenTts.status() <> "\n")
+    end)
+  end
+
+  get "/voice/tts/qwen/status" do
+    text(conn, Autopoet.QwenTts.status() <> "\n")
   end
 
   # ── the session deck: a plain-markdown slide file the agent authors as it
