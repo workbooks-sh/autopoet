@@ -1,0 +1,147 @@
+  /* ── the animated slide deck (GSAP) — face card centerpiece, scenes around it ── */
+  #obslides { display:none; flex-direction:column; align-items:center; gap:22px;
+    width:560px; padding:40px; position:relative; }
+  .obskip { position:absolute; top:6px; right:10px; font:11px ui-monospace,monospace;
+    color:var(--ink-faint); background:none; border:none; cursor:pointer; -webkit-app-region:no-drag; }
+  .obskip:hover { color:var(--ink-2); }
+  .slidestage { position:relative; width:480px; height:230px; }
+  .slideface { position:absolute; left:50%; top:50%; margin:-57px 0 0 -57px; width:114px; height:114px;
+    border-radius:26px; border:1px solid rgba(0,0,0,.12); background:var(--surface); overflow:hidden;
+    box-shadow:0 8px 28px rgba(25,35,55,.09); }
+  .slidefx { position:absolute; inset:0; pointer-events:none; }
+  .slidetext { text-align:center; min-height:78px; max-width:420px; }
+  .slidetitle { font:600 20px ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--ink-strong); }
+  .slidesub { font:12px/1.6 ui-monospace,monospace; color:var(--ink-dim); margin:8px 0 0; }
+  .slidenav { display:flex; align-items:center; gap:16px; }
+  .slidenav button { width:34px; height:34px; border-radius:11px; border:1px solid var(--border);
+    background:var(--surface); color:var(--ink-2); cursor:pointer; display:flex; align-items:center;
+    justify-content:center; -webkit-app-region:no-drag; transition:border-color .15s ease; }
+  .slidenav button:hover { border-color:var(--border); }
+  .slidenav button svg { width:15px; height:15px; }
+  .sldots { display:flex; gap:6px; }
+  .sldot { width:6px; height:6px; border-radius:50%; background:var(--border); transition:background .2s ease; }
+  .sldot.on { background:var(--purple); }
+  /* scene furniture */
+  .fxcard { position:absolute; background:var(--surface); border:1px solid var(--border); border-radius:12px;
+    padding:10px 12px; font:10.5px/1.5 ui-monospace,monospace; color:var(--ink-2);
+    box-shadow:0 3px 12px rgba(25,35,55,.06); white-space:pre; text-align:left; }
+  .fxchip { position:absolute; background:var(--surface); border:1px solid var(--border); border-radius:9px;
+    padding:5px 10px; font:10px ui-monospace,monospace; color:var(--ink-2);
+    box-shadow:0 2px 8px rgba(25,35,55,.05); }
+  .fxnode { position:absolute; width:14px; height:14px; border-radius:50%; }
+  .fxcaret { display:inline-block; width:6px; height:11px; background:var(--purple);
+    vertical-align:-1px; animation:fxblink 1s steps(1) infinite; }
+  .fxfile { display:flex; align-items:center; gap:6px; }
+  .fxfile img { display:block; }
+  .fxchip svg { width:11px; height:11px; vertical-align:-2px; }
+  /* "it keeps your word": the live schedule + its stacked fridays */
+  .fxlive { width:6px; height:6px; border-radius:50%; background:var(--green); margin-left:auto;
+    animation:fxblink 1.6s ease infinite; }
+  /* the mini editor — unmistakably A FILE: chrome dots, filename tab, gutter */
+  .fxed { position:absolute; width:172px; background:var(--surface); border:1px solid var(--line);
+    border-radius:10px; overflow:hidden; text-align:left;
+    box-shadow:0 4px 14px var(--border-soft); }
+  .fxedhdr { display:flex; align-items:center; gap:4px; background:var(--fill);
+    border-bottom:1px solid var(--line); padding:5px 8px;
+    font:9px ui-monospace,monospace; color:var(--ink-dim); }
+  .fxedhdr img { margin-left:5px; }
+  .fxedhdr .dot { width:6px; height:6px; border-radius:50%; background:var(--border); }
+  .fxedbody { display:flex; font:9.5px/1.75 ui-monospace,monospace; padding:6px 0; }
+  .fxedln { color:var(--border); padding:0 7px; text-align:right; border-right:1px solid var(--fill);
+    margin-right:7px; }
+  /* pre, never wrap: every edit site owns a whole line, so retyping can't reflow */
+  .fxedcode { color:var(--ink-2); white-space:pre; overflow:hidden; padding-right:8px; flex:1; }
+  /* diff rows: the two panes speak the same language — red out, green in */
+  .fxdiffbody { display:flex; flex-direction:column; padding:6px 0;
+    font:9.5px/1.75 ui-monospace,monospace; text-align:left; }
+  .fxrow { display:flex; align-items:baseline; padding:0 8px 0 4px; overflow:hidden; }
+  .fxg { flex:none; width:11px; text-align:center; font-weight:600; }
+  .fxt { white-space:pre; color:var(--ink-2); }
+  .fxt.cmt { color:var(--border); }
+  .fxt.kw { color:var(--purple); }
+  .fxrow.rowdel { background:var(--err-bg); }
+  .fxrow.rowdel .fxg { color:var(--red); }
+  .fxrow.rowdel .fxg::before { content:"−"; }
+  .fxrow.rowdel .fxt { color:var(--red); text-decoration:line-through; }
+  .fxrow.rowadd { background:var(--ok-bg); }
+  .fxrow.rowadd .fxg { color:var(--green-deep); }
+  .fxrow.rowadd .fxg::before { content:"+"; }
+  .fxrow.rowadd .fxt { color:var(--green-deep); }
+  /* language islands — each language lands as its own little island */
+  .fxisle { position:absolute; display:flex; flex-direction:column; align-items:center; gap:2px;
+    background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:9px 12px;
+    box-shadow:0 4px 12px rgba(25,35,55,.07); }
+  .fxisle .finame { font:600 9.5px ui-monospace,monospace; color:var(--ink-strong); }
+  .fxisle .fitag { font:8px ui-monospace,monospace; color:var(--ink-fainter); }
+  .fxlab { position:absolute; font:9px ui-monospace,monospace; color:var(--ink-fainter); white-space:nowrap; }
+  /* the clone grid: the SAME little app, dealt out live for everyone */
+  .fxgrid { position:absolute; display:grid; grid-template-columns:repeat(3, 42px); gap:10px; }
+  .fxmini { position:relative; width:42px; height:32px; background:var(--surface); border:1px solid var(--line);
+    border-radius:7px; box-shadow:0 2px 7px rgba(25,35,55,.06); }
+  .fxmini.you { border-color:var(--purple); }
+  .fxmini .mbar { position:absolute; left:5px; top:5px; width:14px; height:4px; border-radius:2px; background:var(--purple); }
+  .fxmini .mln { position:absolute; left:5px; top:14px; width:26px; height:3px; border-radius:2px; background:var(--line); }
+  .fxmini .mln.s { top:21px; width:18px; }
+  .fxmini .mdot { position:absolute; right:4px; top:4px; width:5px; height:5px; border-radius:50%; background:var(--green); }
+  /* ephemeral sandboxes: sealed (dashed) while running, a green blink when done */
+  .fxsbx { position:absolute; width:30px; height:30px; border-radius:9px; background:var(--surface);
+    border:1.5px dashed var(--purple); display:flex; align-items:center; justify-content:center;
+    box-shadow:0 3px 9px rgba(25,35,55,.07); }
+  .fxsbx.done { border-style:solid; border-color:var(--green); }
+  /* the derived machinery diffing: old value strikes red, new lands green */
+  .difold { color:var(--red) !important; text-decoration:line-through; }
+  .difnew { color:var(--green-deep); background:var(--ok-bg); border-radius:3px; padding:0 2px; }
+  /* the verdict — the branch your sentence decides */
+  .vhold { color:var(--orange); font-weight:600; }
+  .vok { color:var(--green-deep); font-weight:600; }
+  .vsend { color:var(--blue-deep); font-weight:600; }
+  .tick { font:600 9px ui-monospace,monospace; color:var(--green-deep); background:var(--ok-bg);
+    border:1px solid var(--green); border-radius:7px; padding:3px 7px; }
+  /* the "implemented component" — real HTML/CSS mirroring the sketch's wireframe */
+  .fxcomp { position:absolute; right:3%; top:24%; width:132px; height:92px; background:var(--surface);
+    border:1px solid var(--border); border-radius:12px; box-shadow:0 4px 14px rgba(25,35,55,.09);
+    padding:12px; box-sizing:border-box; }
+  .fxcompav { position:absolute; left:12px; top:14px; width:22px; height:22px; border-radius:50%;
+    background:linear-gradient(135deg,var(--purple),var(--blue)); }
+  .fxcomplines { position:absolute; left:42px; top:16px; display:flex; flex-direction:column; gap:7px; }
+  .fxline { height:7px; border-radius:4px; background:var(--border); }
+  .fxcompbtn { position:absolute; right:11px; bottom:11px; font:600 9.5px ui-monospace,monospace;
+    color:var(--on-accent); background:var(--purple); padding:4px 11px; border-radius:7px; }
+  /* mini chat/voice panels — bubbles + dashed tool-call rows, waveform docked */
+  .fxchat { position:absolute; width:152px; display:flex; flex-direction:column; gap:6px;
+    background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:10px;
+    box-shadow:0 4px 14px var(--border-soft); }
+  .fxmsg { font:9.5px/1.4 ui-monospace,monospace; padding:4px 8px; border-radius:8px;
+    color:var(--ink-2); max-width:92%; }
+  .fxmsg.user { align-self:flex-end; background:var(--fill); }
+  .fxmsg.bot { align-self:flex-start; background:var(--fill); border:1px solid var(--fill); }
+  .fxtool { display:flex; align-items:center; gap:5px; font:9px ui-monospace,monospace;
+    color:var(--purple); background:var(--fill); border:1px dashed var(--fill); border-radius:7px; padding:3px 7px; }
+  .fxtool svg { width:10px; height:10px; }
+  .fxvoice { display:flex; align-items:center; justify-content:center; gap:3px; height:24px;
+    background:var(--fill); border-radius:8px; padding:0 8px; }
+  .fxvoice .vb { width:3px; height:9px; background:var(--purple); border-radius:2px; display:block; }
+  .fxgate { display:flex; gap:12px; justify-content:center; font:600 9.5px ui-monospace,monospace; }
+  .fxgate .fxok { color:var(--green); display:inline-block; }
+  .fxgate .fxno { color:var(--red); }
+  /* prose spans the parser lights up, each in its node's color */
+  .astp { border-radius:4px; padding:0 2px; border-bottom:2px solid transparent; }
+  .fxfile svg { width:12px; height:12px; }
+  /* the science slide: portrait cards for the people whose math runs the harness */
+  .fxperson { display:flex; flex-direction:column; align-items:center; gap:4px;
+    font:9px ui-monospace,monospace; color:var(--ink-dim); }
+  .fxpimg { width:46px; height:46px; border-radius:11px; object-fit:cover;
+    filter:grayscale(1); border:1px solid var(--border); }
+  /* the evolution vignette: mini variant face cards + the survivor's check */
+  .fxevo { position:absolute; width:38px; height:38px; border-radius:10px; background:var(--surface);
+    border:1px solid var(--border); box-shadow:0 3px 10px var(--border-soft);
+    display:flex; align-items:center; justify-content:center; }
+  .fxevo.won { border-color:var(--green); box-shadow:0 0 0 3px rgba(106,168,79,.18); }
+  .fxevo.won::after { content:"✓"; position:absolute; top:-7px; right:-7px; width:14px; height:14px;
+    border-radius:50%; background:var(--green); color:var(--on-accent); font:600 9px/14px ui-monospace,monospace;
+    text-align:center; }
+  .fxcred { position:absolute; left:50%; bottom:0; transform:translateX(-50%); display:flex;
+    align-items:center; gap:5px; font:8.5px ui-monospace,monospace; color:var(--ink-fainter); white-space:nowrap; }
+  .fxcred img { width:14px; height:14px; border-radius:50%; object-fit:cover;
+    filter:grayscale(1); border:1px solid var(--line); }
+  @keyframes fxblink { 50% { opacity:0; } }

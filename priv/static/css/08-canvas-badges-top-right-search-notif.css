@@ -1,0 +1,88 @@
+  /* ── canvas badges (top-right): search + notifications ───────────────── */
+  #canvasbar { position:absolute; top:12px; right:14px; z-index:7;
+    display:flex; gap:8px; }
+  #canvasbar .cb { position:relative; display:flex; align-items:center; justify-content:center;
+    width:32px; height:32px; border-radius:9px; background:var(--surface); cursor:pointer;
+    border:1px solid var(--line); color:var(--ink-muted);
+    transition:background .15s ease, color .15s ease, transform .12s ease; }
+  #canvasbar .cb:hover { background:var(--fill); color:var(--ink); }
+  #canvasbar .cb.active { background:var(--fill-hover); color:var(--blue); }
+  #canvasbar .cb:active { transform:scale(.95); }
+  #canvasbar .cb svg.lucide { width:15px; height:15px; }
+  #canvasbar .cb .bdg { position:absolute; top:-5px; right:-5px; min-width:15px; height:15px;
+    border-radius:99px; background:var(--amber); color:var(--ink); font-size:9px; font-weight:700;
+    display:flex; align-items:center; justify-content:center; padding:0 3px; }
+  /* "N hidden" pill — hiding is never invisible-invisible (genesis I3) */
+  #flt-pill { position:absolute; top:-7px; right:-10px; background:var(--ink-faint); color:var(--on-accent);
+    font-size:9px; line-height:1; padding:2px 6px; border-radius:8px;
+    pointer-events:none; white-space:nowrap; }
+  #canvasbar .cb .tip { position:absolute; top:38px; right:0; background:var(--ink); color:var(--on-accent);
+    font-size:10px; padding:3px 9px; border-radius:6px; white-space:nowrap;
+    opacity:0; pointer-events:none; transform:translateY(-3px);
+    transition:opacity .15s ease .15s, transform .15s ease .15s; }
+  #canvasbar .cb:hover .tip { opacity:1; transform:none; }
+  #canvasbar.active .cb .tip { display:none; }   /* no tooltips under open widgets */
+
+  /* the search badge MORPHS leftward into a bar (panache, not popup).
+     Collapsed = a perfect 32px square, input fully hidden. */
+  #cb-search { width:32px; overflow:hidden;
+    transition:width .32s cubic-bezier(.22,.9,.24,1), background .15s ease, border-color .2s ease; }
+  #cb-search input { display:none; flex:1; min-width:0; border:none; outline:none;
+    background:none; font:12px ui-monospace,monospace; color:var(--ink); padding:0; }
+  #cb-search.expanded { width:264px; cursor:default; border-color:var(--blue-soft);
+    justify-content:flex-start; padding:0 10px; gap:8px; }
+  #cb-search.expanded input { display:block; animation:fadein .18s ease .12s both; }
+  #cb-search.expanded > svg.lucide { color:var(--blue-soft); }
+  @keyframes fadein { from { opacity:0; } }
+
+  #searchpop { position:absolute; top:52px; right:54px; z-index:8; width:264px;
+    background:var(--surface); border:1px solid var(--line); border-radius:11px; padding:6px;
+    box-shadow:0 12px 36px var(--border-mid); display:none;
+    opacity:0; transform:translateY(-6px);
+    transition:opacity .18s ease, transform .18s cubic-bezier(.22,.9,.24,1); }
+  #searchpop.on { display:block; opacity:1; transform:none; }
+  #searchpop .res { max-height:260px; overflow:auto; margin-top:6px; }
+  #searchpop .res .it { display:flex; align-items:center; gap:8px; padding:5px 9px;
+    border-radius:7px; cursor:pointer; font-size:12px; }
+  #searchpop .res .it:hover { background:var(--fill); }
+  #searchpop .res .sw { width:9px; height:9px; border-radius:50%; flex:none; }
+
+  #notif { position:absolute; top:52px; right:14px; bottom:14px; z-index:8; width:320px;
+    background:var(--surface); border:1px solid var(--line); border-radius:12px;
+    box-shadow:0 14px 40px var(--border-mid); display:none; flex-direction:column;
+    opacity:0; transform:translateX(10px);
+    transition:opacity .2s ease, transform .22s cubic-bezier(.22,.9,.24,1); }
+  #notif.on { display:flex; opacity:1; transform:none; }
+  #notif .nh { padding:11px 14px; font-size:11px; font-weight:600; letter-spacing:.05em;
+    color:var(--ink-faint); border-bottom:1px solid var(--line); }
+  #notif .body { flex:1; overflow:auto; padding:8px; }
+  #notif .card { border:1px solid var(--line); border-radius:10px; padding:10px 12px;
+    margin-bottom:8px; }
+  #notif .card .t { font-size:12px; font-weight:600; margin-bottom:3px; }
+  #notif .card .d { font-size:11px; color:var(--ink-dim);
+    font-family:-apple-system,BlinkMacSystemFont,sans-serif; margin-bottom:8px; }
+  #notif .card button { font:10px ui-monospace,monospace; border:1px solid var(--line);
+    background:var(--surface); border-radius:6px; padding:3px 10px; cursor:pointer; margin-right:6px; }
+  #notif .card button.ok { background:var(--ok-bg); }
+  #notif .card button.no { background:var(--err-bg); }
+  #notif .ev { font-size:10px; color:var(--ink-faint); padding:3px 6px; }
+
+  /* tree drag-drop */
+  #tree li > .row.dragover { background:var(--sel-bg); outline:1px dashed var(--blue-soft); }
+
+  /* custom chrome (frameless mode). z-index:1000 — ABOVE every overlay in the app
+     (onboard:60, backdrop:20, modal:21, footpop/filterpop:40, toast:80, error
+     banner:99) so the stoplight stays visible and clickable no matter what's up. */
+  #chrome { position:fixed; top:0; left:0; width:240px; height:32px; z-index:1000;
+    display:var(--chrome-display); align-items:center; gap:8px; padding-left:13px;
+    -webkit-app-region:drag; }
+  .tl { width:12px; height:12px; border-radius:50%; cursor:pointer; -webkit-app-region:no-drag; }
+  .tl.close { background:#ff5f57; } .tl.min { background:#febc2e; } .tl.max { background:#28c840; }
+  /* persistent top drag strip — present in EVERY state (onboarding included),
+     always above every overlay, so the window is always draggable by its top
+     edge. Deliberately slim (7px, under the 7px/12px offsets where #toprow and
+     #canvasbar's own controls start) so it needs no layout reservation anywhere
+     — it just rides in the dead space that already existed above them. */
+  #dragbar { position:fixed; top:0; left:0; right:0; height:7px; z-index:1000;
+    display:var(--chrome-display); -webkit-app-region:drag; }
+

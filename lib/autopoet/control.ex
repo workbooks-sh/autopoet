@@ -309,7 +309,8 @@ defmodule Autopoet.Control do
     end)
   end
 
-  # is the agent powered? (cloud signed-in with an ACTIVE machine, or a local key)
+  # is the agent powered? — an ACTIVE machine subscription, an EXISTING nexus
+  # (already provisioned on the account), or a local key
   get "/power/status" do
     sub =
       case Autopoet.Cloud.get("/api/platform/billing/subscription") do
@@ -317,9 +318,22 @@ defmodule Autopoet.Control do
         _ -> nil
       end
 
-    powered = sub != nil or is_binary(Autopoet.Keys.openrouter())
-    conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(%{powered: powered, openrouter: is_binary(Autopoet.Keys.openrouter()), subscription: sub}))
+    nexuses =
+      case Autopoet.Cloud.get("/api/platform/nexuses") do
+        {:ok, %{"nexuses" => l}} when is_list(l) -> l
+        {:ok, l} when is_list(l) -> l
+        _ -> []
+      end
+
+    powered = sub != nil or nexuses != [] or is_binary(Autopoet.Keys.openrouter())
+
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(200, Jason.encode!(%{powered: powered, openrouter: is_binary(Autopoet.Keys.openrouter()), subscription: sub, nexuses: nexuses}))
   end
+
+  # the account's existing nexuses — the "use the one you already have" lane
+  get "/power/cloud/nexuses", do: cloud_proxy(conn, :get, "/api/platform/nexuses", nil)
 
   # ── inline Workbooks Cloud billing (proxied to the cloud via the signed-in PAT,
   # so the machine purchase happens IN the app, not by bouncing to the dashboard).
@@ -1135,6 +1149,28 @@ defmodule Autopoet.Control do
   end
 
   # vendored voice runtime pieces (onnx models, worklets, esm bundles)
+  # the split app: app.html is a thin shell; JS/CSS live in small files under
+  # static/js + static/css (the god-file is dead — keep files ≤~200 lines)
+  get "/static/js/:name" do
+    path = Path.join([:code.priv_dir(:autopoet), "static", "js", Path.basename(name)])
+
+    if File.exists?(path) and String.ends_with?(name, ".js") do
+      conn |> put_resp_content_type("application/javascript") |> send_resp(200, File.read!(path))
+    else
+      send_resp(conn, 404, "no such script\n")
+    end
+  end
+
+  get "/static/css/:name" do
+    path = Path.join([:code.priv_dir(:autopoet), "static", "css", Path.basename(name)])
+
+    if File.exists?(path) and String.ends_with?(name, ".css") do
+      conn |> put_resp_content_type("text/css") |> send_resp(200, File.read!(path))
+    else
+      send_resp(conn, 404, "no such stylesheet\n")
+    end
+  end
+
   get "/static/vendor/:name" do
     safe = Path.basename(name)
     path = Path.join([:code.priv_dir(:autopoet), "static", "vendor", safe])

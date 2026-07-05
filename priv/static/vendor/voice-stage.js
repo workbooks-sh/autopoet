@@ -1100,6 +1100,23 @@
   // Cached per turn: the streaming prewarmer fires clauses while the model is
   // still writing, and perform() then reuses the same in-flight promises.
     var genCache = new Map();
+  // narration → the clip texts perform() synthesizes (sentence/clause chunks,
+  // bracket-tag prefixes included — they're the cache key, stripped at synth)
+  function ttsTexts(narration) {
+    var stream = tokenize(narration), words = [], pres = [], pend = "";
+    stream.forEach(function (s2) {
+      if (s2.dir && PARA_TAG.test(s2.dir)) pend += "[" + s2.dir + "] ";
+      else if (s2.word) { pres[words.length] = pend; pend = ""; words.push(s2.word); }
+    });
+    var sText = [], sN = 0, counts = [], cur = "";
+    words.forEach(function (w, i) {
+      counts[sN] = (counts[sN] || 0) + 1;
+      cur += (cur ? " " : "") + (pres[i] || "") + w;
+      if (/[.!?]$/.test(w) || (/[,;:]$/.test(w) && counts[sN] >= (sN === 0 ? 3 : 5))) { sText[sN] = cur; cur = ""; sN++; }
+    });
+    if (cur) sText[sN] = cur;
+    return sText;
+  }
   function kokoroGen(text) {
     if (genCache.has(text)) return genCache.get(text);
     var p = kokoroGenRaw(text);
@@ -1725,7 +1742,7 @@
     var mode = opts.type || "voice";
     var voice = mode === "voice";
     vmode = mode;
-    tts = voice ? true : !!opts.tts;
+    tts = voice ? true : opts.tts !== false;
     TOKEN = opts.token || TOKEN;
     stageEl = opts.stage || document.getElementById("stage");
     callbarEl = opts.callbar || (voice ? document.getElementById("callbar") : null);
@@ -1746,7 +1763,7 @@
     }
     startBlink();
     startGaze();
-    if (voice) bootKokoro();
+    bootKokoro();   // both types: plan speaks by default (tts opt-out)
 
     if (adopt && appHooks) {
       // SEAMLESS RELEASE: the camera is settling on the head (the app's
@@ -1806,6 +1823,8 @@
       status: function (text) { if (mounted) capStatus(text); },
       setTTS: function (on) { tts = !!on; if (tts) bootKokoro(); return tts; },
       ttsOn: function () { return tts; },
+      ready: function () { return kokoro; },
+      warm: function (text) { if (kokoro && tts) ttsTexts(text).forEach(kokoroGen); },
       wave: function () { if (mounted) wave(); },
       nod: function () { if (mounted) nod(); },
       thumbsUp: function () { if (mounted) thumbsUp(); },

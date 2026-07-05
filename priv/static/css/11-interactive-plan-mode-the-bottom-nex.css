@@ -1,0 +1,71 @@
+  /* ── interactive plan mode: the bottom next/back widget over the vs stage ──
+     (the stage itself — cube, hands, D2 board, captions — is voice-stage.js) */
+  .pm-widget { position:fixed; left:50%; transform:translateX(-50%); bottom:14px; z-index:64;
+    width:min(580px,92%); background:#fff; border:1px solid #e2e6ec; border-radius:15px; padding:14px 16px 12px;
+    box-shadow:0 10px 34px rgba(20,30,50,.13); display:flex; flex-direction:column; gap:10px; }
+  .pm-q { font:13px/1.55 ui-monospace,monospace; color:#1c2230; min-height:38px; }
+  .pm-nav { display:flex; align-items:center; justify-content:space-between; }
+  .pm-btn { font:600 12px ui-monospace,monospace; padding:8px 16px; border-radius:10px; border:0;
+    background:#16161a; color:#fff; cursor:pointer; }
+  .pm-btn.ghost { background:#eef0f2; color:#1c2230; }
+  .pm-dots { display:flex; gap:5px; }
+  .pm-dots i { width:6px; height:6px; border-radius:50%; background:#dfe3e9; }
+  .pm-dots i.on { background:#16161a; }
+  .pm-tools { display:flex; align-items:center; gap:8px; }
+  .pm-ico { display:grid; place-items:center; width:32px; height:32px; border-radius:9px; border:1px solid #e2e6ec;
+    background:#fff; cursor:pointer; color:#1c2230; }
+  .pm-ico:hover { border-color:#b9c2cd; }
+  .pm-ico svg { width:15px; height:15px; }
+  /* the caption sits above the widget while plan mode is on */
+  body:has(.pm-widget) #vs-caption { bottom:132px; }
+  /* PLAN SCREEN — onboarding owns the viewport: no dashboard chrome, just the
+     whiteboard stage (sidebar, canvasbar, console, call chrome all yield) */
+  body.pm-screen #tree { display:none !important; }
+  body.pm-screen #modetoggle { display:none !important; }
+  body.pm-screen #stage { position:fixed; inset:0; z-index:55; background:var(--paper,#fff); }
+  body.pm-screen #stage > #canvasbar,
+  body.pm-screen #stage > #console,
+  body.pm-screen #stage > #callcaption,
+  body.pm-screen #stage > #callbar { display:none !important; }
+  /* onboarding steps (the cold-start flow after sign UP) */
+  #obsteps { display:none; flex-direction:column; align-items:flex-start; gap:16px; max-width:500px; padding:40px; text-align:left; }
+  .obstepgo { font:12.5px ui-monospace,monospace; padding:9px 18px; border-radius:10px;
+    border:1px solid var(--blue); background:var(--blue); color:var(--on-accent); cursor:pointer; -webkit-app-region:no-drag; }
+  .obstepgo:hover { background:var(--blue-deep); }
+  .obsface { width:72px; height:72px; border-radius:16px; border:1px solid rgba(0,0,0,.12);
+    background:var(--surface); overflow:hidden; }
+  .obinput { font:13px ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--ink-strong);
+    padding:9px 12px; border-radius:10px; border:1px solid var(--border); background:var(--surface);
+    outline:none; width:280px; -webkit-app-region:no-drag; }
+  .obinput:focus { border-color:var(--purple); box-shadow:0 0 0 3px rgba(142,124,195,.14); }
+  .obhow { display:flex; flex-direction:column; gap:10px; margin:2px 0 6px; }
+  .obhowrow { display:flex; gap:12px; font:12.5px/1.55 ui-monospace,monospace; color:var(--ink-2); }
+  .obhowk { flex:none; width:86px; text-align:right; color:var(--purple); font-weight:600; }
+  /* connect cards — square, one per provider; connected = quiet green ring + check */
+  /* cards flex-fill the row so the abilities card below lines up EXACTLY */
+  .obcards { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin:4px 0 2px; width:100%; }
+  .obabil { display:flex; flex-direction:column; gap:7px; width:100%; box-sizing:border-box;
+    padding:13px 15px; border:1px solid var(--line); border-radius:14px; background:var(--surface-2); }
+  .abrow { display:flex; align-items:center; gap:9px; font:11.5px ui-monospace,monospace; color:var(--ink-faint); }
+  .abrow.on { color:var(--ink-2); }
+  .abck { flex:none; width:15px; height:15px; color:var(--border); }
+  .abrow.on .abck { color:var(--green); }
+  .abck svg { width:15px; height:15px; }
+  .absrc { margin-left:auto; font-size:10px; color:var(--border); }
+  .obcard { position:relative; aspect-ratio:1; min-width:0;
+    display:flex; flex-direction:column;
+    align-items:flex-start; justify-content:flex-end; gap:6px; padding:14px;
+    border:1px solid var(--border); border-radius:14px; background:var(--surface); cursor:pointer;
+    -webkit-app-region:no-drag; transition:border-color .16s ease, box-shadow .16s ease; }
+  /* every card: a fixed logo slot pinned top-left, logos normalized to one size */
+  .oblogo { height:26px; margin-bottom:auto; display:flex; align-items:center; }
+  .oblogo svg, .oblogo img { height:22px !important; width:auto !important; max-width:30px; object-fit:contain; display:block; }
+  .obcard:hover { border-color:var(--border); box-shadow:0 1px 4px rgba(25,35,55,.1); }
+  .obcard.on { border-color:var(--green); box-shadow:0 0 0 3px rgba(106,168,79,.12); }
+  .obcard.pending { border-color:var(--purple); box-shadow:0 0 0 3px rgba(142,124,195,.14); }
+  .obcard.pending .obcardname::after { content:" …"; color:var(--purple); }
+  .obcardname { font:600 13px ui-monospace,monospace; color:var(--ink-strong); }
+  .obcardline { font:10.5px/1.45 ui-monospace,monospace; color:var(--ink-dim); }
+  .obck { position:absolute; top:10px; right:10px; display:none; color:var(--green); }
+  .obck svg { width:16px; height:16px; }
+  .obcard.on .obck { display:block; }

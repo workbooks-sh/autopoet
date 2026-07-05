@@ -1,0 +1,50 @@
+  /* ── prose / sketch editor (blue in the mock) ───────────────────────── */
+  #editor { grid-row:1; grid-column:2; border-right:1px solid var(--line);
+    display:none; flex-direction:column; background:var(--surface); min-width:0; position:relative;
+    opacity:0; transform:translateX(-8px);
+    transition:opacity .28s ease .1s, transform .28s cubic-bezier(.22,.9,.24,1) .1s; }
+  #app.editing #editor { opacity:1; transform:none; }
+  #app.editing #editor { display:flex; }
+  #editor .hd { display:flex; align-items:center; gap:9px; padding:9px 14px;
+    color:var(--ink-2); font-size:12px; border-bottom:1px solid var(--line); background:var(--paper); }
+  #editor .hd .name { cursor:text; }
+  #editor .hd .name { flex:1; overflow:hidden; text-overflow:ellipsis; }
+  #editor .hd .dot { width:8px; height:8px; border-radius:50%; background:var(--border); }
+  #editor .hd .dot.dirty { background:var(--amber); }
+  #editor .hd .dot.saved { background:var(--green); }
+  #editor .hd button { font:inherit; border:none; background:none; cursor:pointer; color:var(--ink-faint);
+    display:flex; padding:3px; border-radius:6px; transition:background .15s ease, color .15s ease; }
+  #editor .hd button:hover { background:var(--surface-2); color:var(--ink-2); }
+  #editor .hd svg.lucide { width:14px; height:14px; }
+  #prose { flex:1; border:none; outline:none; resize:none; padding:18px 20px;
+    font:14px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:var(--ink);
+    background:var(--surface); }
+  /* ── the sketch surface: MS-Paint bones, our theme ─────────────────────── */
+  #skwrap { flex:1; display:none; min-height:0; }
+  #app.sketching #skwrap { display:flex; }
+  #app.sketching #prose { display:none; }
+  #skpal { width:46px; flex:none; border-right:1px solid var(--line); background:var(--panel);
+    padding:10px 8px; display:flex; flex-direction:column; gap:12px; overflow:auto; }
+  #skpal .tools { display:grid; grid-template-columns:1fr; gap:5px; }
+  #skpal .tools button { aspect-ratio:1; display:flex; align-items:center; justify-content:center;
+    border:1px solid var(--border); border-radius:6px; background:var(--surface-2); cursor:pointer; color:var(--ink-muted);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.9), 0 1px 2px rgba(20,30,50,.06); }
+  #skpal .tools button:hover { color:var(--ink); }
+  #skpal .tools button.sel { background:var(--sel-bg); color:var(--blue); border-color:var(--border);
+    box-shadow:inset 0 1px 3px rgba(30,50,90,.18); }   /* sunken = selected, Paint-style */
+  #skpal svg.lucide { width:15px; height:15px; }
+  #skpal .sizes { display:flex; flex-direction:column; gap:4px; }
+  #skpal .sizes button { display:flex; align-items:center; justify-content:center; height:20px;
+    border:1px solid var(--border); border-radius:5px; background:var(--surface-2); cursor:pointer; }
+  #skpal .sizes button span { display:block; width:60%; border-radius:99px; background:var(--ink-muted); }
+  #skpal .sizes button.sel { background:var(--sel-bg); border-color:var(--border); }
+  #skpal .sizes button.sel span { background:var(--blue); }
+  #skpal .swatches { display:grid; grid-template-columns:1fr; gap:5px; }
+  #skpal .swatches button { aspect-ratio:1; border-radius:6px; cursor:pointer;
+    border:1px solid rgba(0,0,0,.15); }
+  #skpal .swatches button.sel { outline:2px solid var(--blue); outline-offset:1px; }
+  #skundo { grid-column:1 / -1; aspect-ratio:auto !important; height:26px; }
+  #sketch { flex:1; touch-action:none; cursor:crosshair; background:var(--surface); min-width:0; }
+  #sktext { position:absolute; z-index:9; display:none; font:16px -apple-system,sans-serif;
+    border:1px solid var(--blue-soft); border-radius:6px; padding:2px 8px; outline:none; background:var(--surface); }
+

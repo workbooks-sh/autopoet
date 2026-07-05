@@ -1,0 +1,63 @@
+  /* ── onboarding / sign-in (a pre-app screen; plain white, centered) ── */
+  #onboard { position:fixed; inset:0; z-index:60; background:var(--surface); display:flex;
+    align-items:center; justify-content:center; -webkit-app-region:drag; }
+  #onboard.hidden { display:none; }
+  #onboard button, #onboard .signbtn { -webkit-app-region:no-drag; }
+  .obinner { display:flex; flex-direction:column; gap:34px; max-width:560px; padding:40px; }
+  .obrow { display:flex; align-items:stretch; gap:28px; }
+  /* the face rides SMALL, above the wordmark (the big side-by-side avatar ghosted
+     in the desktop WebKit shell; this compact layout renders clean) */
+  .obdef { text-align:left; align-self:center; }
+  /* one voice: the app's monospace — the serif experiment is retired */
+  #onboard { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .obword { font:600 32px ui-monospace,SFMono-Regular,Menlo,monospace;
+    color:var(--ink-strong); letter-spacing:-.02em; line-height:1; }
+  .obph { font:12px ui-monospace,monospace; color:var(--ink-faint); margin-top:7px; }
+  .obph .obpo { color:var(--purple); }
+  .obtext { font:13px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace;
+    color:var(--ink-2); margin:14px 0 0; }
+  .obcode { font:12px ui-monospace,monospace; color:var(--ink-fainter); margin-top:13px; }
+  /* OAuth entry — GitHub / Google (stubbed providers behind Autopoet.Auth).
+     Buttons hug the LEFT edge, aligned with the definition text above. */
+  .obsignrow { justify-content:flex-start; }
+  .oblogins { display:flex; flex-direction:column; gap:10px; align-items:flex-start; }
+  .oauthbtn { display:flex; align-items:center; justify-content:center; gap:10px; width:280px;
+    font:600 12.5px ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--ink-strong);
+    padding:10px 20px; border-radius:12px; border:1px solid var(--border); background:var(--surface);
+    cursor:pointer; -webkit-app-region:no-drag;
+    transition:border-color .16s ease, box-shadow .16s ease; }
+  .oauthbtn:hover { border-color:var(--border); box-shadow:0 1px 4px rgba(25,35,55,.1); }
+  .oauthbtn svg { flex:none; }
+  /* the MAIN door — Sign in with Workbooks (primary, dark) */
+  .oauthbtn-primary { background:var(--btn-solid); color:var(--on-accent); border-color:var(--btn-solid); }
+  .oauthbtn-primary:hover { background:var(--btn-solid-hover); border-color:var(--btn-solid-hover); box-shadow:0 2px 8px rgba(0,0,0,.18); }
+  .oauthbtn-primary.waiting { opacity:.6; cursor:progress; }
+  .obsignhint { margin-top:10px; font:11px ui-monospace,monospace; color:var(--ink-dim); text-align:center; }
+  /* POWER GATE — cloud vs local AI, the required onboarding choice */
+  .powergrid { display:grid; grid-template-columns:1fr 1fr; gap:14px; width:100%; margin:4px 0 2px; }
+  .powercard { display:flex; flex-direction:column; gap:8px; padding:18px; border:1px solid #e2e6ec;
+    border-radius:14px; background:#fff; position:relative; min-height:190px; }
+  .powercard.reco { border-color:#16161a; box-shadow:0 2px 10px rgba(0,0,0,.06); }
+  .pc-badge { position:absolute; top:-9px; left:16px; background:#16161a; color:#fff; font:600 9.5px ui-monospace,monospace;
+    letter-spacing:.04em; text-transform:uppercase; padding:3px 8px; border-radius:6px; }
+  .pc-name { font:600 14px ui-monospace,monospace; color:#1c2230; }
+  .pc-price { font:15px ui-monospace,monospace; color:#16161a; }
+  .pc-price b { font-size:26px; } .pc-price span { color:#8a8f88; font-size:12.5px; }
+  .pc-line { font:12px/1.5 ui-monospace,monospace; color:#6a6f68; flex:1; }
+  .obstepgo.alt { background:#eef0f2; color:#1c2230; }
+  .obstepgo.alt:hover { background:#e2e6ec; }
+  .pc-foot { display:flex; align-items:center; justify-content:space-between; gap:14px; width:100%; margin-top:6px; }
+  /* inline cloud billing panel */
+  .billpanel { display:flex; flex-direction:column; gap:2px; width:100%; border:1px solid #e2e6ec; border-radius:12px; overflow:hidden; }
+  .bp-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:13px 16px; border-bottom:1px solid #eef0f2; }
+  .bp-row:last-child { border-bottom:0; }
+  .bp-row label { font:12.5px ui-monospace,monospace; color:#1c2230; }
+  .bp-check { display:flex; align-items:center; gap:8px; cursor:pointer; }
+  .bp-inline { font:12.5px ui-monospace,monospace; color:#6a6f68; display:flex; align-items:center; gap:5px; }
+  .bp-num { width:64px; padding:5px 7px; text-align:right; }
+  #bp-tier { width:auto; min-width:200px; padding:6px 10px; }
+  #bp-modal { position:fixed; inset:0; z-index:90; background:rgba(15,16,20,.55); display:grid; place-items:center; }
+  .bpm-card { width:min(460px,94vw); height:min(660px,92vh); background:#fff; border-radius:14px; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,.35); }
+  .bpm-head { display:flex; align-items:center; justify-content:space-between; padding:11px 14px; border-bottom:1px solid #eef0f2; font:600 12px ui-monospace,monospace; }
+  .bpm-head a, .bpm-head button { font:11px ui-monospace,monospace; color:#245cc0; background:none; border:0; cursor:pointer; }
+  #bpm-frame { flex:1; border:0; width:100%; }

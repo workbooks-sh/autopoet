@@ -1,0 +1,119 @@
+  /* ── the save prompt: command-only now (live is gone) — the revert/✓ pair
+     pops into the top strip while anything is dirty, vanishes when clean ─── */
+  #modetoggle { position:relative; display:grid; align-items:center; -webkit-app-region:no-drag; }
+  #modetoggle > * { grid-area:1 / 1; transition:opacity .22s ease, transform .25s cubic-bezier(.22,.9,.24,1); }
+  #modetoggle:not(.saving) .saveseg { opacity:0; transform:scale(.92) translateY(3px); pointer-events:none; }
+  #modetoggle .saveseg { display:flex; gap:4px; justify-self:end; }
+  #modetoggle .saveseg button { border:1px solid var(--line);
+    background:var(--surface); color:var(--ink-dim); border-radius:9px; padding:7px 10px; cursor:pointer;
+    display:flex; align-items:center; }
+  #modetoggle .saveseg svg.lucide { width:14px; height:14px; }
+  #modetoggle .saveseg button:hover { color:var(--ink); }
+  #modetoggle .saveseg .save { background:var(--blue); border-color:var(--blue); color:var(--on-accent); }
+  #modetoggle .saveseg .save:hover { background:var(--blue-deep); color:var(--on-accent); }
+  #modetoggle .saveseg kbd { background:rgba(255,255,255,.22); border-radius:4px; padding:0 4px; font:inherit; }
+
+  /* ── comm switcher: chat/voice lives at the sidebar's foot, above the account
+     row — the frameless window chrome was overlapping (and eating clicks on)
+     its old top-strip spot ── */
+  #commtop { display:flex; gap:4px; background:var(--surface); border:1px solid var(--line);
+    border-radius:10px; padding:3px; margin:0 10px 6px; }
+  #commtop button { flex:1; }
+  #commtop button { display:flex; align-items:center; justify-content:center; gap:5px;
+    font:11px ui-monospace,monospace; border:none; background:none; color:var(--ink-dim);
+    border-radius:8px; padding:5px 9px; cursor:pointer;
+    transition:background .18s ease, color .18s ease; }
+  #commtop button:hover { color:var(--ink); background:var(--fill); }
+  /* selected keeps its color on hover — just a shade lighter (never white-on-white) */
+  #comm-chat.sel, #comm-chat.sel:hover { color:var(--on-accent); }
+  #comm-voice.sel, #comm-voice.sel:hover { color:var(--on-accent); }
+  #comm-chat.sel { background:var(--purple); }          /* chat = the graph's guide purple */
+  #comm-chat.sel:hover { background:var(--purple); }
+  #comm-voice.sel { background:var(--green); }         /* voice = link green */
+  #comm-voice.sel:hover { background:var(--green); }
+  #commtop svg.lucide { width:13px; height:13px; }
+
+  /* ── chat panel: shares the column-2 slot with files (one or the other) ── */
+  #app.chatting { grid-template-columns:var(--tree-w,280px) var(--ed-w,480px) 1fr; }
+  #chatpanel { grid-row:1; grid-column:2; border-right:1px solid var(--line);
+    display:none; flex-direction:column; background:var(--surface); min-width:0; position:relative;
+    opacity:0; transform:translateX(-8px);
+    transition:opacity .28s ease .1s, transform .28s cubic-bezier(.22,.9,.24,1) .1s; }
+  #app.chatting #chatpanel { display:flex; opacity:1; transform:none; }
+  #app.chatting #editor { display:none !important; }
+  #chatpanel .hd { display:flex; align-items:center; gap:9px; padding:9px 14px;
+    color:var(--ink-2); font-size:12px; border-bottom:1px solid var(--line); background:var(--paper); }
+  #chatpanel .hd .ttl { flex:1; font-weight:600; }
+  #chatpanel .hd button { border:none; background:none; cursor:pointer; color:var(--ink-faint);
+    display:flex; padding:3px; border-radius:6px; transition:background .15s ease, color .15s ease; }
+  #chatpanel .hd button:hover { background:var(--surface-2); color:var(--ink-2); }
+  #chatpanel .hd svg.lucide { width:14px; height:14px; }
+  #chatlog { flex:1; overflow:auto; padding:14px; display:flex; flex-direction:column; gap:10px; }
+  #chatlog .m { max-width:86%; padding:8px 12px; border-radius:14px; font-size:13px;
+    line-height:1.55; white-space:pre-wrap; word-break:break-word;
+    font-family:-apple-system,BlinkMacSystemFont,sans-serif; animation:lnin .22s ease; }
+  #chatlog .m.user { align-self:flex-end; background:var(--ink); color:var(--fill); border-bottom-right-radius:5px; }
+  #chatlog .m.ap { align-self:flex-start; background:var(--fill); color:var(--ink-2); border-bottom-left-radius:5px; }
+  #chatlog .m.ap .ref { color:var(--blue); }
+  #chatlog .m .blk { display:block; background:var(--surface); border:1px solid var(--line); border-radius:8px;
+    padding:8px 10px; margin:6px 0; font:11px ui-monospace,monospace; overflow-x:auto; }
+  #chatlog .typing { align-self:flex-start; color:var(--ink-faint); font-size:11px; padding:2px 6px; }
+  #chatsessions { flex:1; overflow:auto; padding:10px; display:none; }
+  #chatpanel.sessions #chatlog, #chatpanel.sessions #composer { display:none; }
+  #chatpanel.sessions #chatsessions { display:block; }
+  #chatsessions .sess { padding:9px 12px; border:1px solid var(--line); border-radius:9px;
+    margin-bottom:7px; cursor:pointer; font-size:12px; }
+  #chatsessions .sess:hover { background:var(--panel); }
+  #chatsessions .sess .id { color:var(--ink-faint); font-size:10px; }
+  /* the composer (ported from the cloud studio Composer): card = textarea over
+     an inline toolbar; floating @ / pickers; emoji popover; activating send */
+  #composer { display:block; padding:10px 12px; border-top:1px solid var(--line);
+    background:var(--paper); position:relative; }
+  #composer .card { border:1px solid var(--line); border-radius:16px; background:var(--surface);
+    transition:border-color .15s ease; }
+  #composer .card:focus-within { border-color:var(--blue-soft); }
+  #composer textarea { width:100%; box-sizing:border-box; resize:none; border:none;
+    outline:none; background:none; padding:11px 13px 4px;
+    font:13.5px/1.55 -apple-system,BlinkMacSystemFont,sans-serif; max-height:190px; }
+  #composer .bar { display:flex; align-items:center; gap:2px; padding:0 8px 8px; }
+  #composer .bar .tb { width:30px; height:30px; display:grid; place-items:center;
+    border:none; background:none; border-radius:8px; color:var(--ink-faint); cursor:pointer;
+    transition:background .15s ease, color .15s ease; }
+  #composer .bar .tb:hover { color:var(--ink); background:var(--fill); }
+  #composer .bar .hint { margin-left:auto; font:10px ui-monospace,monospace;
+    color:var(--ink-fainter); margin-right:6px; }
+  #composer .bar .sendbt { width:34px; height:30px; border:none; border-radius:8px;
+    display:grid; place-items:center; cursor:pointer; background:var(--line); color:var(--ink-faint);
+    transition:background .18s ease, color .18s ease; }
+  #composer .bar .sendbt.ready { background:var(--ink); color:var(--on-accent); }
+  #composer svg.lucide { width:15px; height:15px; }
+  #picker { position:absolute; bottom:100%; left:12px; right:12px; margin-bottom:8px;
+    background:var(--surface); border:1px solid var(--line); border-radius:14px; overflow:hidden;
+    box-shadow:0 16px 40px rgba(25,35,55,.18); z-index:20; display:none; }
+  #picker.on { display:block; animation:lnin .18s ease; }
+  #picker .ph { display:flex; gap:6px; align-items:center; padding:6px 12px;
+    font:9.5px ui-monospace,monospace; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--ink-faint); border-bottom:1px solid var(--line); }
+  #picker .ph svg.lucide { width:11px; height:11px; }
+  #picker .rows { max-height:240px; overflow:auto; padding:4px 0; }
+  #picker .prow { display:flex; align-items:center; gap:10px; width:100%; text-align:left;
+    padding:7px 12px; border:none; background:none; cursor:pointer; font-size:13px; color:var(--ink-2);
+    font-family:-apple-system,BlinkMacSystemFont,sans-serif; }
+  #picker .prow.act { background:var(--fill); }
+  #picker .prow .pic { width:24px; height:24px; border-radius:7px; display:grid;
+    place-items:center; flex:none; }
+  #picker .prow .pic svg.lucide { width:13px; height:13px; }
+  #picker .prow .sig { color:var(--ink-faint); }
+  #picker .prow .phint { color:var(--ink-faint); font:11px ui-monospace,monospace; flex:1;
+    text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #picker .prow .tag { font:9px ui-monospace,monospace; text-transform:uppercase;
+    padding:2px 6px; border-radius:5px; flex:none; }
+  #emojipop { position:absolute; bottom:100%; left:12px; margin-bottom:8px; display:none;
+    grid-template-columns:repeat(8,1fr); gap:2px; background:var(--surface);
+    border:1px solid var(--line); border-radius:12px; padding:6px; width:236px;
+    box-shadow:0 12px 32px var(--border-mid); z-index:21; }
+  #emojipop.on { display:grid; animation:lnin .18s ease; }
+  #emojipop button { font-size:16px; height:28px; border:none; background:none;
+    border-radius:6px; cursor:pointer; transition:transform .12s ease; }
+  #emojipop button:hover { background:var(--fill); transform:scale(1.12); }
+

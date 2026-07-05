@@ -1,0 +1,92 @@
+  /* ── vault tree (green in the mock) ─────────────────────────────────── */
+  #tree { grid-row:1; grid-column:1; border-right:1px solid var(--line);
+    background:var(--panel); overflow:hidden; padding:52px 0 0; position:relative;
+    display:flex; flex-direction:column; }
+  #tree > #treeroot { flex:1 1 auto; overflow:auto; min-height:0; }
+  /* the floating top strip: [save prompt when dirty] [chat|voice], packed to the
+     RIGHT edge; left:66px reserves the macOS stoplight zone so nothing ever
+     overlaps the traffic lights in frameless mode */
+  #toprow { position:absolute; top:7px; left:66px; right:8px; z-index:11;
+    display:flex; align-items:center; justify-content:flex-end; gap:7px;
+    -webkit-app-region:no-drag; }
+  /* while the save prompt is up, the comm buttons drop their labels so the
+     strip always fits the narrowest sidebar */
+  #modetoggle.saving ~ #commtop .lbl { display:none; }
+  /* undo/redo/merge — they live in the HISTORY console header now (the timeline
+     is the thing they navigate) */
+  #histbtns { display:flex; gap:3px; margin-left:6px; }
+  #histbtns button { border:1px solid var(--line); background:var(--surface); color:var(--ink-dim);
+    border-radius:7px; padding:3px 7px; cursor:pointer; display:flex; align-items:center;
+    gap:5px; font:10px ui-monospace,monospace;
+    transition:background .15s ease, color .15s ease; -webkit-app-region:no-drag; }
+  #histbtns button:hover:not(:disabled) { background:var(--fill-hover); color:var(--ink); }
+  #histbtns button:disabled { opacity:.35; cursor:default; }
+  #histbtns svg.lucide { width:13px; height:13px; }
+  /* the combine-branches prompt only exists while the timeline is actually split */
+  #domerge { color:var(--green-deep); border-color:var(--ok-bg); }
+  #domerge:hover { background:var(--ok-bg) !important; color:var(--green-deep) !important; }
+  /* the vault action toolbar — one row of VS Code Material icons, each carrying a
+     + badge so every button clearly reads as "add" (file / sketch / folder / workspace) */
+  #vaultbar { flex:none; display:flex; justify-content:center; gap:6px; padding:9px 10px;
+    margin-bottom:4px; border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
+  #vaultbar .add { position:relative; display:flex; align-items:center; justify-content:center;
+    width:32px; height:32px; border:1px solid var(--line); background:var(--surface); border-radius:9px;
+    cursor:pointer; transition:background .15s ease, border-color .15s ease; }
+  #vaultbar .add:hover { background:var(--fill-hover); border-color:var(--border); }
+  #vaultbar .add .mic { width:18px; height:18px; }
+  #vaultbar .add .wshash { font:800 16px ui-monospace,monospace; color:var(--purple); line-height:1; }
+  #vaultbar .add .pl { position:absolute; right:-4px; bottom:-4px; width:14px; height:14px;
+    background:var(--fill); color:var(--ink-faint); border:1.5px solid var(--panel); border-radius:50%;
+    font:800 10px ui-monospace,monospace; line-height:1;
+    display:flex; align-items:center; justify-content:center; }
+  #vaultbar .add:hover .pl { background:var(--line); color:var(--ink-faint); }
+  #tree .hd { display:flex; align-items:center; gap:6px; padding:2px 10px 8px;
+    color:var(--ink-faint); font-size:11px; }
+  #tree .hd b { flex:1; font-weight:600; letter-spacing:.06em; }
+  #tree .hd button { border:none; background:none; cursor:pointer; padding:3px;
+    border-radius:6px; display:flex; align-items:center; color:var(--ink-dim);
+    transition:background .15s ease, color .15s ease; }
+  #tree .hd button:hover { background:var(--line); color:var(--ink-2); }
+  #tree .hd button svg { width:15px; height:15px; }
+  #tree svg.lucide { width:14px; height:14px; flex:none; }
+  #tree .tw { display:flex; margin-left:-4px; transition:transform .18s ease; color:var(--ink-faint); }
+  #tree .tw svg.lucide { width:12px; height:12px; }
+  #tree .row.openf .tw { transform:rotate(90deg); }
+  #tree ul.hide { display:none; }
+  .ic-folder { color:var(--amber); } .ic-note { color:var(--blue-soft); } .ic-sketch { color:var(--purple); }
+  /* a workspace = a #-prefixed grouping (like a folder, but a named group of notes) */
+  #tree .row.wsrow { margin-top:5px; font-weight:600; color:var(--ink-muted); letter-spacing:.02em; }
+  /* the # is GRAY (folder-tone) everywhere so a composed badge has consistent contrast */
+  .hashtag { color:var(--ink-faint); font-weight:800; flex:none; display:inline-flex;
+    align-items:center; justify-content:center; font-family:ui-monospace,monospace; line-height:1; }
+  #tree .row.wsrow .hashtag { width:13px; }
+  /* the composed badge overhangs its box to the right — reserve gap so it doesn't
+     crowd the label (the # badge sits further right, so it needs a touch more) */
+  #tree .composed { margin-right:5px; }
+  #tree .wsrow .composed { margin-right:9px; }
+  /* composed icon: base (folder shape / gray #) + a picked icon badged bottom-right.
+     the badge gets a drop-shadow HALO that follows the SVG's own alpha shape (a
+     "sticker" outline) — not a boxy square — so it cuts cleanly out of the base. */
+  .composed { position:relative; display:inline-flex; align-items:center; flex:none; }
+  .composed .cbadge { position:absolute; right:-3px; bottom:-3px; display:inline-flex;
+    align-items:center; justify-content:center; }
+  /* the # is narrow — push its badge further right so the # shape stays visible */
+  .composed .cbadge-ws { right:-7px; }
+  /* OUTER: runs the grow/smooth filter on the masked child (filter must wrap the mask) */
+  .composed .cbadge .cmask { position:absolute; inset:0; filter:url(#goo); }
+  /* INNER: the icon's alpha masks a solid fill of the surrounding colour = silhouette */
+  .composed .cbadge .csil { position:absolute; inset:0; background:var(--panel);
+    -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
+    -webkit-mask-position:center; mask-position:center;
+    -webkit-mask-size:contain; mask-size:contain; }
+  .composed .cbadge img { position:relative; display:block; }
+  /* IDE-style dirty marker on unsaved files */
+  #tree .row.isdirty::after { content:"●"; color:var(--amber); font-size:9px; margin-left:auto; }
+  #tree ul { list-style:none; margin:0; padding-left:14px; }
+  #tree > ul { padding-left:6px; }
+  #tree li > .row { display:flex; align-items:center; gap:6px; padding:2px 6px;
+    border-radius:5px; cursor:pointer; white-space:nowrap; }
+  #tree li > .row:hover { background:#ececе6; background:var(--fill); }
+  #tree li > .row.open { background:var(--sel-bg); }
+  #tree img.mic { width:16px; height:16px; flex:none; }   /* VS Code material icons */
+

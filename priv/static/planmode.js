@@ -62,7 +62,7 @@ build.sched -> build.weave: wakes
       <div class="pm-q" id="pm-q"></div>
       <div class="pm-nav">
         <span class="pm-tools">
-          <button id="pm-sound" class="pm-ico" title="voice on/off"><i data-lucide="volume-x"></i></button>
+          <button id="pm-sound" class="pm-ico" title="voice on/off"><i data-lucide="volume-2"></i></button>
           <button id="pm-recenter" class="pm-ico" title="recenter the board"><i data-lucide="crosshair"></i></button>
           <button id="pm-back" class="pm-btn ghost">← back</button>
         </span>
@@ -86,8 +86,17 @@ build.sched -> build.weave: wakes
     opts.refreshIcons && opts.refreshIcons();
 
     step = -1; shown = false;
-    // let the cube's glide-to-center settle before the first line
-    setTimeout(() => go(0), (opts.stage && opts.stage.settleMs || 600) + 300);
+    // pre-render: give Kokoro a beat to boot (≤2.5s), then warm every seed
+    // line into the clip cache so each step SPEAKS instantly; if the engine
+    // isn't up yet, perform() plays the same line as silent visemes
+    const settle = (opts.stage && opts.stage.settleMs || 600) + 300;
+    const t0 = performance.now();
+    (function waitReady() {
+      if (board.ready() || performance.now() - t0 > 2500) {
+        SEED.forEach(st => board.warm(st.say));
+        setTimeout(() => go(0), Math.max(0, settle - (performance.now() - t0)));
+      } else setTimeout(waitReady, 150);
+    })();
     return true;
   }
 
@@ -118,7 +127,11 @@ build.sched -> build.weave: wakes
 
   function renderWidget() {
     const s = SEED[step];
-    widget.querySelector("#pm-q").textContent = s.say;
+    // narration lives in the CAPTION (the performer's own voice line); the
+    // question box only appears when the brain asks real questions (phase 2)
+    const q = widget.querySelector("#pm-q");
+    q.textContent = s.question || "";
+    q.style.display = s.question ? "block" : "none";
     widget.querySelector("#pm-dots").innerHTML =
       SEED.map((_, i) => `<i class="${i === step ? "on" : ""}"></i>`).join("");
     widget.querySelector("#pm-back").style.visibility = step === 0 ? "hidden" : "visible";

@@ -1,0 +1,53 @@
+  /* ── voice: a Meet-style call bar floating over the canvas ─────────────── */
+  #callbar { position:absolute; bottom:18px; left:50%; transform:translateX(-50%) translateY(16px);
+    z-index:9; display:flex; align-items:center; gap:10px; padding:8px 14px;
+    background:#1d2126; border-radius:999px; box-shadow:0 14px 40px rgba(0,0,0,.35);
+    opacity:0; pointer-events:none;
+    transition:opacity .25s ease, transform .28s cubic-bezier(.22,.9,.24,1); }
+  #callbar.on { opacity:1; transform:translateX(-50%) translateY(0); pointer-events:auto; }
+  #callbar .ind { display:flex; align-items:center; gap:7px; color:var(--green); font:10px ui-monospace,monospace;
+    padding-right:4px; }
+  #callbar .ind .dotp { width:7px; height:7px; border-radius:50%; background:var(--green);
+    animation:pulse 1.6s ease infinite; }
+  @keyframes pulse { 0%,100% { box-shadow:0 0 0 0 rgba(106,168,79,.5); } 50% { box-shadow:0 0 0 5px rgba(106,168,79,0); } }
+  #callbar button { border:none; border-radius:50%; width:36px; height:36px; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; color:var(--line); background:var(--ink-2);
+    transition:background .15s ease, transform .12s ease; }
+  #callbar button:hover { background:var(--ink-2); }
+  #callbar button:active { transform:scale(.94); }
+  #callbar button.off { background:var(--ink-2); color:var(--ink-dim); }
+  #callbar button.end { background:var(--red); }
+  #callbar button.end:hover { background:var(--red); }
+  #callbar svg.lucide { width:15px; height:15px; }
+  #callbar input { background:var(--ink-2); border:none; border-radius:999px; color:var(--line);
+    font:12px -apple-system,BlinkMacSystemFont,sans-serif; padding:8px 14px; width:220px;
+    outline:none; }
+  #callbar input::placeholder { color:var(--ink-dim); }
+  #callbar input:focus { background:var(--ink-2); }
+  /* what the autopoet is SAYING, captioned above the call bar while it speaks */
+  #callcaption { position:absolute; bottom:76px; left:50%; transform:translateX(-50%) translateY(6px);
+    max-width:56%; background:var(--surface); border:1px solid var(--line); border-radius:13px;
+    padding:9px 15px; font:12.5px/1.5 -apple-system,BlinkMacSystemFont,sans-serif;
+    color:var(--ink-2); box-shadow:0 10px 30px rgba(25,35,55,.14); z-index:9;
+    opacity:0; pointer-events:none; transition:opacity .2s ease, transform .22s ease; }
+  #callcaption.on { opacity:1; transform:translateX(-50%) translateY(0); }
+
+  /* ── the self node's BODY: the cube avatar (extruded squircle, toon outline).
+     One HTML element riding the D3 node through tick+zoom (syncSelfCube);
+     during a voice call VoiceStage adopts this same element and lets it
+     float free on the whiteboard. ── */
+  #self-cube { position:absolute; left:0; top:0; width:132px; height:132px; z-index:5;
+    pointer-events:none;
+    filter:drop-shadow(0 16px 26px var(--face-drop)); }
+  /* the BODY renders in WebGL (avatar3d.mjs — real mesh, inverted-hull toon
+     outline). .sc-cube is now just the rotation-variable carrier the drivers
+     write to; the face stays a DOM SVG overlay glued on by the render loop. */
+  #self-cube .sc-cube { position:absolute; inset:0; pointer-events:auto; cursor:pointer; }
+  #self-cube .sc-face { position:absolute; inset:0; display:grid; place-items:center; pointer-events:none; }
+  #self-cube .sc-face svg { display:block; width:100%; height:100%; }
+  /* reusable cube host (onboarding/login reuses the SAME 3D avatar, scaled) */
+  .cube-host .sc-cube { position:absolute; inset:0; pointer-events:auto; cursor:pointer; }
+  .cube-host .sc-face { position:absolute; inset:0; display:grid; place-items:center; pointer-events:none; }
+  .cube-host .sc-face svg { display:block; width:100%; height:100%; }
+  /* the face's eyes+mouth line-art = the character's features (theme-independent) */
+  .sc-face svg path { fill: var(--face-features); }
