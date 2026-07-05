@@ -42,12 +42,53 @@ defmodule Autopoet.VoicePersonas do
     "groggy" => "Groggy mumbling male voice, thick slurred delivery, closing-time confessions."
   }
 
-  @doc "The description for a persona name, or nil."
-  def description(name) when is_binary(name), do: @personas[String.downcase(name)]
+  # user-created personas live in data/voices/personas ("name description" per
+  # line) — the roster's + new voice modal writes here. Customs shadow compiled.
+  defp customs_path, do: Path.join([Autopoet.Discovery.home(), "data", "voices", "personas"])
+
+  @doc "User-created personas as %{name => description}."
+  def customs do
+    case File.read(customs_path()) do
+      {:ok, body} ->
+        body
+        |> String.split("\n", trim: true)
+        |> Enum.reduce(%{}, fn line, acc ->
+          case String.split(line, " ", parts: 2) do
+            [name, desc] when desc != "" -> Map.put(acc, name, desc)
+            _ -> acc
+          end
+        end)
+
+      _ ->
+        %{}
+    end
+  end
+
+  @doc "Create/overwrite a user persona. Name: 2-24 chars of [a-z0-9-]."
+  def add(name, desc) do
+    name = name |> to_string() |> String.downcase() |> String.trim()
+    desc = desc |> to_string() |> String.trim() |> String.slice(0, 220) |> String.replace("\n", " ")
+
+    if Regex.match?(~r/^[a-z0-9-]{2,24}$/, name) and desc != "" do
+      c = Map.put(customs(), name, desc)
+      File.mkdir_p!(Path.dirname(customs_path()))
+      File.write!(customs_path(), Enum.map_join(c, "\n", fn {k, d} -> "#{k} #{d}" end) <> "\n")
+      {:ok, name}
+    else
+      {:error, :bad_name_or_desc}
+    end
+  end
+
+  @doc "The description for a persona name (customs shadow compiled), or nil."
+  def description(name) when is_binary(name) do
+    n = String.downcase(name)
+    customs()[n] || @personas[n]
+  end
+
   def description(_), do: nil
 
-  @doc "All persona names (for pickers)."
-  def names, do: Map.keys(@personas) |> Enum.sort()
+  @doc "All persona names (compiled + custom)."
+  def names, do: (Map.keys(@personas) ++ Map.keys(customs())) |> Enum.uniq() |> Enum.sort()
 
   @doc "The default persona — the session voice when none is chosen."
   def default, do: "narrator"

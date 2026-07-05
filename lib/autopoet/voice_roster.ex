@@ -134,8 +134,24 @@ defmodule Autopoet.VoiceRoster do
       audio{width:100%;height:34px}
       .filters{margin-bottom:16px}
       .card.hid{display:none}
+      .newbtn{font:600 11.5px ui-monospace,monospace;padding:7px 14px;border-radius:9px;border:0;
+        background:#16161a;color:#fff;cursor:pointer;vertical-align:4px;margin-left:10px}
+      #nvback{position:fixed;inset:0;background:rgba(15,16,20,.5);display:none;place-items:center;z-index:9}
+      #nvback.on{display:grid}
+      .nvcard{width:min(480px,92vw);background:#fff;border-radius:16px;padding:22px 22px 18px;
+        box-shadow:0 20px 60px rgba(0,0,0,.3);display:flex;flex-direction:column;gap:12px}
+      .nvcard h3{margin:0;font-size:15px}
+      .nvcard label{font:600 10px ui-monospace,monospace;text-transform:uppercase;letter-spacing:.07em;color:#8a8f88}
+      .nvcard input,.nvcard textarea{font:13px ui-monospace,monospace;color:#16161a;border:1.4px solid #d6dbe2;
+        border-radius:10px;padding:9px 12px;width:100%;box-sizing:border-box}
+      .nvcard textarea{min-height:74px;resize:vertical}
+      .nvhint{font:11px ui-monospace,monospace;color:#8a8f88;margin:-6px 0 0}
+      .nvrow{display:flex;gap:10px;align-items:center;justify-content:flex-end}
+      .nvrow .status{flex:1;font:11.5px ui-monospace,monospace;color:#6a6f68}
+      .nvgo{font:600 12px ui-monospace,monospace;padding:8px 16px;border-radius:10px;border:0;background:#16161a;color:#fff;cursor:pointer}
+      .nvx{font:600 12px ui-monospace,monospace;padding:8px 14px;border-radius:10px;border:1px solid #d6dbe2;background:#fff;cursor:pointer}
     </style>
-    <h1>the voice roster</h1>
+    <h1>the voice roster <button id="newvoice" class="newbtn">+ new voice</button></h1>
     <p class="sub">verdicts persist server-side (data/voices/verdicts) — regenerate takes all you like, your picks survive. accepted: <b id="nacc"></b></p>
     <div class="filters">
       <span class="selwrap"><select class="fsel" id="filter">
@@ -146,6 +162,26 @@ defmodule Autopoet.VoiceRoster do
       </select></span>
     </div>
     #{Enum.join(cards)}
+    <div id="nvback">
+      <div class="nvcard">
+        <h3>design a new voice</h3>
+        <label>name</label>
+        <input id="nv-name" placeholder="e.g. professor" maxlength="24" spellcheck="false">
+        <label>voice prompt</label>
+        <textarea id="nv-desc" placeholder="A calm male voice in his forties, fast dry delivery, documentary narration." spellcheck="false"></textarea>
+        <p class="nvhint">≤10 words works best: voice + use case. fast/brisk, concrete adjectives — no pacing-slow words, no metaphors.</p>
+        <label>accent tag</label>
+        <span class="selwrap"><select id="nv-accent" class="fsel">
+          <option value="english">english</option><option value="british">british</option>
+          <option value="australian">australian</option><option value="other">other</option>
+        </select></span>
+        <div class="nvrow">
+          <span class="status" id="nv-status"></span>
+          <button class="nvx" id="nv-cancel">cancel</button>
+          <button class="nvgo" id="nv-go">generate →</button>
+        </div>
+      </div>
+    </div>
     <script>
       const TOKEN = "#{token}";
       const filterSel = document.getElementById("filter");
@@ -169,6 +205,34 @@ defmodule Autopoet.VoiceRoster do
         refresh();
       });
       refresh();
+
+      // ── + new voice: create the persona, then poll regen until the take lands ──
+      const nvback = document.getElementById("nvback");
+      document.getElementById("newvoice").onclick = () => nvback.classList.add("on");
+      document.getElementById("nv-cancel").onclick = () => nvback.classList.remove("on");
+      document.getElementById("nv-go").onclick = async () => {
+        const name = document.getElementById("nv-name").value.trim().toLowerCase();
+        const desc = document.getElementById("nv-desc").value.trim();
+        const accent = document.getElementById("nv-accent").value;
+        const st = m => document.getElementById("nv-status").textContent = m;
+        if (!/^[a-z0-9-]{2,24}$/.test(name)) { st("name: 2-24 chars, a-z 0-9 dash"); return; }
+        if (!desc) { st("write the voice prompt"); return; }
+        document.getElementById("nv-go").disabled = true;
+        st("saving…");
+        const c = await fetch(`/voices/create?name=${name}&accent=${accent}`, { method: "POST",
+          headers: { authorization: "Bearer " + TOKEN }, body: desc });
+        if (!c.ok) { st(await c.text()); document.getElementById("nv-go").disabled = false; return; }
+        st("generating — the design engine may take ~30s to warm…");
+        for (let i = 0; i < 40; i++) {
+          const r = await fetch(`/voices/regen?name=${name}`, { method: "POST",
+            headers: { authorization: "Bearer " + TOKEN } });
+          if (r.ok) { st("done"); location.reload(); return; }
+          if (r.status === 404 || r.status === 422) { st(await r.text()); document.getElementById("nv-go").disabled = false; return; }
+          await new Promise(res => setTimeout(res, 3000));   // 503 = engine warming
+        }
+        st("timed out — try again");
+        document.getElementById("nv-go").disabled = false;
+      };
     </script>
     """
   end

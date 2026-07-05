@@ -1115,6 +1115,59 @@ defmodule Autopoet.Control do
     end
   end
 
+  # create a user persona (the roster modal): body = the voice description
+  post "/voices/create" do
+    authed!(conn, fn conn ->
+      conn = fetch_query_params(conn)
+      {:ok, body, conn} = read_body(conn, length: 2_000)
+
+      case Autopoet.VoicePersonas.add(conn.query_params["name"] || "", body) do
+        {:ok, name} ->
+          a = conn.query_params["accent"]
+          if a && a != "", do: Autopoet.VoiceRoster.set_accent(name, a)
+          text(conn, name <> "\n")
+
+        {:error, _} ->
+          send_resp(conn, 422, "name must be 2-24 chars of a-z 0-9 dash; description required\n")
+      end
+    end)
+  end
+
+  # (re)generate a persona's roster take on the design engine. 503 while the
+  # model loads — the client retries until 200.
+  post "/voices/regen" do
+    authed!(conn, fn conn ->
+      conn = fetch_query_params(conn)
+      name = Path.basename(conn.query_params["name"] || "")
+      desc = Autopoet.VoicePersonas.description(name)
+
+      cond do
+        desc == nil ->
+          send_resp(conn, 404, "no such persona\n")
+
+        Autopoet.QwenTts.model() != :design or not Autopoet.QwenTts.ready?() ->
+          Autopoet.QwenTts.switch(:design)
+          send_resp(conn, 503, "design engine loading\n")
+
+        true ->
+          line =
+            "every morning i wake up as an autopoet — a small machine that turns plain words " <>
+              "into living systems. that is the strange joy of this work: you speak, i weave, " <>
+              "and something real appears."
+
+          case Autopoet.QwenTts.speak(line, nil, desc) do
+            {:ok, wav} ->
+              File.mkdir_p!(Autopoet.VoiceRoster.takes_dir())
+              File.write!(Path.join(Autopoet.VoiceRoster.takes_dir(), name <> ".wav"), wav)
+              text(conn, "ok\n")
+
+            {:error, reason} ->
+              send_resp(conn, 422, "generation failed: #{inspect(reason)}\n")
+          end
+      end
+    end)
+  end
+
   post "/voices/accent" do
     authed!(conn, fn conn ->
       conn = fetch_query_params(conn)
