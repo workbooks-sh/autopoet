@@ -61,30 +61,25 @@ defmodule Autopoet.Auth.OAuth do
     "cloudflare" => %{
       authorize: "https://dash.cloudflare.com/oauth2/auth",
       token: "https://dash.cloudflare.com/oauth2/token",
-      # dot-format (permission-group slug + .read/.edit) — confirmed via probing
-      # that user-details.read is accepted; the rest mirror the picker's names.
-      # env-overridable so a mismatched string is a one-line fix, not a recompile.
-      # confirmed valid on the client via probing (login screen reached).
-      # NOT on the client (add there, then append here — env-overridable):
-      #   cloudflare-pages.edit (publishing) · offline_access (refresh token).
-      # the confirmed-valid set (reaches consent). Pages/offline_access are on
-      # the client but under scope strings we haven't nailed — resolve them
-      # authoritatively from the account once connected, then append here.
+      # NEW Cloudflare OAuth product — scope format is `<group>.read|write|admin`
+      # (NOT `.edit`). This full WRITE set was VALIDATED 2026-07-05 by loading the
+      # authorize URL: CF accepted every scope and advanced to consent (the only
+      # rejected one was offline_access — not registered on this app; add it there
+      # for a refresh token, then append here). This gives the agent, over USER
+      # OAuth: DNS r/w, Cloudflare Pages r/w, Email Routing r/w + Email Sending,
+      # Registrar Domains ADMIN (buy/manage domains — makes the Porkbun lane
+      # optional), Workers Scripts r/w, Secrets Store r/w. Env-overridable
+      # (CLOUDFLARE_OAUTH_SCOPE) — must stay a subset of the app's registration.
       scope_env: "CLOUDFLARE_OAUTH_SCOPE",
-      # EMPIRICALLY CONFIRMED read-only (loaded the authorize URL 2026-07-05):
-      # CF rejects `zone.edit` / `dns.edit` / `account-settings.edit` with
-      # "The OAuth 2.0 Client is not allowed to request scope …". The requested
-      # scope must be a SUBSET of what the "Workbooks" OAuth APP was registered
-      # with — and it holds only reads. To grant the agent WRITE via user OAuth:
-      # add the edit permission groups to the app at Cloudflare (DNS Edit, Zone
-      # Edit, Cloudflare Pages Edit, Email Routing Edit, SSL Edit, offline_access),
-      # THEN set CLOUDFLARE_OAUTH_SCOPE to the broadened set (no recompile). Until
-      # then agent CF writes ride the account API token (CF_DNS_TOKEN), not OAuth.
-      # broadened set, ready for the env flip once the app is upgraded:
-      #   user-details.read account-settings.read account-settings.edit
-      #   zone.read zone.edit dns.read dns.edit ssl-and-certificates.edit
-      #   cloudflare-pages.edit account-analytics.read offline_access
-      scope: "user-details.read account-settings.read zone.read dns.read account-analytics.read",
+      scope:
+        "user-details.read account-settings.read account-analytics.read analytics.read " <>
+          "zone.read zone-settings.read dns.read dns.write page.read page.write " <>
+          "email-routing-address.read email-routing-address.write " <>
+          "email-routing-rule.read email-routing-rule.write " <>
+          "email-sending.read email-sending.write " <>
+          "registrar-domains.read registrar-domains.admin " <>
+          "workers-scripts.read workers-scripts.write " <>
+          "secrets-store.read secrets-store.write",
       id_key: "CLOUDFLARE_OAUTH_CLIENT_ID",
       secret_key: "CLOUDFLARE_OAUTH_CLIENT_SECRET"
     },
