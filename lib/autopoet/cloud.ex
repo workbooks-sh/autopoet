@@ -49,6 +49,27 @@ defmodule Autopoet.Cloud do
   def signed_in?, do: is_binary(token())
   def disconnect, do: File.rm(token_path())
 
+  @doc """
+  Full sign-out from Workbooks Cloud: best-effort revoke the PAT server-side
+  (so a copied token dies too), then drop the local token. Never raises — a
+  cloud-unreachable revoke still clears the local session.
+  """
+  def sign_out do
+    if t = token() do
+      _ = request(:delete, "/api/platform/tokens/current", %{token: t})
+    end
+
+    disconnect()
+    :ok
+  rescue
+    _ ->
+      disconnect()
+      :ok
+  end
+
+  @doc "The browser cloud-logout URL — clears the session cookie for a truly fresh re-login."
+  def logout_url, do: base_url() <> "/login/?logout=1"
+
   @doc "The signed-in account (GET /api/platform/me), or nil if not signed in / unreachable."
   def account do
     case get("/api/platform/me") do

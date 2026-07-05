@@ -299,6 +299,17 @@ defmodule Autopoet.Control do
     end
   end
 
+  # FULL sign-out — the one clean seam: revoke + drop the cloud PAT, clear the
+  # local app session, and hand back the browser logout URL so the caller can
+  # clear the cloud cookie too (a truly fresh re-login shows the password form).
+  post "/auth/cloud/signout" do
+    authed!(conn, fn conn ->
+      Autopoet.Cloud.sign_out()
+      Autopoet.Auth.signout()
+      conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(%{ok: true, logout_url: Autopoet.Cloud.logout_url()}))
+    end)
+  end
+
   post "/auth/cloud/disconnect" do
     authed!(conn, fn conn ->
       Autopoet.Cloud.disconnect()

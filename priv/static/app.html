@@ -5180,7 +5180,15 @@ document.getElementById("foot-profile").onclick = e => {
     <button class="fp-item" data-act="billing"><i data-lucide="credit-card"></i>billing</button>
     <button class="fp-item danger" data-act="signout"><i data-lucide="log-out"></i>sign out</button>`);
   document.querySelector('#footpop [data-act="billing"]').onclick = () => { closeFootPop(); toast("billing — coming soon"); };
-  document.querySelector('#footpop [data-act="signout"]').onclick = () => authedPost("/auth/signout").then(() => location.reload());
+  document.querySelector('#footpop [data-act="signout"]').onclick = () => {
+    closeFootPop();
+    // full sign-out: revoke+drop the cloud PAT, clear the local session, and open
+    // the cloud logout so the browser session clears too → the door gates fresh.
+    authedPost("/auth/cloud/signout").then(r => r.json().catch(() => ({}))).then(d => {
+      if (d && d.logout_url) { try { window.open(d.logout_url, "_blank"); } catch (_) {} }
+      location.reload();
+    }).catch(() => location.reload());
+  };
 };
 
 // settings · theme (persisted) + app config

@@ -14,6 +14,15 @@ case "${1:-status}" in
   status | log | proposals | projects | digest)
     curl -s "$BASE/${1:-status}"
     ;;
+  signin)
+    # open the Workbooks Cloud device-flow login in the browser
+    curl -s -X POST -H "authorization: Bearer $TOKEN" "$BASE/auth/cloud/open"
+    echo "opening Workbooks Cloud login…"
+    ;;
+  signout)
+    # full sign-out: revoke+drop the cloud PAT, clear the local session
+    curl -s -X POST -H "authorization: Bearer $TOKEN" "$BASE/auth/cloud/signout"
+    ;;
   project)
     # project new <slug> [archetype] <prompt...> | status <slug> | archive <slug>
     #         desk-start <slug> | desk-stop <slug>
@@ -83,7 +92,7 @@ case "${1:-status}" in
     curl -s -H "authorization: Bearer $TOKEN" --data-urlencode "name=$NAME" --data-urlencode "task=$*" -G "$BASE/limb" -X POST
     ;;
   *)
-    echo "usage: autopoetctl status|log|tail|proposals|projects|digest|project <new|status|archive|desk-start|desk-stop>|arm [every]|disarm|request|cycle|research|accept <id>|reject <id>|close|kill"
+    echo "usage: autopoetctl status|log|tail|proposals|projects|digest|project <new|status|archive|desk-start|desk-stop>|signin|signout|arm [every]|disarm|request|cycle|research|accept <id>|reject <id>|close|kill"
     exit 2
     ;;
 esac
