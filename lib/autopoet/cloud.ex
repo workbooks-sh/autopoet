@@ -8,7 +8,9 @@ defmodule Autopoet.Cloud do
   `/api/platform/*` (account, usage). The target cloud is configurable — `WORKBOOKS_CLOUD_URL` (or
   `config :autopoet, :cloud_url`), defaulting to the local dev server for now.
   """
-  @default_url "http://localhost:4457"
+  # the DEPLOYED cloud (not localhost) — the device-flow login lives here and
+  # honors ?device=&cb=. Env-overridable (WORKBOOKS_CLOUD_URL) for local dev.
+  @default_url "https://app.workbooks.sh"
 
   @doc "The Workbooks Cloud base URL (no trailing slash)."
   def base_url do

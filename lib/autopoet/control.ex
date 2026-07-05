@@ -281,6 +281,10 @@ defmodule Autopoet.Control do
 
     case Autopoet.Cloud.put_token(conn.query_params["token"] || "") do
       :ok ->
+        # the cloud PAT is the app's front door: establish the local session
+        # from the cloud identity so "Sign in with Workbooks" IS the sign-in
+        Autopoet.Auth.sign_in_cloud()
+
         page = """
         <!doctype html><meta charset="utf-8"><title>Connected</title>
         <body style="font:15px system-ui;display:grid;place-items:center;height:100vh;margin:0;color:#16161a">

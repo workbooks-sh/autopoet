@@ -837,6 +837,11 @@
     transition:border-color .16s ease, box-shadow .16s ease; }
   .oauthbtn:hover { border-color:#b9c2cd; box-shadow:0 1px 4px rgba(25,35,55,.1); }
   .oauthbtn svg { flex:none; }
+  /* the MAIN door — Sign in with Workbooks (primary, dark) */
+  .oauthbtn-primary { background:#16161a; color:#fff; border-color:#16161a; }
+  .oauthbtn-primary:hover { background:#000; border-color:#000; box-shadow:0 2px 8px rgba(0,0,0,.18); }
+  .oauthbtn-primary.waiting { opacity:.6; cursor:progress; }
+  .obsignhint { margin-top:10px; font:11px ui-monospace,monospace; color:#8a8f88; text-align:center; }
   /* onboarding steps (the cold-start flow after sign UP) */
   #obsteps { display:none; flex-direction:column; align-items:flex-start; gap:16px; max-width:500px; padding:40px; text-align:left; }
   .obstepgo { font:12.5px ui-monospace,monospace; padding:9px 18px; border-radius:10px;
@@ -1193,14 +1198,11 @@
     </div>
     <div class="obrow obsignrow">
       <div class="oblogins">
-        <button class="oauthbtn" id="ob-github">
-          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="#1c2230" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8"/></svg>
-          continue with GitHub
+        <button class="oauthbtn oauthbtn-primary" id="ob-workbooks">
+          <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMTMuNDQ0IDY1LjYiPjxwYXRoIGZpbGw9IiNmZmYiIGQ9Ik00OC4yNzEgMC4xMzdDNTQuMDM1LTAuMDQyIDU5LjQ4Ni0wLjEgNjUuMjM5IDAuMzA4YzAuMjkxIDkuNzcyLTAuMDY0IDE5LjY1NCAwLjIyMyAyOS40MyAwLjAyNSAwLjgzIDAuNDA5IDEuNDA0IDAuOTI5IDIuMDA1IDUuNzE3IDEuNzIxIDE4LjM2MS0xNy44OTggMjQuNTMtMjAuMDAzIDIuOTg2IDAuNjA0IDkuMTY2IDguMjU4IDExLjM1MiAxMC43MTctMy41NDMgNS45Ni0xOSAxOC4yMzQtMjAuODkxIDIyLjU0NiAwLjAxOCAxLjI4NCAwLjA2OCAxLjMyMiAwLjc3NSAyLjQzOSAxLjU1IDEuMTk1IDI2LjA5NSAwLjU0NSAzMC45NzYgMS4wMjIgMC40MzcgNS41MiAwLjI5OCAxMS40IDAuMjU4IDE2Ljk2NC0xMS43MjEgMC4wMi0yNi43MTIgMS4zNTItMzYuOTE4LTMuNzM4LTguNDI0LTQuMTYzLTE0LjgyMy0xMS41MzEtMTcuNzY5LTIwLjQ1Mi0wLjc2NS0yLjY1My0xLjMxNy01LjA4OC0xLjkyNC03Ljc3MS0xLjE4MSA1LjIzMy0yLjEwMyA5LjUyLTQuODU5IDE0LjIzOC0xMi4xMTcgMjAuNzM2LTMxLjY5MyAxNy43NS01MS44NTYgMTcuNjgzLTAuMDU4LTUuNzQzLTAuMDA2LTExLjQ4OCAwLjIyMi0xNy4yMjggNS4yOS0wLjAyNSAyOC4yMDMgMC41ODEgMzEuNDc3LTAuODkgMC4xNjMtMC4zNzQgMC4yMDYtMC40MjIgMC4yODgtMC44NjYgMC42ODUtMy43MjMtMTcuNDI5LTE5LjA1NS0yMC4zNjgtMjMuNTY2bC0wLjI0Ni0wLjM4MmMxLjgwNC0yLjU0OSA3Ljk3NC05LjM4MyAxMC42OS0xMC42ODMgMy43MjgtMC41NjMgMTcuOTM5IDE4LjA1NyAyMi4zOTMgMTkuOTE1IDEuMzg5IDAuNTc5IDEuNjEyIDAuNTQyIDIuODM1IDAuMDYyIDEuMzc1LTEuOTUzIDAuOTE1LTguOTMgMC45MjYtMTEuNTk4TDQ4LjI3MSAwLjEzN1oiLz48L3N2Zz4K" width="20" height="15" alt="" style="object-fit:contain">
+          Sign in with Workbooks
         </button>
-        <button class="oauthbtn" id="ob-google">
-          <svg viewBox="0 0 18 18" width="16" height="16" aria-hidden="true"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.97 10.72a5.41 5.41 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.9 11.42 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/></svg>
-          continue with Google
-        </button>
+        <div class="obsignhint">a free account — your agent's identity, credits &amp; cloud</div>
       </div>
     </div>
   </div>
@@ -4306,7 +4308,7 @@ function obStep(n) {
     const go = () => {
       const name = input.value.trim();
       if (!name) { input.focus(); return; }
-      authedPost("/auth/signup?name=" + encodeURIComponent(name)).then(() => obStep(2));
+      authedPost("/auth/signup?name=" + encodeURIComponent(name)).then(() => obStep(3));
     };
     document.getElementById("ob-next").onclick = go;
     input.addEventListener("keydown", e => { if (e.key === "Enter") go(); });
@@ -5005,6 +5007,23 @@ const SLIDES = [
       gsap.to(minis.slice(1), { autoAlpha: 1, duration: .3, delay: 2.1, stagger: .14, ease: "power1.out" });
       gsap.from(minis.slice(1), { scale: .4, duration: .3, delay: 2.1, stagger: .14, ease: "back.out(2)" });
       gsap.from(glab, { autoAlpha: 0, duration: .5, delay: 3.6 });
+    } },
+  { title: "run it in the cloud", mood: "superHappy",
+    sub: "on your machine the autopoet works while you watch. on Workbooks Cloud it works while you sleep — 24/7, with a real toolbelt, phone, and inbox of its own.",
+    fx(fx) {
+      const panel = fxEl(`<div class="fxchat" style="left:50%;top:16%;transform:translateX(-50%);width:230px;align-items:stretch">
+        <div class="fxtool" style="border-style:solid;justify-content:center"><i data-lucide="cloud"></i>Workbooks Cloud</div>
+        <div class="fxmsg bot"><i data-lucide="infinity" style="width:13px;height:13px;vertical-align:-2px"></i> always on — 24/7, no lid to close</div>
+        <div class="fxmsg bot"><i data-lucide="blocks" style="width:13px;height:13px;vertical-align:-2px"></i> hundreds of tools, via Composio</div>
+        <div class="fxmsg bot"><i data-lucide="phone" style="width:13px;height:13px;vertical-align:-2px"></i> its own phone number</div>
+        <div class="fxmsg bot"><i data-lucide="mail" style="width:13px;height:13px;vertical-align:-2px"></i> its own inbox — email built in</div>
+      </div>`);
+      const lab = fxEl(`<div class="fxlab" style="left:50%;bottom:8%;transform:translateX(-50%)">connect it any time from the app.</div>`);
+      fx.append(panel, lab);
+      refreshIcons();
+      fxIn(panel, .2);
+      gsap.from(panel.querySelectorAll(".fxmsg"), { autoAlpha: 0, x: -12, duration: .4, delay: .5, stagger: .2, ease: "power2.out" });
+      gsap.from(lab, { autoAlpha: 0, duration: .5, delay: 1.6 });
     } }
 ];
 let _slideFaceApi = null, _slideIdx = -1, _slideCleanup = null, _slidesKeyed = false;
@@ -5098,13 +5117,22 @@ function setFooterUser() {
   const el = document.querySelector("#foot-profile .uinitial");
   if (el) el.textContent = ((currentUser && currentUser.name) || "·").slice(0, 1).toLowerCase();
 }
-// one door: OAuth (stubbed). A fresh session flows into onboarding; a returning
-// one lands straight in the app — the server decides which.
-const obOauth = prov => () =>
-  authedPost("/auth/oauth/" + prov).then(r => r.text())
-    .then(t => t.startsWith("app") ? location.reload() : showOnboardSteps());
-document.getElementById("ob-github").onclick = obOauth("github");
-document.getElementById("ob-google").onclick = obOauth("google");
+// THE MAIN DOOR — Sign in with Workbooks. Opens the deployed cloud login via the
+// device flow (?device=&cb=<localhost>); the cloud mints a PAT and redirects to
+// our callback, which stores it AND establishes the local session. The callback
+// tab postMessages us on success → we re-check auth state and flow into onboarding.
+function signInWithWorkbooks() {
+  const btn = document.getElementById("ob-workbooks");
+  if (btn) { btn.disabled = true; btn.classList.add("waiting"); }
+  authedPost("/auth/cloud/open").catch(() => {});
+}
+window.addEventListener("message", e => {
+  if (e.data && e.data.apCloud) {
+    // signed into the cloud + local session established → advance
+    initAuth();
+  }
+});
+document.getElementById("ob-workbooks").onclick = signInWithWorkbooks;
 initAuth();
 
 // ── sidebar footer: account · settings · env ──────────────────────────────

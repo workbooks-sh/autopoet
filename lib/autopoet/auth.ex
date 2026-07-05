@@ -66,6 +66,29 @@ defmodule Autopoet.Auth do
     end
   end
 
+  @doc """
+  THE MAIN DOOR — sign in with Workbooks. The cloud device-flow minted a PAT
+  (stored in `Autopoet.Cloud`); here we turn that into the local app session
+  from the cloud identity. A returning user (bootstrap marker present) lands in
+  the app; a fresh one flows through onboarding → the Workbooks Cloud sell.
+  """
+  def sign_in_cloud do
+    acct = Autopoet.Cloud.account() || %{}
+    name = acct["name"] || acct["email"] || "you"
+    onboarded = File.exists?(Autopoet.Intake.marker())
+
+    put(%{
+      authenticated: true,
+      user: %{name: name, email: acct["email"]},
+      onboarded: onboarded,
+      connections: connections()
+    })
+
+    {:ok, %{name: name, onboarded: onboarded}}
+  rescue
+    e -> {:error, Exception.message(e)}
+  end
+
   # sign-in doors are github/google; cloudflare is connect-only (publishing)
   @connectable ~w(github google cloudflare)
 
