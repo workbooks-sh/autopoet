@@ -628,6 +628,9 @@ defmodule Autopoet.Venture do
     Charter GTM:
     #{charter_section("GTM")}
 
+    STANDING NOTES from your human reviewer (past rejections — binding):
+    #{marketing_notes()}
+
     HONESTY RULE: never invent statistics or outcomes. Cite only numbers you
     can source from your research notes, or frame them explicitly as hypotheses
     ("we suspect", "in our early testing"). Unverifiable promises kill trust
@@ -638,6 +641,15 @@ defmodule Autopoet.Venture do
     (300 words, gives real value first, product mentioned once at the end).
     These go to the HUMAN for approval before posting — write them ready-to-ship.
     """
+  end
+
+  defp marketing_notes do
+    case File.read(Path.join(artifacts(), "marketing-notes.txt")) do
+      {:ok, t} -> t
+      _ -> "(none yet)"
+    end
+  rescue
+    _ -> "(none yet)"
   end
 
   defp measure_prompt(s, signals) do
