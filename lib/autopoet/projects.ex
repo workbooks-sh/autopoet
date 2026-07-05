@@ -1,0 +1,128 @@
+defmodule Autopoet.Projects do
+  @moduledoc """
+  The PROJECT SPINE (lifecycle-plan §1, wb-emkxi step 1) — many projects, ONE
+  organism. A project is a workspace: a subtree of the body
+  (`projects/<slug>/`), a charter in the vault (`projects/<slug>/charter.work`,
+  human-ratified), a desk (supervised work loop — `Autopoet.Desks`), a Treasury
+  envelope, and integration grants. No second BEAM, no env-var homes: the 48h
+  op's venture-home hack is retired.
+
+  Lifecycle:
+    * `create/2`  — birth the workspace dirs + record. The CHARTER still comes
+      from genesis (the desk proposes; the human accepts) — create only lays
+      the floor.
+    * `list/0`    — every project + status (chartered? desk running? archived?)
+    * `archive/1` — kill criteria met or owner call: stop the desk, move the
+      body subtree to `archive/<slug>/`, keep the postmortem readable.
+
+  State: one durable record per project via `Autopoet.Shadow` (`projects`
+  snapshot — slug, archetype, created_at, status). Paths derive from the slug
+  everywhere; nothing is hardcoded per-project.
+  """
+
+  @snapshot "projects"
+
+  # ── paths: everything a project owns derives from its slug ─────────────────
+
+  def body_root(slug), do: Path.join([Autopoet.Body.root(), "projects", slug])
+  def vault_root(slug), do: Path.join([Autopoet.Notes.dir(), "projects", slug])
+  def charter_path(slug), do: Path.join(vault_root(slug), "charter.work")
+  def artifacts_dir(slug), do: Path.join("eval/desks", slug)
+  def archive_root(slug), do: Path.join([Autopoet.Body.root(), "archive", slug])
+
+  # ── lifecycle ───────────────────────────────────────────────────────────────
+
+  @doc """
+  Birth a project workspace. `opts[:archetype]` tags the desk flavor
+  (:venture | :fund | …) — archetypes differ by charter + toolset, not module.
+  Returns `{:ok, project}` or `{:error, :exists}`.
+  """
+  def create(slug, opts \\ []) do
+    slug = normalize(slug)
+
+    if Map.has_key?(all(), slug) do
+      {:error, :exists}
+    else
+      File.mkdir_p!(body_root(slug))
+      File.mkdir_p!(artifacts_dir(slug))
+
+      project = %{
+        slug: slug,
+        archetype: Keyword.get(opts, :archetype, :venture),
+        status: :genesis,
+        created_at: System.os_time(:second)
+      }
+
+      save(Map.put(all(), slug, project))
+      {:ok, project}
+    end
+  end
+
+  @doc "Every project record, keyed by slug."
+  def all do
+    case Autopoet.Shadow.load(@snapshot) do
+      {:ok, %{} = m} -> m
+      _ -> %{}
+    end
+  end
+
+  @doc "One project + live facts (chartered? desk running?)."
+  def get(slug) do
+    slug = normalize(slug)
+
+    case Map.get(all(), slug) do
+      nil ->
+        nil
+
+      p ->
+        Map.merge(p, %{
+          chartered: File.exists?(charter_path(slug)),
+          desk_running: Autopoet.Desks.running?(slug)
+        })
+    end
+  end
+
+  @doc "List for the graph/dashboard: [{slug, project-with-live-facts}]."
+  def list, do: all() |> Map.keys() |> Enum.sort() |> Enum.map(&{&1, get(&1)})
+
+  @doc """
+  Archive: stop the desk, move the body subtree to archive/, mark the record.
+  The vault charter stays where it is (the constitution remains readable);
+  the postmortem lives in the archived subtree.
+  """
+  def archive(slug) do
+    slug = normalize(slug)
+
+    case Map.get(all(), slug) do
+      nil ->
+        {:error, :unknown}
+
+      p ->
+        Autopoet.Desks.halt(slug)
+
+        if File.dir?(body_root(slug)) do
+          File.mkdir_p!(Path.dirname(archive_root(slug)))
+          File.rename(body_root(slug), archive_root(slug))
+        end
+
+        save(Map.put(all(), slug, %{p | status: :archived}))
+        :ok
+    end
+  end
+
+  @doc "Mark chartered (called after the human accepts the genesis charter)."
+  def mark_chartered(slug) do
+    slug = normalize(slug)
+
+    case Map.get(all(), slug) do
+      nil -> {:error, :unknown}
+      p -> save(Map.put(all(), slug, %{p | status: :active})) && :ok
+    end
+  end
+
+  defp save(m), do: Autopoet.Shadow.save(@snapshot, m)
+
+  defp normalize(slug) do
+    slug |> to_string() |> String.downcase() |> String.replace(~r/[^a-z0-9-]+/, "-") |> String.trim("-")
+  end
+end

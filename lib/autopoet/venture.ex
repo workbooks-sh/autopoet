@@ -39,24 +39,35 @@ defmodule Autopoet.Venture do
   @max_llm_day 150
   @agenda ~w(build feedback market measure)a
 
-  def start_link(_), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
+  def start_link(%{slug: slug} = project) do
+    GenServer.start_link(__MODULE__, project, name: {:via, Registry, {Autopoet.DeskRegistry, to_string(slug)}})
+  end
 
-  def status, do: GenServer.call(__MODULE__, :status)
+  def status(slug), do: GenServer.call({:via, Registry, {Autopoet.DeskRegistry, to_string(slug)}}, :status)
 
   @impl true
-  def init(nil) do
+  def init(%{slug: slug} = project) do
+    # the slug keys every path this desk touches (body prefix, vault charter,
+    # artifacts, durable state) — the process dictionary carries it so the
+    # many private helpers stay arity-stable
+    Process.put(:desk_slug, to_string(slug))
     File.mkdir_p!(artifacts())
 
     state =
-      case Autopoet.Shadow.load("venture") do
+      case Autopoet.Shadow.load(snapshot_key()) do
         {:ok, s} -> Map.merge(defaults(), s)
         :none -> defaults()
       end
 
+    state = Map.put(state, :project, Map.take(project, [:slug, :archetype]))
     Process.send_after(self(), :tick, 5_000)
-    log("venture desk up — genesis #{if charter?(), do: "done (chartered)", else: "pending"}")
+    log("desk up (#{slug}) — genesis #{if charter?(), do: "done (chartered)", else: "pending"}")
     {:ok, state}
   end
+
+  defp slug, do: Process.get(:desk_slug) || "venture"
+  defp snapshot_key, do: "desk-" <> slug()
+  defp prefix, do: "projects/" <> slug()
 
   defp defaults do
     %{
@@ -91,7 +102,7 @@ defmodule Autopoet.Venture do
         kind, reason -> issue("tick threw: #{inspect(kind)} #{inspect(reason)}") && s
       end
 
-    Autopoet.Shadow.save("venture", s)
+    Autopoet.Shadow.save(snapshot_key(), s)
     {:noreply, %{s | cycles: s.cycles + 1}}
   end
 
@@ -129,8 +140,8 @@ defmodule Autopoet.Venture do
       if feedback != "", do: File.rm(Path.join(artifacts(), "identity-feedback.txt"))
       id =
         Autopoet.Proposals.record(
-          %{target: "venture/identity.work", kind: "venture.identity", source: "venture-identity"},
-          %{"venture/identity.work" => reply}
+          %{target: "#{prefix()}/identity.work", kind: "venture.identity", source: "venture-identity"},
+          %{"#{prefix()}/identity.work" => reply}
         )
 
       File.write!(Path.join(artifacts(), "proposals.log"), "#{DateTime.to_iso8601(DateTime.utc_now())} | #{id} | venture.identity | domain+email+x\n", [:append])
@@ -142,15 +153,15 @@ defmodule Autopoet.Venture do
   # identity is REAL once the accepted identity doc exists (vault-first, like
   # the charter — the human-executed copy)
   defp identity? do
-    vault = Path.join(Autopoet.Notes.dir(), "venture/identity.work")
-    File.exists?(vault) or not String.starts_with?(read_body("venture/identity.work"), "(no")
+    vault = Path.join(Autopoet.Notes.dir(), "#{prefix()}/identity.work")
+    File.exists?(vault) or not String.starts_with?(read_body("#{prefix()}/identity.work"), "(no")
   rescue
     _ -> false
   end
 
   # ── LOGO: the venture designs its own mark ──────────────────────────────────
 
-  defp logo?, do: not String.starts_with?(read_body("venture/logo.work"), "(no")
+  defp logo?, do: not String.starts_with?(read_body("#{prefix()}/logo.work"), "(no")
 
   defp logo_step(s) do
     log("LOGO — designing the mark (3 concepts, self-judged)")
@@ -169,7 +180,7 @@ defmodule Autopoet.Venture do
           File.write!(Path.join(dir, "#{name}.svg"), String.trim(svg))
         end
 
-        append_body("venture/logo.work", "# The mark\n\n" <> strip_svgs(reply) <> "\n\nAssets: " <> Enum.map_join(svgs, ", ", fn [_, n, _] -> "#{n}.svg" end))
+        append_body("#{prefix()}/logo.work", "# The mark\n\n" <> strip_svgs(reply) <> "\n\nAssets: " <> Enum.map_join(svgs, ", ", fn [_, n, _] -> "#{n}.svg" end))
         log("LOGO — #{length(svgs)} assets written")
         %{s | work_cycles: s.work_cycles + 1}
       end
@@ -221,14 +232,14 @@ defmodule Autopoet.Venture do
   end
 
   defp identity_doc do
-    vault = Path.join(Autopoet.Notes.dir(), "venture/identity.work")
+    vault = Path.join(Autopoet.Notes.dir(), "#{prefix()}/identity.work")
 
     case File.read(vault) do
       {:ok, c} -> String.slice(c, 0, 2500)
-      _ -> read_body("venture/identity.work")
+      _ -> read_body("#{prefix()}/identity.work")
     end
   rescue
-    _ -> read_body("venture/identity.work")
+    _ -> read_body("#{prefix()}/identity.work")
   end
 
   # the venture's PUBLIC url — from the ratified identity (## Site), never the
@@ -295,7 +306,7 @@ defmodule Autopoet.Venture do
 
     with {:ok, s, harvest} <- web_research(s, "marketing practitioners complaining about tools/workflows right now: agency ops, SEO content, social scheduling, reporting, ecommerce email — real complaints from communities and forums 2026"),
          {:ok, s, reply} <- think(s, :genesis, genesis_pain_prompt(harvest), max_tokens: 2000) do
-      append_body("venture/genesis-notes.work", "# Venture genesis\n\n## 1 · Real pain mined (web) #{s.day}\n\n" <> reply)
+      append_body("#{prefix()}/genesis-notes.work", "# Venture genesis\n\n## 1 · Real pain mined (web) #{s.day}\n\n" <> reply)
       %{s | genesis_step: 1, work_cycles: s.work_cycles + 1}
     end
   end
@@ -303,9 +314,9 @@ defmodule Autopoet.Venture do
   defp genesis_step(%{genesis_step: 1} = s) do
     log("GENESIS 2/3 — niche + product thesis (nexus browser)")
 
-    with {:ok, s, harvest} <- web_research(s, "existing tools, pricing, and gaps for the pains in my notes:\n#{String.slice(read_body("venture/genesis-notes.work"), 0, 1200)}"),
+    with {:ok, s, harvest} <- web_research(s, "existing tools, pricing, and gaps for the pains in my notes:\n#{String.slice(read_body("#{prefix()}/genesis-notes.work"), 0, 1200)}"),
          {:ok, s, reply} <- think(s, :genesis, genesis_thesis_prompt(harvest), max_tokens: 2000) do
-      append_body("venture/genesis-notes.work", "\n## 2 · Niche + thesis (web-validated) #{s.day}\n\n" <> reply)
+      append_body("#{prefix()}/genesis-notes.work", "\n## 2 · Niche + thesis (web-validated) #{s.day}\n\n" <> reply)
       %{s | genesis_step: 2, work_cycles: s.work_cycles + 1}
     end
   end
@@ -318,8 +329,8 @@ defmodule Autopoet.Venture do
 
       id =
         Autopoet.Proposals.record(
-          %{target: "venture/charter.work", kind: "venture.charter", source: "venture-genesis"},
-          %{"venture/charter.work" => draft}
+          %{target: "#{prefix()}/charter.work", kind: "venture.charter", source: "venture-genesis"},
+          %{"#{prefix()}/charter.work" => draft}
         )
 
       File.write!(Path.join(artifacts(), "proposals.log"), "#{DateTime.to_iso8601(DateTime.utc_now())} | #{id} | venture.charter | venture/charter.work\n", [:append])
@@ -357,7 +368,7 @@ defmodule Autopoet.Venture do
         site_dir = Path.join(artifacts(), "site")
         File.mkdir_p!(site_dir)
         File.write!(Path.join(site_dir, "index.html"), html)
-        append_body("venture/build-log.work", "\n## build #{s.day} ##{s.work_cycles + 1}\n\n#{String.slice(reply, 0, 400)}\n")
+        append_body("#{prefix()}/build-log.work", "\n## build #{s.day} ##{s.work_cycles + 1}\n\n#{String.slice(reply, 0, 400)}\n")
 
         case deploy(site_dir) do
           {:ok, url} ->
@@ -376,7 +387,7 @@ defmodule Autopoet.Venture do
   defp feedback_cycle(s) do
     with {:ok, s, harvest} <- web_research(s, "reactions, complaints, and feature demands about: #{String.slice(charter_section("Niche"), 0, 300)} — real posts from practitioners"),
          {:ok, s, reply} <- think(s, :feedback, feedback_prompt(harvest <> x_harvest(s) <> inbox_harvest()), max_tokens: 1600) do
-      append_body("venture/feedback.work", "\n## feedback #{s.day} ##{s.work_cycles + 1}\n\n" <> reply)
+      append_body("#{prefix()}/feedback.work", "\n## feedback #{s.day} ##{s.work_cycles + 1}\n\n" <> reply)
       %{s | work_cycles: s.work_cycles + 1}
     end
   end
@@ -449,8 +460,8 @@ defmodule Autopoet.Venture do
     with {:ok, s, reply} <- think(s, :market, market_prompt(s), max_tokens: 1600) do
       id =
         Autopoet.Proposals.record(
-          %{target: "venture/posts.work", kind: "venture.posts", source: "venture-market"},
-          %{"venture/posts-#{s.day}-#{s.work_cycles}.work" => reply}
+          %{target: "#{prefix()}/posts.work", kind: "venture.posts", source: "venture-market"},
+          %{"#{prefix()}/posts-#{s.day}-#{s.work_cycles}.work" => reply}
         )
 
       File.write!(Path.join(artifacts(), "proposals.log"), "#{DateTime.to_iso8601(DateTime.utc_now())} | #{id} | venture.posts | drafts\n", [:append])
@@ -470,7 +481,7 @@ defmodule Autopoet.Venture do
     end
 
     with {:ok, s, reply} <- think(s, :measure, measure_prompt(s, signals), max_tokens: 1200) do
-      append_body("venture/journal.work", "\n## measure #{s.day} ##{s.work_cycles + 1}\n\n" <> reply)
+      append_body("#{prefix()}/journal.work", "\n## measure #{s.day} ##{s.work_cycles + 1}\n\n" <> reply)
       %{s | work_cycles: s.work_cycles + 1}
     end
   end
@@ -537,14 +548,14 @@ defmodule Autopoet.Venture do
   # ── the charter ─────────────────────────────────────────────────────────────
 
   defp charter do
-    vault = Path.join(Autopoet.Notes.dir(), "venture/charter.work")
+    vault = Path.join(Autopoet.Notes.dir(), "#{prefix()}/charter.work")
 
     case File.read(vault) do
       {:ok, c} -> String.slice(c, 0, 6000)
-      _ -> read_body("venture/charter.work")
+      _ -> read_body("#{prefix()}/charter.work")
     end
   rescue
-    _ -> read_body("venture/charter.work")
+    _ -> read_body("#{prefix()}/charter.work")
   end
 
   defp charter?, do: not String.starts_with?(charter(), "(no")
@@ -588,7 +599,7 @@ defmodule Autopoet.Venture do
   defp genesis_thesis_prompt(harvest) do
     """
     You are bootstrapping your own SaaS venture. Your pain research:
-    #{read_body("venture/genesis-notes.work")}
+    #{read_body("#{prefix()}/genesis-notes.work")}
 
     FRESH WEB EVIDENCE on competitors/gaps:
     #{harvest}
@@ -606,7 +617,7 @@ defmodule Autopoet.Venture do
   defp genesis_charter_prompt do
     """
     You are bootstrapping your own SaaS venture. Your genesis research:
-    #{read_body("venture/genesis-notes.work")}
+    #{read_body("#{prefix()}/genesis-notes.work")}
 
     Write your FOUNDING CHARTER — the human accepts or rejects it verbatim.
     Rails regardless: paid ads locked at $0 (Treasury) until a human funds it;
@@ -637,11 +648,11 @@ defmodule Autopoet.Venture do
     #{charter()}
     Current deployed site: #{s.site_url || "(none yet)"}
     Latest feedback:
-    #{String.slice(read_body("venture/feedback.work"), 0, 1500)}
+    #{String.slice(read_body("#{prefix()}/feedback.work"), 0, 1500)}
 
     Your logo assets deploy alongside the page at /assets/ (#{logo_assets()}) —
     reference the primary as /assets/primary-icon.svg or inline the chosen mark.
-    Brand doc: #{String.slice(read_body("venture/logo.work"), 0, 600)}
+    Brand doc: #{String.slice(read_body("#{prefix()}/logo.work"), 0, 600)}
 
     STANDING NOTES from your human reviewer (binding for site copy too):
     #{marketing_notes()}
@@ -829,7 +840,7 @@ defmodule Autopoet.Venture do
     _ -> Logger.info("venture: #{msg}")
   end
 
-  defp artifacts, do: System.get_env("AUTOPOET_DESK_DIR") || "eval/venture"
+  defp artifacts, do: System.get_env("AUTOPOET_DESK_DIR") || Autopoet.Projects.artifacts_dir(slug())
 
   defp write_body(path, content), do: safe_body(fn -> Autopoet.Body.apply(%{path => content}, %{}) end, path)
   defp append_body(path, content), do: safe_body(fn -> Autopoet.Body.apply(%{}, %{path => content}) end, path)
