@@ -325,15 +325,54 @@ defmodule Autopoet.Control do
         _ -> []
       end
 
-    powered = sub != nil or nexuses != [] or is_binary(Autopoet.Keys.openrouter())
+    # two separate axes: COMPUTE (where it runs — chosen in step 1, persisted)
+    # and INFERENCE (how it thinks — gateway via cloud, or a local key).
+    compute =
+      case File.read(Path.join([Autopoet.Discovery.home(), "data", "power-compute"])) do
+        {:ok, c} -> String.trim(c)
+        _ -> nil
+      end
+
+    # a cloud machine (sub or existing nexus) carries gateway AI; a key is the
+    # local lane — either satisfies inference
+    inference = sub != nil or nexuses != [] or is_binary(Autopoet.Keys.openrouter())
+    powered = inference
 
     conn
     |> put_resp_content_type("application/json")
-    |> send_resp(200, Jason.encode!(%{powered: powered, openrouter: is_binary(Autopoet.Keys.openrouter()), subscription: sub, nexuses: nexuses}))
+    |> send_resp(
+      200,
+      Jason.encode!(%{
+        powered: powered,
+        compute: compute,
+        inference: inference,
+        openrouter: is_binary(Autopoet.Keys.openrouter()),
+        subscription: sub,
+        nexuses: nexuses
+      })
+    )
   end
 
   # the account's existing nexuses — the "use the one you already have" lane
   get "/power/cloud/nexuses", do: cloud_proxy(conn, :get, "/api/platform/nexuses", nil)
+
+  # ── the COMPUTE choice (step 1: where it runs) — separate from inference ──
+  # modes: "nexus <id>" (existing) | "cloud-new <plan>" (bought) | "local"
+  post "/power/compute" do
+    authed!(conn, fn conn ->
+      {:ok, body, conn} = read_body(conn)
+      choice = body |> String.trim() |> String.slice(0, 120)
+
+      if choice == "" do
+        send_resp(conn, 422, "compute choice required\n")
+      else
+        path = Path.join([Autopoet.Discovery.home(), "data", "power-compute"])
+        File.mkdir_p!(Path.dirname(path))
+        File.write!(path, choice <> "\n")
+        text(conn, "compute set\n")
+      end
+    end)
+  end
 
   # ── inline Workbooks Cloud billing (proxied to the cloud via the signed-in PAT,
   # so the machine purchase happens IN the app, not by bouncing to the dashboard).

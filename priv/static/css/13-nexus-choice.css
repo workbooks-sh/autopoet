@@ -63,3 +63,5 @@
   .nx-foot { display:flex; align-items:center; justify-content:space-between; gap:14px; width:100%; margin-top:4px; }
   .nx-status { font:12px ui-monospace,monospace; color:#3f7a52; display:flex; align-items:center; gap:6px; }
   .nx-status svg { width:14px; height:14px; }
+  .nx-step { font:600 10px ui-monospace,monospace; letter-spacing:.09em; text-transform:uppercase;
+    color:#8a8f88; background:#f4f6f8; border-radius:7px; padding:4px 10px; align-self:flex-start; }

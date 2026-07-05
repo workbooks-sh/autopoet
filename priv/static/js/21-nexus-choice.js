@@ -1,8 +1,7 @@
-// ── NEXUS CHOICE — "where does your autopoet live?" (onboarding) ────────────
-// One radio-card accordion, three lanes: the nexus you already have (live from
-// the account) · create one on Workbooks Cloud (inline machine setup — custom
-// tier picker, credit chips, top-up toggle; no native selects) · run locally
-// on your own key. Selecting expands the lane; one continue gates on powered.
+// ── ONBOARDING STEP 1 · COMPUTE — "where does your autopoet live?" ──────────
+// Separate from inference (step 2, js/22): this step picks WHERE IT RUNS —
+// the nexus you already have · a new machine on Workbooks Cloud (tier cards +
+// payment) · this desktop (free). The choice persists via POST /power/compute.
 function showPower() {
   if (typeof _slideCleanup !== "undefined" && _slideCleanup) { _slideCleanup(); _slideCleanup = null; }
   document.getElementById("obslides").style.display = "none";
@@ -11,23 +10,30 @@ function showPower() {
   s.style.display = "flex";
   s.style.maxWidth = "680px";
   s.innerHTML = `
+    <div class="nx-step">step 1 of 2 · compute</div>
     <div class="obword" style="font-size:24px">where does your autopoet live?</div>
-    <p class="obtext" style="margin:0">Connect the nexus you already have, create one on Workbooks
-      Cloud, or run locally on your own AI key.</p>
+    <p class="obtext" style="margin:0">Pick where it runs. How it thinks (its AI) is the next step.</p>
     <div class="nx-stack" id="nx-stack"></div>
     <div class="nx-foot">
       <span id="nx-status" class="nx-status"></span>
-      <button class="obstepgo" id="nx-continue" disabled style="opacity:.4">continue →</button>
+      <button class="obstepgo" id="nx-continue" disabled style="opacity:.4">next: how it thinks →</button>
     </div>`;
 
   const stack = document.getElementById("nx-stack");
   const cont = document.getElementById("nx-continue");
-  const setPowered = (ok, msg) => {
-    document.getElementById("nx-status").innerHTML = ok ? `<i data-lucide="check"></i> ${msg}` : msg;
-    cont.disabled = !ok; cont.style.opacity = ok ? "1" : ".4";
+  let choice = null;
+
+  const setChosen = (c, msg) => {
+    choice = c;
+    document.getElementById("nx-status").innerHTML = `<i data-lucide="check"></i> ${msg}`;
+    cont.disabled = false; cont.style.opacity = "1";
     refreshIcons();
   };
-  cont.onclick = () => { if (!cont.disabled) showPlanMode(); };
+  cont.onclick = async () => {
+    if (cont.disabled || !choice) return;
+    await authedPost("/power/compute", choice).catch(() => {});
+    showInference();
+  };
 
   const lane = (id, icon, badge, title, meta, body) => `
     <div class="nx-option" data-lane="${id}">
@@ -42,12 +48,12 @@ function showPower() {
     </div>`;
 
   stack.innerHTML =
-    lane("cloud", "cloud", "recommended", "Workbooks Cloud", "from $12/mo",
+    lane("cloud", "cloud", "recommended", "A new machine on Workbooks Cloud", "from $12/mo",
       `<div id="nx-cloud-setup">loading…</div>`) +
-    lane("local", "laptop", "", "Bring your own AI", "local · free",
-      `<p class="nx-line">Your own OpenRouter key — any model, on your credits. No machine; this desktop does the work.</p>
-       <div class="nx-row"><input id="nx-orkey" class="obinput" placeholder="sk-or-…" spellcheck="false">
-       <button class="obstepgo" id="nx-uselocal">use my key →</button></div>`);
+    lane("local", "laptop", "", "This desktop", "free",
+      `<p class="nx-line">Runs while the app is open — your files, your machine. You can move to a
+        cloud machine any time.</p>
+       <button class="obstepgo alt" id="nx-uselocal">run on this desktop →</button>`);
 
   // the nexuses you ALREADY have lead the stack (zero-cost path)
   fetch("/power/cloud/nexuses").then(r => r.json()).then(d => {
@@ -59,11 +65,11 @@ function showPower() {
         <button class="nx-pick" data-id="${n.id}">
           <span class="nx-pick-name">${n.icon || "◈"} ${n.name || n.id}</span>
           <span class="nx-chips">${["plan", "region", "state"].map(k => n[k] ? `<i class="nx-chip">${n[k]}</i>` : "").join("")}</span>
-          <span class="nx-go">connect →</span>
+          <span class="nx-go">use it →</span>
         </button>`).join("")));
     stack.querySelectorAll(".nx-pick").forEach(b => b.onclick = () => {
       stack.querySelectorAll(".nx-pick").forEach(x => x.classList.toggle("sel", x === b));
-      setPowered(true, `connected to <b>${b.querySelector(".nx-pick-name").textContent.trim()}</b>`);
+      setChosen("nexus " + b.dataset.id, `runs on <b>${b.querySelector(".nx-pick-name").textContent.trim()}</b>`);
     });
     wire();
   }).catch(() => {});
@@ -79,19 +85,10 @@ function showPower() {
   }
   wire(); refreshIcons();
 
-  document.getElementById("nx-uselocal").onclick = async () => {
-    const inp = document.getElementById("nx-orkey"), k = inp.value.trim();
-    if (!k) { inp.focus(); return; }
-    const r = await authedPost("/power/openrouter", k);
-    setPowered(r.ok, r.ok ? "local AI connected" : "couldn't save that key — try again");
-  };
+  document.getElementById("nx-uselocal").onclick = () =>
+    setChosen("local", "runs on this desktop");
 
-  // already powered (returning)? say so, keep the choice open
-  fetch("/power/status").then(r => r.json()).then(p => {
-    if (p.powered) setPowered(true, p.openrouter ? "local AI connected" : "Workbooks Cloud connected");
-  }).catch(() => {});
-
-  // ── the cloud lane: machine setup, custom components only ─────────────────
+  // ── the cloud lane: MACHINE ONLY (credits moved to the inference step) ────
   let cloudMounted = false;
   async function mountCloudSetup() {
     if (cloudMounted) return;
@@ -99,56 +96,35 @@ function showPower() {
     const host = document.getElementById("nx-cloud-setup");
     let tiers = [];
     try { tiers = (await (await fetch("/power/cloud/tiers")).json()).tiers || []; } catch (_) {}
-    if (!tiers.length) tiers = [{ id: "solo", name: "Solo", price: 20, ram_mb: 512, storage_gb: 10 }];
+    if (!tiers.length) tiers = [{ id: "solo", name: "Solo", price: 12, ram_mb: 512, storage_gb: 10 }];
     const ram = t => t.ram_mb >= 1024 ? (t.ram_mb / 1024) + "GB" : t.ram_mb + "MB";
 
     host.innerHTML = `
-      <p class="nx-line">Your own machine + AI credits, on one card. Change any of it later.</p>
+      <p class="nx-line">Your own machine — always on, one flat price, scale by size.</p>
       <div class="nx-lbl">machine</div>
       <div class="nx-tiers">${tiers.map((t, i) => `
         <button class="nx-tier ${i === 0 ? "sel" : ""}" data-id="${t.id}">
           <b>${t.name}</b><span class="nx-price">$${t.price}<i>/mo</i></span>
           <span class="nx-spec">${ram(t)} · ${t.storage_gb}GB</span>
         </button>`).join("")}</div>
-      <div class="nx-lbl">initial AI credits</div>
-      <div class="nx-chipsrow" id="nx-credits">${[0, 5, 10, 25, 50].map(v => `
-        <button class="nx-chipbtn ${v === 10 ? "sel" : ""}" data-v="${v}">${v ? "$" + v : "none"}</button>`).join("")}
-      </div>
-      <label class="nx-toggle"><span class="nx-switch" id="nx-ato"><i></i></span>
-        <span>auto-top-up — when credits fall below
-          $<input id="nx-ato-th" class="nx-mini" value="5"> add
-          $<input id="nx-ato-amt" class="nx-mini" value="20"></span></label>
       <button class="obstepgo" id="nx-pay" style="align-self:flex-start;margin-top:6px">continue to payment →</button>
       <div class="nx-status" id="nx-paystatus"></div>`;
 
-    const sel = (q, cb) => host.querySelectorAll(q).forEach(b => b.onclick = () => {
-      host.querySelectorAll(q).forEach(x => x.classList.toggle("sel", x === b)); cb && cb(b);
-    });
-    sel(".nx-tier"); sel(".nx-chipbtn");
-    const ato = host.querySelector("#nx-ato");
-    ato.onclick = () => ato.classList.toggle("on");
+    host.querySelectorAll(".nx-tier").forEach(b => b.onclick = () =>
+      host.querySelectorAll(".nx-tier").forEach(x => x.classList.toggle("sel", x === b)));
 
     host.querySelector("#nx-pay").onclick = async () => {
       const tier = host.querySelector(".nx-tier.sel").dataset.id;
-      const credits = +host.querySelector(".nx-chipbtn.sel").dataset.v;
       const st = m => host.querySelector("#nx-paystatus").textContent = m;
       host.querySelector("#nx-pay").disabled = true;
       st("preparing checkout…");
-      if (ato.classList.contains("on")) {
-        await authedPost("/power/cloud/autotopup", JSON.stringify({
-          enabled: true, threshold: +host.querySelector("#nx-ato-th").value || 5,
-          amount: +host.querySelector("#nx-ato-amt").value || 20 })).catch(() => {});
-      }
-      const r = await authedPost("/power/cloud/checkout", JSON.stringify({ plan: tier, initial_credit: credits }));
+      const r = await authedPost("/power/cloud/checkout", JSON.stringify({ plan: tier }));
       const d = await r.json().catch(() => ({}));
       if (!r.ok || !d.url) { st(d.detail || d.error || "couldn't start checkout"); host.querySelector("#nx-pay").disabled = false; return; }
       openCheckout(d.url, async () => {
         st("confirming…");
-        if (await pollPowered(60)) {
-          if (credits > 0) await authedPost("/power/cloud/credits", JSON.stringify({ amount: credits })).catch(() => {});
-          setPowered(true, "Workbooks Cloud connected");
-          st("");
-        } else { st("payment not detected yet — finish in the checkout, then retry"); host.querySelector("#nx-pay").disabled = false; }
+        if (await pollPowered(60)) { setChosen("cloud-new " + tier, "machine is yours — running on Workbooks Cloud"); st(""); }
+        else { st("payment not detected yet — finish in the checkout, then retry"); host.querySelector("#nx-pay").disabled = false; }
       });
     };
     refreshIcons();
