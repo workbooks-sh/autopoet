@@ -340,7 +340,20 @@ defmodule Autopoet.Desk do
 
   # ── the charter: the agent's own constitution, parsed not assumed ───────────
 
-  defp charter, do: read_body("fund/charter.work")
+  # the charter lives in the VAULT once accepted (Proposals.accept applies to
+  # the human's notes — correct: the constitution is the human-ratified copy);
+  # body is the fallback for a hand-placed charter.
+  defp charter do
+    vault = Path.join(Autopoet.Notes.dir(), "fund/charter.work")
+
+    case File.read(vault) do
+      {:ok, c} -> String.slice(c, 0, 6000)
+      _ -> read_body("fund/charter.work")
+    end
+  rescue
+    _ -> read_body("fund/charter.work")
+  end
+
   defp charter?, do: not String.starts_with?(charter(), "(no")
 
   defp charter_universe do
