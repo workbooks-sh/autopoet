@@ -169,12 +169,17 @@ compiles *from* it, and the agent may only propose further edits to it.
 
 The target is the full-choreography experience. Sequenced so each phase runs:
 
-1. **Canvas + camera** — inset frame, graph paper, D3 + ELK layout, pan/zoom,
-   refocus. Static seed graph to prove layout + camera. **[SHIPPED 2026-07-05:
-   priv/static/planmode.js — lazy-loaded elk.bundled.js, stress layout, cluster
-   hulls, cube+beam+bubble (early), next/back widget, classic-quiz fallback.
+1. **Canvas + camera** — **[REBUILT + SHIPPED 2026-07-05 on the REAL system]**:
+   plan mode is `VoiceStage.stage({type:"plan"})` — THE STAGE, one entrance, two
+   types (voice = mic/Kokoro/brain; plan = no audio). It performs on the real
+   whiteboard with the ADOPTED self cube (the user's own set autopoet design —
+   identical to the voice call by construction), bean hands + `pointAt`,
+   **D2 diagrams** (server `POST /voice/d2`, local d2 binary) with the
+   progressive-reveal pieces the voice brain's `[graph]/[+reveal]` cues use.
+   planmode.js is a thin driver: seed script + next/back widget only. The
+   hand-rolled D3/ELK canvas is retired (never re-implement the performer).
    Dev loop: settings → restart onboarding / plan mode (dev);
-   POST /auth/onboarding/reset (?full=1 → back to the door).]**
+   POST /auth/onboarding/reset (?full=1 → back to the door).
 2. **The brain loop** — server-side: coverage-requirement spine + depth math +
    branching; LLM emits `{nodes, edges, question, coverage}` deltas per answer,
    streamed to the client. Bottom widget (next/back, MC + open-ended).

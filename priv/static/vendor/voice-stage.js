@@ -1702,7 +1702,13 @@
 
   var appHooks = null;   // { selfSpot, hideWorld, showWorld, resync } from the real app
   var adopt = null;      // { scene, cube, prefix } — the app's own self-node cube
-  function enter(opts) {
+  // ── THE STAGE — one entrance, two types ────────────────────────────────────
+  //   type:"voice" — the full call: mic (Moonshine VAD), Kokoro TTS, the brain.
+  //   type:"plan"  — the SAME stage + performer (adopted cube, hands, pointAt,
+  //                  D2 whiteboard, captions) with NO audio; returns the verbs
+  //                  plan mode drives ({show, reveal, point, say, …}).
+  // Same avatar by construction: both types adopt the app's real self cube.
+  function stage(opts) {
     // self-heal: if a previous call crashed mid-flight, `mounted` can be stuck
     // true with the overlay gone — the button would silently do nothing forever
     if (mounted && !document.getElementById("vs-root")) {
@@ -1711,12 +1717,14 @@
       root = null; overlay = null; hands = null; caption = null; drawer = null; drawerLog = null; graphBg = null;
       appHooks = null; adopt = null;
     }
-    if (mounted) return;
+    if (mounted) return null;
     opts = opts || {};
+    var mode = opts.type || "voice";
+    var voice = mode === "voice";
     TOKEN = opts.token || TOKEN;
     stageEl = opts.stage || document.getElementById("stage");
-    callbarEl = opts.callbar || document.getElementById("callbar");
-    callinEl = opts.callin || document.getElementById("callin");
+    callbarEl = opts.callbar || (voice ? document.getElementById("callbar") : null);
+    callinEl = opts.callin || (voice ? document.getElementById("callin") : null);
     adopt = opts.adopt || null;
     appHooks = (opts.selfSpot && opts.hideWorld && opts.showWorld)
       ? { selfSpot: opts.selfSpot, hideWorld: opts.hideWorld, showWorld: opts.showWorld,
@@ -1726,12 +1734,14 @@
     buildDOM();
     mounted = true;
     deckMd = ""; deckInst = null;
-    fetch("/voice/deck/new", { method: "POST",
-      headers: { authorization: "Bearer " + TOKEN } }).catch(function () {});
-    ensureAudio();     // created + resumed INSIDE the button gesture — sound works
+    if (voice) {
+      fetch("/voice/deck/new", { method: "POST",
+        headers: { authorization: "Bearer " + TOKEN } }).catch(function () {});
+      ensureAudio();   // created + resumed INSIDE the button gesture — sound works
+    }
     startBlink();
     startGaze();
-    bootKokoro();
+    if (voice) bootKokoro();
 
     if (adopt && appHooks) {
       // SEAMLESS RELEASE: the camera is settling on the head (the app's
@@ -1756,8 +1766,10 @@
         scene.style.transition = "";                    // .vs-free transition resumes
         moveTo(0, 0);                                   // glide to center stage…
         scene.style.setProperty("--sc", "1");           // …growing to full size
-        capStatus(kokoro ? "ready — just talk" : "loading local voice…");
-        startVAD();
+        if (voice) {
+          capStatus(kokoro ? "ready — just talk" : "loading local voice…");
+          startVAD();
+        }
         later(setTimeout(function () { if (mounted && !playing) wave(); }, 900));
       }, settle));
     } else {
@@ -1765,11 +1777,36 @@
       stagePos = { x: 0, y: 0 };
       stageEl.classList.add("vs-whiteboard");
       requestAnimationFrame(function () { root.classList.add("on"); });
-      capStatus(kokoro ? "ready — just talk" : "loading local voice…");
-      startVAD();
+      if (voice) {
+        capStatus(kokoro ? "ready — just talk" : "loading local voice…");
+        startVAD();
+      }
       later(setTimeout(function () { if (mounted && !playing) wave(); }, 600));
     }
+
+    if (voice) return null;
+    // plan type: hand back the performance verbs (no audio anywhere in the path)
+    var escT = function (s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;"); };
+    return {
+      show: function (src) { return compileD2(src).then(function (svg) { if (mounted) mountGraphSVG(svg); }); },
+      reveal: function (spec) { if (mounted) reveal(spec); },
+      revealAll: function () { if (mounted) revealAll(); },
+      point: function (name, ms) {
+        if (!mounted) return;
+        var t = pieces.nodes[name] || pieces.edges[name];
+        if (t) pointAt(t, ms || 2600);
+      },
+      say: function (text) { if (mounted) captionShow("", escT(text)); },
+      status: function (text) { if (mounted) capStatus(text); },
+      wave: function () { if (mounted) wave(); },
+      nod: function () { if (mounted) nod(); },
+      thumbsUp: function () { if (mounted) thumbsUp(); },
+      exit: exit
+    };
   }
+
+  // back-compat: the voice call's historical entrance
+  function enter(opts) { stage(Object.assign({}, opts || {}, { type: "voice" })); }
 
   function exit() {
     if (!mounted) return;
@@ -1836,5 +1873,5 @@
   }
 
   // preload: call at app boot so the voice model downloads before the first call
-  window.VoiceStage = { enter: enter, exit: exit, ask: ask, preload: bootKokoro };
+  window.VoiceStage = { stage: stage, enter: enter, exit: exit, ask: ask, preload: bootKokoro };
 })();

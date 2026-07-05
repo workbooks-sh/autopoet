@@ -71,15 +71,28 @@ if (typeof window !== "undefined") {
   window.addEventListener("characterchange", _reskin);
 }
 
-// inverted hull: same geometry pushed out along normals by `w` world units
+// inverted hull: same geometry pushed out along normals by `w` world units.
+// ExtrudeGeometry splits normals at every bevel/corner edge (coincident vertices
+// pointing different ways), so pushing each along its OWN normal tears the shell
+// open — the "breaks" in the outline. Fix: weld coincident vertices to a single
+// AVERAGED normal first, so the pushed-out shell stays watertight.
 function hullOf(mesh, w) {
   const geo = mesh.geometry.clone();
   const pos = geo.attributes.position, nor = geo.attributes.normal;
+  const groups = new Map();
+  const key = i => `${pos.getX(i).toFixed(3)}|${pos.getY(i).toFixed(3)}|${pos.getZ(i).toFixed(3)}`;
   for (let i = 0; i < pos.count; i++) {
-    pos.setXYZ(i,
-      pos.getX(i) + nor.getX(i) * w,
-      pos.getY(i) + nor.getY(i) * w,
-      pos.getZ(i) + nor.getZ(i) * w);
+    const k = key(i);
+    let e = groups.get(k);
+    if (!e) groups.set(k, e = { x: 0, y: 0, z: 0, idx: [] });
+    e.x += nor.getX(i); e.y += nor.getY(i); e.z += nor.getZ(i); e.idx.push(i);
+  }
+  for (const e of groups.values()) {
+    const len = Math.hypot(e.x, e.y, e.z) || 1;
+    const nx = e.x / len, ny = e.y / len, nz = e.z / len;
+    for (const i of e.idx) {
+      pos.setXYZ(i, pos.getX(i) + nx * w, pos.getY(i) + ny * w, pos.getZ(i) + nz * w);
+    }
   }
   const hull = new THREE.Mesh(geo, outlineMaterial());
   hull.position.copy(mesh.position);

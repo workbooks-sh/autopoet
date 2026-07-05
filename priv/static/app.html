@@ -947,23 +947,10 @@
   .bpm-head { display:flex; align-items:center; justify-content:space-between; padding:11px 14px; border-bottom:1px solid #eef0f2; font:600 12px ui-monospace,monospace; }
   .bpm-head a, .bpm-head button { font:11px ui-monospace,monospace; color:#245cc0; background:none; border:0; cursor:pointer; }
   #bpm-frame { flex:1; border:0; width:100%; }
-  /* ── interactive plan mode (Phase 1: canvas + camera) ── */
-  #obplan { display:none; position:absolute; inset:0; padding:26px; }
-  .pm-frame { position:relative; width:100%; height:100%; background:#fff; border:1px solid #e2e6ec;
-    border-radius:20px; overflow:hidden; box-shadow:0 10px 40px rgba(20,30,50,.08); }
-  .pm-canvas { position:absolute; inset:0; width:100%; height:100%; cursor:grab; }
-  .pm-canvas:active { cursor:grabbing; }
-  .pm-overlay { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
-  .pm-beam { stroke:#245cc0; stroke-width:1.5; stroke-dasharray:5 4; opacity:.55; }
-  .pm-cube { position:absolute; width:52px; height:52px; z-index:4; pointer-events:none; }
-  .pm-bubble { position:absolute; max-width:250px; background:#16161a; color:#fff; z-index:4;
-    font:12px/1.5 ui-monospace,monospace; padding:9px 12px; border-radius:11px; border-bottom-left-radius:3px;
-    pointer-events:none; opacity:0; transition:opacity .3s ease, left .8s cubic-bezier(.4,0,.2,1), top .8s cubic-bezier(.4,0,.2,1); }
-  .pm-refocus { position:absolute; top:14px; right:14px; z-index:5; font:12px ui-monospace,monospace;
-    padding:7px 13px; border-radius:9px; border:1px solid #e2e6ec; background:#fff; cursor:pointer; color:#1c2230; }
-  .pm-refocus:hover { border-color:#b9c2cd; }
-  .pm-widget { position:absolute; left:50%; transform:translateX(-50%); bottom:16px; z-index:5;
-    width:min(580px,92%); background:#fff; border:1px solid #e2e6ec; border-radius:15px; padding:14px 16px 10px;
+  /* ── interactive plan mode: the bottom next/back widget over the vs stage ──
+     (the stage itself — cube, hands, D2 board, captions — is voice-stage.js) */
+  .pm-widget { position:fixed; left:50%; transform:translateX(-50%); bottom:14px; z-index:64;
+    width:min(580px,92%); background:#fff; border:1px solid #e2e6ec; border-radius:15px; padding:14px 16px 12px;
     box-shadow:0 10px 34px rgba(20,30,50,.13); display:flex; flex-direction:column; gap:10px; }
   .pm-q { font:13px/1.55 ui-monospace,monospace; color:#1c2230; min-height:38px; }
   .pm-nav { display:flex; align-items:center; justify-content:space-between; }
@@ -973,13 +960,17 @@
   .pm-dots { display:flex; gap:5px; }
   .pm-dots i { width:6px; height:6px; border-radius:50%; background:#dfe3e9; }
   .pm-dots i.on { background:#16161a; }
-  .pm-classic { align-self:center; font:10.5px ui-monospace,monospace; color:#8a8f88; background:none;
-    border:0; cursor:pointer; text-decoration:underline; }
-  .pm-node text.pm-label { font:600 12.5px ui-monospace,monospace; fill:#1c2230; }
-  .pm-node text.pm-type { font:10px ui-monospace,monospace; }
-  .pm-edge path { fill:none; stroke:#b9c2cd; stroke-width:1.6; }
-  .pm-edge text { font:10px ui-monospace,monospace; fill:#8a8f88; text-anchor:middle; }
-  .pm-hull { fill:#f6f8fa; stroke:#e8ecf1; }
+  /* the caption sits above the widget while plan mode is on */
+  body:has(.pm-widget) #vs-caption { bottom:132px; }
+  /* PLAN SCREEN — onboarding owns the viewport: no dashboard chrome, just the
+     whiteboard stage (sidebar, canvasbar, console, call chrome all yield) */
+  body.pm-screen #tree { display:none !important; }
+  body.pm-screen #modetoggle { display:none !important; }
+  body.pm-screen #stage { position:fixed; inset:0; z-index:55; background:var(--paper,#fff); }
+  body.pm-screen #stage > #canvasbar,
+  body.pm-screen #stage > #console,
+  body.pm-screen #stage > #callcaption,
+  body.pm-screen #stage > #callbar { display:none !important; }
   /* onboarding steps (the cold-start flow after sign UP) */
   #obsteps { display:none; flex-direction:column; align-items:flex-start; gap:16px; max-width:500px; padding:40px; text-align:left; }
   .obstepgo { font:12.5px ui-monospace,monospace; padding:9px 18px; border-radius:10px;
@@ -5268,19 +5259,25 @@ async function showPlanMode() {
   document.getElementById("obsteps").style.display = "none";
   document.getElementById("obquiz").style.display = "none";
   document.querySelector("#onboard .obinner").style.display = "none";
-  const el = document.getElementById("obplan");
-  el.style.display = "block";
   try {
-    await loadScript("/static/elk.bundled.js");
+    // plan mode performs on the REAL stage with the REAL adopted self cube —
+    // the IDENTICAL entrance the voice call uses (VoiceStage.stage), just
+    // type:"plan" (no audio). Same avatar by construction.
     await loadScript("/static/planmode.js");
-    PlanMode.start(el, {
-      createFace, refreshIcons,
-      onQuiz: () => { el.style.display = "none"; showQuiz(); },
+    await ensureSelfCube();
+    zoomTo("self", false);            // camera settles on the head, like a call
+    hideOnboard();                    // the overlay yields to the whiteboard
+    const ok = PlanMode.start({
+      stage: { token: TOKEN, stage: document.getElementById("stage"),
+               adopt: { scene: selfCube, cube: selfCubeInner, prefix: "ap-" },
+               selfSpot: vsSelfSpot, hideWorld: vsHideWorld, showWorld: vsShowWorld,
+               resync: syncSelfCube, settleMs: 620 },
       onDone: obDone
     });
+    if (!ok) showQuiz();              // a live call owns the stage — fall back
   } catch (e) {
-    // canvas failed to load → the classic quiz still gets you onboarded
-    el.style.display = "none";
+    // stage failed to load → the quiz still gets you onboarded (silent fallback)
+    document.getElementById("onboard").classList.remove("hidden");
     showQuiz();
   }
 }
@@ -5564,24 +5561,34 @@ function applyTheme(t) {
 }
 
 // ══ AutoPoet character — color + shape, INDEPENDENT of the light/dark UI theme ══
-// Curated palette: each swatch is hand-tuned for BOTH themes so the body, face,
-// and toon outline always stay legible.  { light:{body,ink}, dark:{body,ink} }
+// The avatar looks the SAME in light and dark: one body color per swatch, with
+// eyes/mouth features auto-picked for contrast. Only the toon OUTLINE follows the
+// theme (black in light, white in dark) — handled by --face-outline, not here.
+// A white + a dark neutral, then soft pastels.
 const AP_PALETTE = [
-  { key: "paper",  name: "Paper",  light: { body: "#ffffff", ink: "#121316" }, dark: { body: "#474f5b", ink: "#e4e7ec" } },
-  { key: "blue",   name: "Blue",   light: { body: "#5b8cc9", ink: "#ffffff" }, dark: { body: "#4a76ad", ink: "#eaf1fb" } },
-  { key: "green",  name: "Green",  light: { body: "#6aa84f", ink: "#ffffff" }, dark: { body: "#5b8f45", ink: "#eef7e9" } },
-  { key: "teal",   name: "Teal",   light: { body: "#2aa198", ink: "#ffffff" }, dark: { body: "#1f8079", ink: "#e6f6f4" } },
-  { key: "purple", name: "Purple", light: { body: "#8e7cc3", ink: "#ffffff" }, dark: { body: "#6f5ea3", ink: "#f1ecfb" } },
-  { key: "rose",   name: "Rose",   light: { body: "#d9689b", ink: "#ffffff" }, dark: { body: "#b5507f", ink: "#fbe9f2" } },
-  { key: "amber",  name: "Amber",  light: { body: "#e8b24a", ink: "#3a2a10" }, dark: { body: "#b9832a", ink: "#fff0cf" } },
+  { key: "white",   name: "White",   body: "#ffffff" },
+  { key: "dark",    name: "Dark",    body: "#2a2f37" },
+  { key: "mint",    name: "Mint",    body: "#dcf2e5" },
+  { key: "sky",     name: "Sky",     body: "#dbecf8" },
+  { key: "blue",    name: "Blue",    body: "#d7e6f5" },
+  { key: "violet",  name: "Violet",  body: "#ede5f8" },
+  { key: "rose",    name: "Rose",    body: "#f6dbeb" },
+  { key: "peach",   name: "Peach",   body: "#fae7da" },
+  { key: "cream",   name: "Cream",   body: "#faf0dd" },
+  { key: "sage",    name: "Sage",    body: "#e9f2dd" },
 ];
 const AP_SHAPES = [{ key: "squircle", name: "Squircle" }, { key: "round", name: "Round" }, { key: "blocky", name: "Blocky" }];
 
+// eyes/mouth: dark ink on light/pastel bodies, light ink on the dark body
+function faceFeatures(hex) {
+  const n = parseInt(hex.slice(1), 16), r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) > 140 ? "#1c2230" : "#eef1f5";
+}
 function getChar() {
   let c = {};
   try { c = JSON.parse(localStorage.getItem("ap-character") || "{}"); } catch (_) {}
   return {
-    color: AP_PALETTE.some(p => p.key === c.color) ? c.color : "paper",
+    color: AP_PALETTE.some(p => p.key === c.color) ? c.color : "white",
     shape: AP_SHAPES.some(s => s.key === c.shape) ? c.shape : "squircle",
   };
 }
@@ -5590,14 +5597,13 @@ function setChar(patch) {
   try { localStorage.setItem("ap-character", JSON.stringify(c)); } catch (_) {}
   return c;
 }
-// paint the character: set the face tokens (color × current theme) as inline
-// overrides on :root, set the shape attribute, then tell the 3D cube to update.
+// paint the character: body + auto features as inline overrides (theme-independent),
+// set the shape attribute, then tell the 3D cube to update. Outline stays theme-driven.
 function applyCharacter() {
   const c = getChar();
-  const theme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
-  const sw = (AP_PALETTE.find(p => p.key === c.color) || AP_PALETTE[0])[theme];
+  const sw = AP_PALETTE.find(p => p.key === c.color) || AP_PALETTE[0];
   document.documentElement.style.setProperty("--face-bg", sw.body);
-  document.documentElement.style.setProperty("--face-ink", sw.ink);
+  document.documentElement.style.setProperty("--face-features", faceFeatures(sw.body));
   document.documentElement.setAttribute("data-ap-shape", c.shape);
   window.dispatchEvent(new CustomEvent("characterchange", { detail: c }));
 }
@@ -5619,13 +5625,15 @@ function exitCharacterMode() {
   charEditMode = false;
   document.body.classList.remove("char-editing");
   g.transition().duration(350).style("opacity", 1);
-  if (selfCube) selfCube.classList.remove("char-edit");
+  if (selfCube) {
+    selfCube.classList.remove("char-edit");
+    syncSelfCube();          // snap it straight back to its node — don't wait for a tick
+  }
   document.getElementById("char-tools")?.remove();
 }
 function buildCharTools() {
   document.getElementById("char-tools")?.remove();
   const c = getChar();
-  const theme = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
   const el = document.createElement("div");
   el.id = "char-tools";
   el.innerHTML =
@@ -5636,7 +5644,7 @@ function buildCharTools() {
     `</div>` +
     `<div class="ct-row ct-swatches">` +
       AP_PALETTE.map(p => `<button class="ct-swatch ${p.key === c.color ? "sel" : ""}" data-color="${p.key}" ` +
-        `title="${p.name}" style="--sw:${p[theme].body}"></button>`).join("") +
+        `title="${p.name}" style="--sw:${p.body}"></button>`).join("") +
     `</div>` +
     `<button class="ct-done">done</button>`;
   document.body.appendChild(el);
