@@ -73,6 +73,8 @@ defmodule Autopoet.Desk do
       last_crypto_cycle: 0,
       last_study: 0,
       last_research: 0,
+      genesis_step: 0,
+      genesis_proposed: false,
       agenda_idx: 0,
       work_cycles: 0,
       equity_open: nil,
@@ -115,6 +117,19 @@ defmodule Autopoet.Desk do
     now = et_now()
     hour = now.hour + now.minute / 60
 
+    # GENESIS: no accepted charter = the fund does not exist yet. The desk's
+    # FIRST job is to form its own environment — research the landscape (live
+    # web), pick an edge, write its own charter, and PROPOSE it to the human.
+    # No trades until the human accepts. Runtime rails (paper-only, cap
+    # ceiling, budgets) stay code; the STRATEGY is the agent's to author.
+    if not charter?() do
+      if research_due?(s), do: genesis_step(touch_research(s)), else: s
+    else
+      phase_step_chartered(s, hour)
+    end
+  end
+
+  defp phase_step_chartered(s, hour) do
     case market_state() do
       :open ->
         # trade cycle every 30 minutes; research keeps running between them
@@ -156,6 +171,203 @@ defmodule Autopoet.Desk do
 
   defp research_due?(s), do: System.os_time(:second) - s.last_research >= @research_every
   defp touch_research(s), do: %{s | last_research: System.os_time(:second)}
+
+  # ── GENESIS: the fund forms itself ──────────────────────────────────────────
+  # Three research slots (15min apart), then a charter PROPOSAL to the human.
+  # Steps 0-1 run with live web grounding (:online) — real research, not vibes.
+
+  defp genesis_step(%{genesis_step: 0} = s) do
+    log("GENESIS 1/3 — landscape research (nexus browser)")
+
+    with {:ok, s, harvest} <- web_research(s, "current market landscape July 2026: equity regime, volatility, crypto conditions, what is moving and why"),
+         {:ok, s, reply} <- think(s, :genesis, genesis_landscape_prompt(harvest), max_tokens: 2000) do
+      append_body("fund/genesis-notes.work", "# Genesis notes\n\n## 1 · Landscape (web-researched) #{s.day}\n\n" <> reply)
+      %{s | genesis_step: 1, work_cycles: s.work_cycles + 1}
+    end
+  end
+
+  defp genesis_step(%{genesis_step: 1} = s) do
+    log("GENESIS 2/3 — edge selection (nexus browser)")
+
+    with {:ok, s, harvest} <- web_research(s, "evidence for and against the candidate edges in my notes:\n#{String.slice(read_body("fund/genesis-notes.work"), 0, 1200)}"),
+         {:ok, s, reply} <- think(s, :genesis, genesis_edge_prompt(harvest), max_tokens: 2000) do
+      append_body("fund/genesis-notes.work", "\n## 2 · Edge selection (web-researched) #{s.day}\n\n" <> reply)
+      %{s | genesis_step: 2, work_cycles: s.work_cycles + 1}
+    end
+  end
+
+  defp genesis_step(%{genesis_step: 2, genesis_proposed: false} = s) do
+    log("GENESIS 3/3 — drafting the charter → PROPOSAL to the human")
+
+    with {:ok, s, reply} <- think(s, :genesis, genesis_charter_prompt()) do
+      draft = strip_actions(reply)
+
+      id =
+        Autopoet.Proposals.record(
+          %{target: "fund/charter.work", kind: "desk.charter", source: "desk-genesis"},
+          %{"fund/charter.work" => draft}
+        )
+
+      # the human-agent feed: every proposal lands one line here — the operator
+      # (or their agent standing in) reviews and accepts/rejects
+      File.write!(
+        Path.join(artifacts(), "proposals.log"),
+        "#{DateTime.to_iso8601(DateTime.utc_now())} | #{id} | desk.charter | fund/charter.work\n",
+        [:append]
+      )
+
+      log("CHARTER PROPOSED (#{id}) — trading starts only on acceptance")
+      %{s | genesis_proposed: true, work_cycles: s.work_cycles + 1}
+    end
+  end
+
+  # proposed, awaiting the human: keep researching its own thesis (no trades)
+  defp genesis_step(s), do: research_cycle(s)
+
+  # REAL web research through the nexus browser seam: the brain writes its own
+  # search queries, Nexus.Browse searches (metasearch, keyless) + reads the top
+  # hits, and the harvested text feeds the synthesis call. Failures degrade to
+  # an empty harvest (logged) — genesis proceeds on data it can get.
+  defp web_research(s, question) do
+    with {:ok, s, qreply} <- think(s, :queries, "You need CURRENT web information for: #{question}\n\nReply with ONLY 3 focused search queries, one per line, nothing else.") do
+      queries = qreply |> String.split("\n") |> Enum.map(&String.trim(&1, " -\"")) |> Enum.reject(&(&1 == "")) |> Enum.take(3)
+
+      harvest =
+        Enum.flat_map(queries, fn q ->
+          case Nexus.Browse.search(q, limit: 3) do
+            {:ok, results} ->
+              results
+              |> Enum.take(2)
+              |> Enum.map(fn r ->
+                url = str(r["url"] || r[:url])
+
+                body =
+                  case url != "" && Nexus.Browse.read(url, timeout: 15_000) do
+                    {:ok, text} -> String.slice(str(text), 0, 2200)
+                    _ -> str(r["description"] || r[:description])
+                  end
+
+                "SOURCE (#{q}): #{url}\n#{body}"
+              end)
+
+            other ->
+              issue("web search failed for #{inspect(q)}: #{inspect(other) |> String.slice(0, 120)}")
+              []
+          end
+        end)
+
+      {:ok, s, Enum.join(harvest, "\n\n---\n\n")}
+    end
+  end
+
+
+  defp onboarding do
+    case File.read(Path.join(artifacts(), "onboarding.txt")) do
+      {:ok, t} -> t
+      _ -> "Run a small systematic paper fund. Prove an edge honestly. Prefer simple, falsifiable methods."
+    end
+  end
+
+  defp genesis_landscape_prompt(harvest) do
+    """
+    You are an autonomous trading agent BOOTSTRAPPING YOUR OWN FUND from zero.
+    Your human's onboarding note:
+    #{onboarding()}
+
+    Your actual capabilities: an Alpaca PAPER account (~$100k; US equities, ETFs,
+    and crypto pairs BTC/ETH/SOL trade there); OHLCV daily bars + computed stats
+    (MAs, momentum, vol) on any symbol you pick; an LLM research cycle every 15
+    minutes, 24/7 (crypto trades round the clock, equities 9:30-16:00 ET); a web
+    browser (you asked, these came back); hard rails you cannot change
+    (paper-only, $#{@risk_cap}/order cap, #{@max_trades_day} trades/day).
+
+    WEB RESEARCH YOU JUST GATHERED:
+    #{harvest}
+
+    From THIS evidence (cite the sources you use): survey the present landscape
+    (regimes, volatility, what's moving and why) and identify THREE candidate
+    edges appropriate to a small systematic fund on 15-minute LLM cycles with
+    daily bars. For each: the mechanism (WHY it pays), current-environment
+    evidence, data needed, biggest failure mode.
+    """
+  end
+
+  defp genesis_edge_prompt(harvest) do
+    """
+    You are bootstrapping your own paper fund. Your landscape research so far:
+    #{read_body("fund/genesis-notes.work")}
+
+    FRESH WEB EVIDENCE on your candidates:
+    #{harvest}
+
+    Now COMMIT: pick exactly ONE edge (or a sharper hybrid). Define:
+    1. The edge, one paragraph, mechanism first.
+    2. Your trading UNIVERSE: 3-8 Alpaca-tradeable symbols (US equities/ETFs,
+       and/or BTC/USD ETH/USD SOL/USD), each with WHY it expresses the edge.
+    3. Falsifiable success criteria (what result within 30 days KILLS this idea).
+    4. What you must verify in data before the first trade.
+    """
+  end
+
+  defp genesis_charter_prompt do
+    """
+    You are bootstrapping your own paper fund. Your genesis research:
+    #{read_body("fund/genesis-notes.work")}
+
+    Write your FOUNDING CHARTER as a complete document. The human will accept or
+    reject it verbatim — this becomes your constitution. Hard rails you operate
+    under regardless: paper-only, $#{@risk_cap}/order ceiling, #{@max_trades_day} trades/day, and your
+    runtime (research cycle /15min, equities cycle /30min in market hours,
+    crypto cycle /30min otherwise).
+
+    REQUIRED sections, exactly these headers:
+    ## Mission
+    ## Edge
+    ## Universe
+    (one symbol per '- SYM' line, Alpaca-tradeable only)
+    ## Risk
+    (your per-order cap ≤ $#{@risk_cap}, position limits, drawdown rules)
+    ## Research rotation
+    (what you study on repeat and why — your own process, not a template)
+    ## Trade rules
+    (entries, exits, sizing — mechanical enough to follow on a 30min cycle)
+    ## Kill criteria
+    (numbers that mean the edge failed and trading must stop)
+
+    No commentary outside the document. This is YOUR fund — commit to it.
+    """
+  end
+
+  # ── the charter: the agent's own constitution, parsed not assumed ───────────
+
+  defp charter, do: read_body("fund/charter.work")
+  defp charter?, do: not String.starts_with?(charter(), "(no")
+
+  defp charter_universe do
+    case Regex.run(~r/##\s*Universe\s*\n(.*?)(?:\n##|\z)/s, charter()) do
+      [_, body] ->
+        Regex.scan(~r/^-\s*([A-Z][A-Z0-9.\/]+)/m, body) |> Enum.map(fn [_, s] -> s end)
+
+      _ ->
+        []
+    end
+  end
+
+  defp equity_universe do
+    case Enum.reject(charter_universe(), &Autopoet.Alpaca.crypto?/1) do
+      [] -> @watchlist
+      syms -> syms
+    end
+  end
+
+  defp crypto_universe do
+    case Enum.filter(charter_universe(), &Autopoet.Alpaca.crypto?/1) do
+      [] -> @crypto_watchlist
+      syms -> syms
+    end
+  end
+
+  defp tradeable, do: equity_universe() ++ crypto_universe()
 
   # ── phases ──────────────────────────────────────────────────────────────────
 
@@ -253,7 +465,7 @@ defmodule Autopoet.Desk do
   end
 
   defp research_task(:deep_dive, s) do
-    pool = @watchlist ++ @crypto_watchlist
+    pool = tradeable()
     sym = Enum.at(pool, rem(s.agenda_idx, length(pool)))
 
     {"""
@@ -269,7 +481,7 @@ defmodule Autopoet.Desk do
   end
 
   defp research_task(:backtest, s) do
-    pool = @watchlist ++ @crypto_watchlist
+    pool = tradeable()
     sym = Enum.at(pool, rem(s.agenda_idx + 2, length(pool)))
 
     {"""
@@ -397,19 +609,45 @@ defmodule Autopoet.Desk do
 
   # ── the brain call (budgeted) ───────────────────────────────────────────────
 
-  defp think(s, phase, prompt) do
-    if s.llm_calls >= @max_llm_day do
-      issue("llm budget exhausted (#{@max_llm_day}/day) in #{phase}")
-      s
-    else
-      case Autopoet.Providers.openrouter([%{role: "user", content: prompt}], max_tokens: 1200, temperature: 0.3) do
-        {:ok, %{content: reply}} when is_binary(reply) ->
-          {:ok, %{s | llm_calls: s.llm_calls + 1}, reply}
+  defp think(s, phase, prompt, opts \\ []) do
+    cond do
+      # the master kill (test config) gates the desk too — no live calls ever
+      # leak out of a unit test
+      not Application.get_env(:autopoet, :brain_live, true) ->
+        s
 
-        other ->
-          issue("llm failed in #{phase}: #{inspect(other) |> String.slice(0, 200)}")
-          %{s | llm_calls: s.llm_calls + 1}
+      s.llm_calls >= @max_llm_day ->
+        issue("llm budget exhausted (#{@max_llm_day}/day) in #{phase}")
+        s
+
+      true ->
+        think_live(s, phase, prompt, opts)
+    end
+  end
+
+  defp think_live(s, phase, prompt, opts) do
+    # all LLM calls ride Providers.openrouter — gateway-first (the Workbooks
+    # Cloudflare AI Gateway when CF_AIG_* is configured). Web research is NOT
+    # a model feature here: it's the nexus browser (web_research/2).
+    llm_opts = [max_tokens: Keyword.get(opts, :max_tokens, 1200), temperature: 0.3]
+
+    # a provider exception must degrade to a logged issue, never kill the tick
+    result =
+      try do
+        Autopoet.Providers.openrouter([%{role: "user", content: prompt}], llm_opts)
+      rescue
+        e -> {:error, {:raised, Exception.message(e)}}
+      catch
+        kind, reason -> {:error, {kind, reason}}
       end
+
+    case result do
+      {:ok, %{content: reply}} when is_binary(reply) ->
+        {:ok, %{s | llm_calls: s.llm_calls + 1}, reply}
+
+      other ->
+        issue("llm failed in #{phase}: #{inspect(other) |> String.slice(0, 200)}")
+        %{s | llm_calls: s.llm_calls + 1}
     end
   end
 
@@ -431,7 +669,7 @@ defmodule Autopoet.Desk do
         st.trades >= @max_trades_day ->
           st
 
-        sym not in @watchlist ++ @crypto_watchlist ->
+        sym not in tradeable() ->
           issue("off-watchlist order refused: #{sym}")
           st
 
@@ -632,6 +870,10 @@ defmodule Autopoet.Desk do
   # artifacts dir — env-overridable so a TEST desk never clobbers the live op's
   # heartbeat/issues files (the ops monitor's feed)
   defp artifacts, do: System.get_env("AUTOPOET_DESK_DIR") || "eval/desk"
+
+  defp str(v) when is_binary(v), do: v
+  defp str(nil), do: ""
+  defp str(v), do: inspect(v)
 
   defp num(n) when is_number(n), do: n
   defp num(s) when is_binary(s), do: (case Float.parse(s), do: ({f, _} -> f; :error -> 0))
