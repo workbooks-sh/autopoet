@@ -1025,7 +1025,7 @@ defmodule Autopoet.Control do
       conn = fetch_query_params(conn)
       q = conn.query_params
       engine = q["engine"]
-      use_qwen = engine in ["qwen", "qwen-design"] or (engine == nil and Autopoet.QwenTts.ready?())
+      use_qwen = engine in ["qwen", "qwen-design", "qwen-clone"] or (engine == nil and Autopoet.QwenTts.ready?())
       # kokoro voice ids (af_heart…) don't name a qwen speaker — map to the default
       qvoice =
         case q["voice"] do
@@ -1035,6 +1035,22 @@ defmodule Autopoet.Control do
 
       result =
         cond do
+          engine == "qwen-clone" ->
+            # a PINNED voice: data/voices/<name>.wav + .txt (the clip is the identity)
+            if Autopoet.QwenTts.model() != :base do
+              Autopoet.QwenTts.switch(:base)
+              {:error, :base_model_loading}
+            else
+              vdir = Path.join([Autopoet.Discovery.home(), "data", "voices"])
+              name = Path.basename(q["voice"] || "")
+              ref = Path.join(vdir, name <> ".wav")
+              reftxt = Path.join(vdir, name <> ".txt")
+
+              if File.exists?(ref) and File.exists?(reftxt),
+                do: Autopoet.QwenTts.clone(body, ref, String.trim(File.read!(reftxt))),
+                else: {:error, :no_such_pinned_voice}
+            end
+
           engine == "qwen-design" and Autopoet.QwenTts.model() != :design ->
             # design personas need the DESIGN model — never cross-speak on
             # custom (delivery-instruction ≠ designed timbre) and never mask
@@ -1081,6 +1097,34 @@ defmodule Autopoet.Control do
     end)
   end
 
+  # ── the voice roster: persistent verdicts + takes, served BY the app ──────
+  get "/voices/roster" do
+    conn
+    |> put_resp_content_type("text/html")
+    |> put_resp_header("cache-control", "no-store")
+    |> send_resp(200, Autopoet.VoiceRoster.html(Autopoet.Discovery.token()))
+  end
+
+  get "/voices/take/:name" do
+    path = Path.join(Autopoet.VoiceRoster.takes_dir(), Path.basename(name))
+
+    if File.exists?(path) and String.ends_with?(name, ".wav") do
+      conn |> put_resp_content_type("audio/wav") |> send_resp(200, File.read!(path))
+    else
+      send_resp(conn, 404, "no take\n")
+    end
+  end
+
+  post "/voices/verdict" do
+    authed!(conn, fn conn ->
+      conn = fetch_query_params(conn)
+
+      case Autopoet.VoiceRoster.set(conn.query_params["name"] || "", conn.query_params["state"] || "") do
+        :ok -> text(conn, "ok\n")
+      end
+    end)
+  end
+
   # boot the premium engine (heavy: ~30s load, ~5.4GB resident) — explicit, never implicit
   post "/voice/tts/qwen/boot" do
     authed!(conn, fn conn ->
@@ -1088,6 +1132,7 @@ defmodule Autopoet.Control do
       case conn.query_params["model"] do
         "design" -> Autopoet.QwenTts.switch(:design)
         "custom" -> Autopoet.QwenTts.switch(:custom)
+        "base" -> Autopoet.QwenTts.switch(:base)
         _ -> Autopoet.QwenTts.ensure(:custom)
       end
       text(conn, Autopoet.QwenTts.status() <> "\n")

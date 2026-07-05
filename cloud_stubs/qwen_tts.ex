@@ -12,4 +12,5 @@ defmodule Autopoet.QwenTts do
   def switch(_model), do: :ok
   def model, do: nil
   def speak(_text, _voice \\ nil, _instruct \\ nil), do: {:error, :not_available}
+  def clone(_text, _ref, _ref_text), do: {:error, :not_available}
 end

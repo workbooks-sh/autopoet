@@ -53,7 +53,12 @@ for line in sys.stdin:
             kwargs["voice"] = req["voice"]
         if req.get("instruct"):
             kwargs["instruct"] = req["instruct"]
-        if "voice" not in kwargs and "instruct" not in kwargs:
+        # CLONE lane (Base model): the reference clip + its transcript ARE the
+        # voice — no default speaker when a ref is present
+        if req.get("ref_audio"):
+            kwargs["ref_audio"] = req["ref_audio"]
+            kwargs["ref_text"] = req.get("ref_text") or ""
+        if "voice" not in kwargs and "instruct" not in kwargs and "ref_audio" not in kwargs:
             kwargs["voice"] = "Ryan"
         for k, v in (("temperature", TEMP), ("top_p", TOP_P)):
             if v is not None and k in GEN_PARAMS:

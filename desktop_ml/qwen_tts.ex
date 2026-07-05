@@ -22,7 +22,8 @@ defmodule Autopoet.QwenTts do
   # one resident model at a time; ensure(:design) recycles the sidecar onto it
   @models %{
     custom: "mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-4bit",
-    design: "mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-4bit"
+    design: "mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-4bit",
+    base: "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-4bit"
   }
   # fresh process every N generations — quality drifts on a long-lived sidecar
   # (fresh-boot takes A/B'd clearly better); recycled between utterances only
@@ -58,7 +59,17 @@ defmodule Autopoet.QwenTts do
 
   @doc "Synthesize. Returns {:ok, wav_binary} | {:error, reason}. Boots on demand."
   def speak(text, voice \\ "Ryan", instruct \\ nil) do
-    GenServer.call(__MODULE__, {:speak, text, voice, instruct}, @timeout)
+    GenServer.call(__MODULE__, {:speak, %{text: text, voice: voice, instruct: instruct}}, @timeout)
+  catch
+    :exit, _ -> {:error, :timeout}
+  end
+
+  @doc """
+  Zero-shot CLONE (Base model): speak `text` in the voice of `ref_wav_path`
+  (+ its exact transcript). No weights, no training — the clip IS the voice.
+  """
+  def clone(text, ref_wav_path, ref_text) do
+    GenServer.call(__MODULE__, {:speak, %{text: text, ref_audio: ref_wav_path, ref_text: ref_text}}, @timeout)
   catch
     :exit, _ -> {:error, :timeout}
   end
@@ -77,7 +88,7 @@ defmodule Autopoet.QwenTts do
 
   def handle_call(:model, _from, s), do: {:reply, (s.port && s.model) || nil, s}
 
-  def handle_call({:speak, text, voice, instruct}, from, s) do
+  def handle_call({:speak, %{} = req0}, from, s) do
     s = boot(s, s.model)
 
     case s.port do
@@ -86,8 +97,7 @@ defmodule Autopoet.QwenTts do
 
       port ->
         id = s.seq + 1
-        req = Jason.encode!(%{id: id, text: text, voice: voice, instruct: instruct})
-        Port.command(port, req <> "\n")
+        Port.command(port, Jason.encode!(Map.put(req0, :id, id)) <> "\n")
         {:noreply, %{s | seq: id, waiting: Map.put(s.waiting, id, from)}}
     end
   end
