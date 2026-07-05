@@ -672,6 +672,9 @@ defmodule Autopoet.Desk do
   # ── order execution: the cage is the gate (paper + caps) ────────────────────
 
   defp execute_orders(s, reply) do
+    # a completed trade/crypto cycle is a unit of work whether it traded or HELD
+    # (a hold is a judgment, not idleness) — the busy metric must count it
+    s = %{s | work_cycles: s.work_cycles + 1}
     orders = for {"alpaca_place_order", m} <- Autopoet.Actions.parse_intents(reply), do: m
 
     Enum.reduce(orders, s, fn m, st ->
