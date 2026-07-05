@@ -126,3 +126,41 @@ Open questions for the owner:
   (Proposal: explicit, with a "grant all basics" one-tap during genesis review.)
 - Notification pressure: batch connection-requests into the genesis checklist where
   possible; mid-run requests rate-limited per project per day?
+
+---
+
+## 7 · LOCKED DECISIONS (owner grill, 2026-07-05)
+
+1. **Project creation**: conversational (chat/voice with the autopoet) — genesis proposals
+   come back; UI is where you review, not where you create.
+2. **Grants**: explicit at genesis review; nothing usable until toggled; "grant all
+   basics" one-tap allowed.
+3. **Self-serve signups**: FREE services fully autonomous (checklist approval covers it;
+   AgentMail inbox does the verify loop). Paid/KYC always a needs-human card.
+4. **Mid-run connection requests**: BATCHED DIGEST — collect silently, reviewed when the
+   owner opens the app. Zero interruption beats fast unblocking. No notification pings.
+5. **Review tiers**: Claude (the operator-agent) reviews routine proposals (content,
+   small builds, connection requests) under standing rules; charters, money, identity,
+   and anything irreversible always reach the owner's digest.
+6. **One organism confirmed**: the fund is a project-workspace like everything else —
+   archetypes differ by charter + toolset, never by separate apps/instances.
+7. **CiteFlows: ARCHIVE.** Completed experiment (live site + waitlist stay up as
+   artifacts); the first project on the new spine starts fresh.
+8. **ONBOARDING RESTRUCTURED — the big one**:
+   * Onboarding is a **deterministic state machine** (forms) — **no LLM tokens spent
+     before the app**. LLM spend starts in-app, where the agent does real work.
+   * **NO connections screen in onboarding.** The featured-six-tiles idea is dead as an
+     onboarding step; ALL connections defer to in-app, post-plan — the agent asks for
+     exactly what its plan needs (typed checklist + digest), which is when the user can
+     see WHY each connection matters.
+   * Onboarding contains: profile quiz (exists) + **payment/tokens** (you fund the agent
+     — the existing cloud credits/Polar loop) + a light deterministic "what tools do you
+     live in" questionnaire (feeds later suggestions, no keys collected) + the
+     **Workbooks Cloud pitch**: what the platform ships built-in — Composio integration
+     library, a phone number, and **email as a built-in (white-labeled AgentMail)**:
+     every agent gets its own inbox out of the box, provisioned from the platform's
+     AgentMail org — the user never sees an AgentMail key.
+9. Sequencing unchanged (spine → genesis → surfaces → self-serve → purchases) except:
+   the surfaces pass now REMOVES connection tiles from onboarding rather than adding
+   them, and adds the payment/tokens step; grant matrix + checklist + digest are the
+   only connection surfaces, all in-app.
