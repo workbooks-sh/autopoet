@@ -188,7 +188,7 @@ defmodule Autopoet.Venture do
 
   defp logo_prompt do
     """
-    You are the venture desk — design YOUR OWN LOGO. Your ratified identity:
+    You are the founder of the venture whose identity you ratified below — design YOUR OWN LOGO.
     #{identity_doc()}
     Charter mission: #{charter_section("Mission")}
 
@@ -249,7 +249,7 @@ defmodule Autopoet.Venture do
     feedback_block = if feedback == "", do: "", else: "\nYOUR PREVIOUS PROPOSAL WAS RETRACTED. #{feedback}\n"
 
     """
-    You are the venture desk. Your charter:
+    You are the founder of the venture chartered below. Your charter:
     #{charter()}
     #{feedback_block}
     Claim your venture's IDENTITY. Available infrastructure:
@@ -564,7 +564,7 @@ defmodule Autopoet.Venture do
 
   defp build_prompt(s) do
     """
-    You are the venture desk, BUILD slot. Your charter:
+    You are the founder of your venture — BUILD slot. Your charter:
     #{charter()}
     Current deployed site: #{s.site_url || "(none yet)"}
     Latest feedback:
@@ -587,7 +587,7 @@ defmodule Autopoet.Venture do
 
   defp feedback_prompt(harvest) do
     """
-    You are the venture desk, FEEDBACK slot. Your charter niche:
+    You are the founder of your venture — FEEDBACK slot. Your charter niche:
     #{charter_section("Niche")}
 
     FRESH WEB EVIDENCE:
@@ -601,7 +601,7 @@ defmodule Autopoet.Venture do
 
   defp market_prompt(s) do
     """
-    You are the venture desk, MARKET slot. Charter GTM:
+    You are the founder of your venture — MARKET slot. Charter GTM:
     #{charter_section("GTM")}
     Site: #{s.site_url || "(not deployed yet)"}
 
@@ -614,7 +614,7 @@ defmodule Autopoet.Venture do
 
   defp measure_prompt(s, signals) do
     """
-    You are the venture desk, MEASURE slot. Charter validation test:
+    You are the founder of your venture — MEASURE slot. Charter validation test:
     #{charter_section("Validation")}
     Site: #{s.site_url || "(not deployed)"} · deploys so far: #{s.deploys}
     Signals this slot: #{if signals == [], do: "NONE (analytics not wired yet — say what you'd instrument first)", else: inspect(signals)}
