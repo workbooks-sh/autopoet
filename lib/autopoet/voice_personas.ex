@@ -11,18 +11,19 @@ defmodule Autopoet.VoicePersonas do
   """
 
   @personas %{
-    # structure per the VoiceDesign guidance: identity → pitch/pace/timbre →
-    # emotion → "suitable for…" anchor; 15–40 words; concrete adjectives only
-    # (vague/metaphoric traits destabilize the voice). Iterate ONE dimension
-    # at a time when tuning.
-    "narrator" =>
-      "A calm male voice in his forties, medium-low pitch, slow to moderate pace, dry and quietly amused, suitable for documentary narration.",
-    "sage" =>
-      "A gentle elderly male voice, low mellow pitch, slow unhurried pace with musing pauses, warm and contemplative, suitable for philosophical audiobook narration.",
-    "commander" =>
-      "A deep gravelly male voice in his forties, low pitch, punchy deliberate pace with dramatic pauses, confident and commanding, suitable for movie trailer voice-overs.",
-    "spark" =>
-      "A young lively female voice, early twenties, high pitch, fast speaking rate with rising intonation, cheerful and energetic, suitable for social media product videos."
+    # ≤10 words each, EXPLICITLY simple: voice + use case, nothing ornate —
+    # complexity drifts. NO slow-pacing words anywhere: pacing prompts skew
+    # slow in practice, so every persona is prompted fast regardless of pitch.
+    "narrator" => "Calm male forties voice, fast dry delivery, documentary narration.",
+    "sage" => "Mellow elderly male voice, quick warm delivery, philosophical audiobooks.",
+    "commander" => "Deep gravelly male voice, fast confident delivery, movie trailers.",
+    "spark" => "Bright young female voice, fast cheerful delivery, social videos.",
+    "crisp" => "Crisp professional female voice, fast clear delivery, product explainers.",
+    "buddy" => "Friendly casual male voice, quick upbeat delivery, podcast banter.",
+    "noir" => "Low smoky female voice, brisk intimate delivery, late-night radio.",
+    "coach" => "Energetic male voice, fast motivating delivery, workout coaching.",
+    "pixie" => "Cute high-pitched child voice, quick playful delivery, animation characters.",
+    "anchor" => "Clear authoritative female voice, fast steady delivery, news reading."
   }
 
   @doc "The description for a persona name, or nil."
