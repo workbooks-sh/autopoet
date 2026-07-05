@@ -77,7 +77,7 @@ defmodule Autopoet.Auth do
     # Cloud.account/0 returns ATOM keys (:name/:email/:avatar) — the identity the
     # desktop onboarding is seeded with (name pre-fills the quiz, avatar shows).
     name = blank(acct[:name]) || blank(acct[:email]) || "you"
-    onboarded = File.exists?(Autopoet.Intake.marker())
+    onboarded = onboarded_done?()
 
     put(%{
       authenticated: true,
@@ -110,7 +110,18 @@ defmodule Autopoet.Auth do
 
   def disconnect(_), do: {:error, :unknown_provider}
 
-  def complete_onboarding, do: put(Map.merge(state(), %{onboarded: true}))
+  # DESKTOP onboarding-complete marker — its OWN file, distinct from the
+  # world-seed bootstrap marker (Intake.marker/data/bootstrapped). Onboarding is
+  # "done" only when the user finishes the desktop flow, NOT when the world was
+  # seeded. Cloud auth = identity; all onboarding happens here, gated on this.
+  defp onboard_marker, do: Path.join([Autopoet.Discovery.home(), "data", "onboarded"])
+  def onboarded_done?, do: File.exists?(onboard_marker())
+
+  def complete_onboarding do
+    File.mkdir_p!(Path.dirname(onboard_marker()))
+    File.write!(onboard_marker(), "done\n")
+    put(Map.merge(state(), %{onboarded: true}))
+  end
   def signout, do: put(%{authenticated: false, user: nil, onboarded: false, connections: %{}})
 
   # ── state persistence ──────────────────────────────────────────────────────
@@ -150,7 +161,9 @@ defmodule Autopoet.Auth do
           end)
 
         case tag do
-          "in" -> %{authenticated: true, user: user, onboarded: true, connections: conns}
+          # onboarded is the MARKER's truth, not the tag — a stale "in" from a
+          # prior session must not skip a desktop that never finished onboarding
+          "in" -> %{authenticated: true, user: user, onboarded: onboarded_done?(), connections: conns}
           "onboarding" -> %{authenticated: true, user: user, onboarded: false, connections: conns}
           _ -> default()
         end

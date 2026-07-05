@@ -275,6 +275,35 @@ defmodule Autopoet.Control do
     conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(%{ok: true}))
   end
 
+  # ── onboarding POWER gate: how the agent gets its AI ─────────────────────────
+  # CLOUD (paid) → open the dashboard to provision a machine (AI via the gateway).
+  # LOCAL (free) → save a bring-your-own OpenRouter key. One is required to run.
+  post "/power/cloud/open" do
+    spawn(fn -> System.cmd("open", [Autopoet.Cloud.base_url() <> "/cloud/"]) end)
+    conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(%{ok: true}))
+  end
+
+  post "/power/openrouter" do
+    authed!(conn, fn conn ->
+      {:ok, body, conn} = read_body(conn)
+      key = String.trim(body)
+
+      if key == "" do
+        conn |> put_resp_content_type("application/json") |> send_resp(422, Jason.encode!(%{error: "empty key"}))
+      else
+        Autopoet.Keys.set_openrouter(key)
+        conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(%{ok: true}))
+      end
+    end)
+  end
+
+  # is the agent powered? (cloud signed-in with a machine, or a local key set) —
+  # the onboarding gate reads this to allow "continue".
+  get "/power/status" do
+    powered = Autopoet.Cloud.signed_in?() or is_binary(Autopoet.Keys.openrouter())
+    conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(%{powered: powered, openrouter: is_binary(Autopoet.Keys.openrouter())}))
+  end
+
   # The cloud redirects here with the minted PAT; store it and confirm in the tab (which pings the opener).
   get "/auth/cloud/callback" do
     conn = fetch_query_params(conn)

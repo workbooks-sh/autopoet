@@ -7,6 +7,34 @@ defmodule Autopoet.Keys do
   def inception, do: Nexus.Secrets.get("INCEPTION_API_KEY")
   def openrouter, do: Nexus.Secrets.get("OPENROUTER_API_KEY")
   def gemini, do: Nexus.Secrets.get("GEMINI_API_KEY")
+
+  @doc """
+  Set the OpenRouter key from onboarding's LOCAL power path (bring-your-own AI).
+  Live immediately (System.put_env → env-fallback picks it up) AND persisted to
+  `.env` so it survives a restart. The desktop's free/local lane.
+  """
+  def set_openrouter(key) when is_binary(key) do
+    key = String.trim(key)
+    System.put_env("OPENROUTER_API_KEY", key)
+    persist_env("OPENROUTER_API_KEY", key)
+    :ok
+  end
+
+  # upsert a KEY=value line in the .env run.sh sources (Discovery.home/.env)
+  defp persist_env(name, value) do
+    path = Path.join(Autopoet.Discovery.home(), ".env")
+    line = "#{name}=#{value}"
+
+    lines =
+      case File.read(path) do
+        {:ok, body} -> body |> String.split("\n") |> Enum.reject(&String.starts_with?(&1, name <> "="))
+        _ -> []
+      end
+
+    File.write!(path, Enum.join(lines ++ [line, ""], "\n"))
+  rescue
+    _ -> :ok
+  end
 end
 
 defmodule Autopoet.Providers do
