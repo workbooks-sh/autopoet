@@ -2,7 +2,9 @@
 # Terminal control for the running autopoet app. Reads {port, token} from data/ctl
 # (written at boot, removed at shutdown — a stale file means a dead app).
 DIR="$(cd "$(dirname "$0")" && pwd)"
-CTL="$DIR/data/ctl"
+# respect AUTOPOET_HOME so a second instance (venture desk) is addressable:
+#   AUTOPOET_HOME=$PWD/venture-home ./autopoetctl proposals
+CTL="${AUTOPOET_HOME:-$DIR}/data/ctl"
 
 [ -f "$CTL" ] || { echo "autopoet not running (no $CTL)"; exit 1; }
 read -r PORT TOKEN <"$CTL"
