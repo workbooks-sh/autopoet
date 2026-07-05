@@ -1037,9 +1037,15 @@ defmodule Autopoet.Control do
         if use_qwen do
           # qwen-design: the voice IS a description (rides instruct; no presets)
           {qv, qi} =
-            if engine == "qwen-design",
-              do: {nil, q["design"] || q["instruct"]},
-              else: {qvoice, q["instruct"]}
+            if engine == "qwen-design" do
+              desc =
+                q["design"] || q["instruct"] ||
+                  Autopoet.VoicePersonas.description(q["persona"] || Autopoet.VoicePersonas.default())
+
+              {nil, desc}
+            else
+              {qvoice, q["instruct"]}
+            end
 
           case Autopoet.QwenTts.speak(body, qv, qi) do
             {:ok, wav} -> {:ok, wav}
