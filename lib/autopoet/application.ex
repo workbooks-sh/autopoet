@@ -45,7 +45,7 @@ defmodule Autopoet.Application do
           Autopoet.Treasury,
           {Bandit, plug: Autopoet.Control, ip: io, port: port},
           {Autopoet.Discovery, port}
-        ] ++ desk() ++ window()
+        ] ++ desk() ++ venture() ++ window()
 
     # max_restarts headroom: tests hard-kill the three shadow learners to force
     # cold/reboot paths — three near-simultaneous restarts must not take down the tree
@@ -130,6 +130,13 @@ defmodule Autopoet.Application do
   # (machine-identity enablement, like PORT/WB_DATA). Never on in tests by default.
   defp desk do
     if System.get_env("AUTOPOET_DESK") == "1", do: [Autopoet.Desk], else: []
+  end
+
+  # The venture desk (builds+markets its own SaaS) — its own instance, its own
+  # home: AUTOPOET_VENTURE=1 (typically with AUTOPOET_HOME/PORT distinct from
+  # the fund desk's).
+  defp venture do
+    if System.get_env("AUTOPOET_VENTURE") == "1", do: [Autopoet.Venture], else: []
   end
 
   defp window do
