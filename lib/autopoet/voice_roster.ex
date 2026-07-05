@@ -71,6 +71,18 @@ defmodule Autopoet.VoiceRoster do
     :ok
   end
 
+  @doc "Blind-listen metadata (gemini: invented name/voice/personality), or nil."
+  def meta(name) do
+    path = Path.join([dir(), "meta", Path.basename(name) <> ".json"])
+
+    with {:ok, body} <- File.read(path),
+         {:ok, m} <- Jason.decode(body) do
+      m
+    else
+      _ -> nil
+    end
+  end
+
   @doc "Pinned (cloned) voices — every <name>.wav+.txt pair in data/voices."
   def pinned do
     case File.ls(dir()) do
@@ -83,6 +95,23 @@ defmodule Autopoet.VoiceRoster do
 
       _ ->
         []
+    end
+  end
+
+  # the blind listen: what a stranger-model heard in this voice (no context,
+  # no gender) — invented name, sound description, imagined carriage/gesture
+  defp meta_block(name) do
+    case meta(name) do
+      %{"name" => gname} = m ->
+        ~s"""
+        <details class="meta"><summary>blind listen: <b>#{gname}</b></summary>
+          <div class="mline"><i>voice</i> #{m["voice"]}</div>
+          <div class="mline"><i>personality</i> #{m["personality"]}</div>
+        </details>
+        """
+
+      _ ->
+        ""
     end
   end
 
@@ -124,6 +153,7 @@ defmodule Autopoet.VoiceRoster do
           </div>
           <div class="note">“#{desc}”</div>
           #{audio}
+          #{meta_block(name)}
         </div>
         """
       end
@@ -159,6 +189,10 @@ defmodule Autopoet.VoiceRoster do
       .filters{margin-bottom:16px}
       .card.hid{display:none}
       .chip.pin{background:#245cc0;color:#fff}
+      .meta{margin-top:8px;font:11.5px/1.55 ui-monospace,monospace;color:#4a4f48;background:#f6f8fa;border-radius:9px;padding:7px 11px}
+      .meta summary{cursor:pointer;color:#6a6f68}
+      .meta .mline{margin-top:6px}
+      .meta i{font-style:normal;font-weight:600;font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:#8a8f88;margin-right:6px}
       .sect{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#6a6f68;margin:26px 0 10px;border-bottom:1px solid #e2e6ec;padding-bottom:6px}
       .newbtn{font:600 11.5px ui-monospace,monospace;padding:7px 14px;border-radius:9px;border:0;
         background:#16161a;color:#fff;cursor:pointer;vertical-align:4px;margin-left:10px}
