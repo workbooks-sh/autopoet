@@ -64,6 +64,40 @@ clone pin makes it permanent identity. Prompt discipline (encoded in
 Autopoet.VoicePersonas): identity → pitch/pace/timbre → emotion → "suitable
 for…" anchor, 15–40 words, concrete adjectives, iterate one dimension at a time.
 
+## CLONE-FROM-ANYWHERE (proven 2026-07-05)
+
+Any clean ~7s of speech → a permanent voice. The pipeline, run end to end on a
+freesound preview (pinned as `tekgnosis`):
+
+1. fetch the audio (mp3/anything) → `afconvert` to 24k mono s16le wav
+2. crop ONE clean utterance (~5–10s — the clone sweet spot; more doesn't help,
+   the encoder conditions on a short window)
+3. transcribe the CROP with our own STT (`POST /voice/dictate`, 16k s16le in) —
+   `ref_text` must match the crop's exact words
+4. pin the pair: `data/voices/<name>.wav` + `<name>.txt`
+5. speak via `POST /voice/tts?engine=qwen-clone&voice=<name>` (Base 1.7B-4bit
+   resident; zero-shot — NO per-voice weights, a voice is ~300KB of data)
+
+Same machinery pins design-winners (generate → bless a take → crop+transcribe →
+pin) and licensed accent sources (brit-emma came from Kokoro's bf_emma).
+LICENSE NOTE: external sources carry their own licenses (freesound previews
+vary CC0/CC-BY/CC-BY-NC) — check before a cloned voice ships anywhere.
+Candidate roster feature: a "clone from audio" modal (URL/file → auto crop +
+transcribe + pin) — the manual pipeline above, mechanized.
+
+## THE ROSTER (the voice studio, /voices/roster)
+
+Persistent, served by the app: verdicts (accept/reject, data/voices/verdicts),
+per-voice ACCENT tags (what it actually sounds like — data/voices/accents),
+status filter, "+ new voice" modal (name + prompt + accent → POST
+/voices/create → /voices/regen polls the design engine until the take lands).
+User personas live in data/voices/personas and shadow the compiled registry.
+Prompt discipline (owner-tuned): ≤10 words, voice + use case, fast/brisk
+always (pacing words skew slow), concrete adjectives (metaphors drift),
+energy+youth+high-pitch = cartoon (waived only for character voices).
+Accent finding: prompts can't do authentic British/Australian/Black/Southern —
+accent comes from the CLONE lane; descriptions carry character.
+
 ## Recommendation
 
 1. **Keep Kokoro as the instant local default.** 82M vs 600M is a different
