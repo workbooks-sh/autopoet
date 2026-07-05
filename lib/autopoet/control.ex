@@ -1168,6 +1168,18 @@ defmodule Autopoet.Control do
     end)
   end
 
+  post "/voices/trait" do
+    authed!(conn, fn conn ->
+      conn = fetch_query_params(conn)
+      q = conn.query_params
+
+      case Autopoet.VoiceRoster.set_trait(q["name"] || "", q["key"] || "", q["value"] || "") do
+        :ok -> text(conn, "ok\n")
+        _ -> send_resp(conn, 422, "bad trait\n")
+      end
+    end)
+  end
+
   post "/voices/accent" do
     authed!(conn, fn conn ->
       conn = fetch_query_params(conn)

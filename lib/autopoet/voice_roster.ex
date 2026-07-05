@@ -71,6 +71,39 @@ defmodule Autopoet.VoiceRoster do
     :ok
   end
 
+  @doc "Motion traits (six 0-1 sliders + movement thesis), or nil. Owner-editable."
+  def traits(name) do
+    path = Path.join([dir(), "traits", Path.basename(name) <> ".json"])
+
+    with {:ok, body} <- File.read(path),
+         {:ok, t} <- Jason.decode(body) do
+      t
+    else
+      _ -> nil
+    end
+  end
+
+  @trait_keys ~w(energy expanse warmth steadiness dominance playfulness)
+
+  @doc "Persist an owner-edited trait value (0..1)."
+  def set_trait(name, key, value) when key in @trait_keys do
+    v = value |> to_string() |> Float.parse()
+
+    case v do
+      {f, _} when f >= 0.0 and f <= 1.0 ->
+        t = traits(name) || %{}
+        path = Path.join([dir(), "traits", Path.basename(name) <> ".json"])
+        File.mkdir_p!(Path.dirname(path))
+        File.write!(path, Jason.encode!(Map.put(t, key, Float.round(f, 2))))
+        :ok
+
+      _ ->
+        {:error, :bad_value}
+    end
+  end
+
+  def set_trait(_, _, _), do: {:error, :bad_key}
+
   @doc "Blind-listen metadata (gemini: invented name/voice/personality), or nil."
   def meta(name) do
     path = Path.join([dir(), "meta", Path.basename(name) <> ".json"])
@@ -95,6 +128,34 @@ defmodule Autopoet.VoiceRoster do
 
       _ ->
         []
+    end
+  end
+
+  # the six motion sliders — derived from the blind read, owner-tunable, the
+  # inputs to the pose engine (traits × emotion × audio energy → movement)
+  defp traits_block(name) do
+    case traits(name) do
+      %{} = t ->
+        sliders =
+          Enum.map_join(~w(energy expanse warmth steadiness dominance playfulness), fn k ->
+            v = t[k] || 0.5
+            ~s"""
+            <label class="tr"><span>#{k}</span>
+              <input type="range" min="0" max="1" step="0.05" value="#{v}" data-n="#{name}" data-k="#{k}" class="tslide">
+            </label>
+            """
+          end)
+
+        move = if t["movement"], do: ~s(<div class="mline"><i>movement</i> #{t["movement"]}</div>), else: ""
+
+        ~s"""
+        <details class="meta traits"><summary>motion traits</summary>
+          <div class="trgrid">#{sliders}</div>#{move}
+        </details>
+        """
+
+      _ ->
+        ""
     end
   end
 
@@ -154,6 +215,7 @@ defmodule Autopoet.VoiceRoster do
           <div class="note">“#{desc}”</div>
           #{audio}
           #{meta_block(name)}
+          #{traits_block(name)}
         </div>
         """
       end
@@ -193,6 +255,10 @@ defmodule Autopoet.VoiceRoster do
       .meta summary{cursor:pointer;color:#6a6f68}
       .meta .mline{margin-top:6px}
       .meta i{font-style:normal;font-weight:600;font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:#8a8f88;margin-right:6px}
+      .trgrid{display:grid;grid-template-columns:1fr 1fr;gap:4px 18px;margin-top:6px}
+      .tr{display:flex;align-items:center;gap:8px;font:10.5px ui-monospace,monospace;color:#6a6f68}
+      .tr span{width:82px;flex:none}
+      .tslide{flex:1;accent-color:#16161a;height:14px}
       .sect{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#6a6f68;margin:26px 0 10px;border-bottom:1px solid #e2e6ec;padding-bottom:6px}
       .newbtn{font:600 11.5px ui-monospace,monospace;padding:7px 14px;border-radius:9px;border:0;
         background:#16161a;color:#fff;cursor:pointer;vertical-align:4px;margin-left:10px}
@@ -255,6 +321,9 @@ defmodule Autopoet.VoiceRoster do
           c.classList.toggle("hid", f !== "all" && c.dataset.state !== f));
       }
       filterSel.onchange = refresh;
+      document.querySelectorAll(".tslide").forEach(sl => sl.onchange = () =>
+        fetch(`/voices/trait?name=${sl.dataset.n}&key=${sl.dataset.k}&value=${sl.value}`, { method: "POST",
+          headers: { authorization: "Bearer " + TOKEN } }));
       document.querySelectorAll(".asel").forEach(sel => sel.onchange = () =>
         fetch(`/voices/accent?name=${sel.dataset.n}&accent=${sel.value}`, { method: "POST",
           headers: { authorization: "Bearer " + TOKEN } }));
