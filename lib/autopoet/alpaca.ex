@@ -48,10 +48,25 @@ defmodule Autopoet.Alpaca do
   def bars(symbol, opts \\ []) do
     tf = Keyword.get(opts, :timeframe, "1Day")
     limit = Keyword.get(opts, :limit, 30)
-    feed = Keyword.get(opts, :feed, "iex")
-    start = Keyword.get(opts, :start, Date.to_iso8601(Date.add(Date.utc_today(), -90)))
-    get("/stocks/#{symbol}/bars?timeframe=#{tf}&limit=#{limit}&feed=#{feed}&start=#{start}", Keyword.put(opts, :base, @data))
+
+    if crypto?(symbol) do
+      # crypto rides v1beta3 (24/7, no feed/start dance); response is keyed by
+      # symbol — normalized here so callers stay symbol-agnostic
+      q = URI.encode_query(%{"symbols" => symbol, "timeframe" => tf, "limit" => limit})
+
+      case get("/v1beta3/crypto/us/bars?" <> q, Keyword.put(opts, :base, "https://data.alpaca.markets")) do
+        {:ok, %{"bars" => %{} = by_sym}} -> {:ok, %{"bars" => Map.get(by_sym, symbol, [])}}
+        other -> other
+      end
+    else
+      feed = Keyword.get(opts, :feed, "iex")
+      start = Keyword.get(opts, :start, Date.to_iso8601(Date.add(Date.utc_today(), -90)))
+      get("/stocks/#{symbol}/bars?timeframe=#{tf}&limit=#{limit}&feed=#{feed}&start=#{start}", Keyword.put(opts, :base, @data))
+    end
   end
+
+  @doc "Is this an Alpaca crypto pair (BTC/USD style)?"
+  def crypto?(symbol), do: String.contains?(to_string(symbol), "/")
 
   # ── the risk-bounded order (the cage applies to trading too) ────────────────
 
@@ -78,7 +93,8 @@ defmodule Autopoet.Alpaca do
           "qty" => to_string(order[:qty]),
           "side" => to_string(order[:side] || :buy),
           "type" => to_string(order[:type] || :market),
-          "time_in_force" => to_string(order[:time_in_force] || :day)
+          # crypto rejects "day" — gtc is the accepted default for pairs
+          "time_in_force" => to_string(order[:time_in_force] || if(crypto?(order[:symbol]), do: :gtc, else: :day))
         }
 
         post("/orders", body, opts)

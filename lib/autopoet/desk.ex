@@ -28,8 +28,10 @@ defmodule Autopoet.Desk do
 
   @tick 60_000
   @watchlist ~w(AAPL MSFT SPY NVDA QQQ)
+  # the 24/7 lane: crypto trades while equities sleep — the desk is never idle
+  @crypto_watchlist ["BTC/USD", "ETH/USD", "SOL/USD"]
   @risk_cap 2_000.0
-  @max_trades_day 8
+  @max_trades_day 12
   # the desk must be BUSY (>60% of the op doing real work): a research cycle
   # every 15min around the clock + trade cycles when open ≈ ~100-150 calls/day
   @max_llm_day 150
@@ -68,6 +70,7 @@ defmodule Autopoet.Desk do
       trades: 0,
       done: %{},
       last_market_cycle: 0,
+      last_crypto_cycle: 0,
       last_study: 0,
       last_research: 0,
       agenda_idx: 0,
@@ -134,6 +137,10 @@ defmodule Autopoet.Desk do
           hour >= 16.0 and hour < 17.5 and not done?(s, :review) and state == :closed_now ->
             review(mark(s, :review))
 
+          # crypto never closes: a trade cycle every 30min while equities sleep
+          System.os_time(:second) - s.last_crypto_cycle >= 1_800 ->
+            crypto_cycle(%{s | last_crypto_cycle: System.os_time(:second)})
+
           # the engine: a research/refinement cycle every 15min, around the clock
           research_due?(s) ->
             research_cycle(touch_research(s))
@@ -195,6 +202,41 @@ defmodule Autopoet.Desk do
   end
 
 
+  defp crypto_cycle(s) do
+    if s.trades >= @max_trades_day do
+      s
+    else
+      log("crypto cycle (#{s.trades}/#{@max_trades_day} trades today)")
+
+      with {:ok, s, reply} <- think(s, :crypto, crypto_prompt(s)) do
+        execute_orders(s, reply)
+      end
+    end
+  end
+
+  defp crypto_prompt(s) do
+    stats = Enum.map_join(@crypto_watchlist, "\n", fn sym -> "#{sym}:\n#{stats_text(sym)}" end)
+
+    """
+    You are the autopoet trading desk — CRYPTO CYCLE (24/7 lane) #{s.day}. Paper account.
+    Your playbook:
+    #{read_body("fund/playbook.work")}
+    Positions:
+    #{positions_text()}
+    Computed stats:
+    #{stats}
+
+    HARD LIMITS: per-order notional cap $#{@risk_cap}; pairs only #{inspect(@crypto_watchlist)};
+    fractional qty fine (e.g. 0.02); #{@max_trades_day - s.trades} trades left today.
+
+    EITHER hold (say why, no blocks) OR emit order blocks:
+    === action: alpaca_place_order ===
+    symbol: BTC/USD
+    qty: 0.02
+    side: buy|sell
+    """
+  end
+
   # ── the research engine: rotating agenda, one deep unit of work per cycle ───
 
   defp research_cycle(s) do
@@ -211,7 +253,8 @@ defmodule Autopoet.Desk do
   end
 
   defp research_task(:deep_dive, s) do
-    sym = Enum.at(@watchlist, rem(s.agenda_idx, length(@watchlist)))
+    pool = @watchlist ++ @crypto_watchlist
+    sym = Enum.at(pool, rem(s.agenda_idx, length(pool)))
 
     {"""
      You are the autopoet trading desk — DEEP DIVE on #{sym}. Computed stats:
@@ -226,7 +269,8 @@ defmodule Autopoet.Desk do
   end
 
   defp research_task(:backtest, s) do
-    sym = Enum.at(@watchlist, rem(s.agenda_idx + 2, length(@watchlist)))
+    pool = @watchlist ++ @crypto_watchlist
+    sym = Enum.at(pool, rem(s.agenda_idx + 2, length(pool)))
 
     {"""
      You are the autopoet trading desk — BACKTEST REVIEW on #{sym}. Computed
@@ -387,7 +431,7 @@ defmodule Autopoet.Desk do
         st.trades >= @max_trades_day ->
           st
 
-        sym not in @watchlist ->
+        sym not in @watchlist ++ @crypto_watchlist ->
           issue("off-watchlist order refused: #{sym}")
           st
 
