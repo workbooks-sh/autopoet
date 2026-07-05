@@ -74,12 +74,14 @@ defmodule Autopoet.Auth do
   """
   def sign_in_cloud do
     acct = Autopoet.Cloud.account() || %{}
-    name = acct["name"] || acct["email"] || "you"
+    # Cloud.account/0 returns ATOM keys (:name/:email/:avatar) — the identity the
+    # desktop onboarding is seeded with (name pre-fills the quiz, avatar shows).
+    name = blank(acct[:name]) || blank(acct[:email]) || "you"
     onboarded = File.exists?(Autopoet.Intake.marker())
 
     put(%{
       authenticated: true,
-      user: %{name: name, email: acct["email"]},
+      user: %{name: name, email: acct[:email], avatar: acct[:avatar]},
       onboarded: onboarded,
       connections: connections()
     })
@@ -88,6 +90,10 @@ defmodule Autopoet.Auth do
   rescue
     e -> {:error, Exception.message(e)}
   end
+
+  defp blank(nil), do: nil
+  defp blank(""), do: nil
+  defp blank(s), do: s
 
   # sign-in doors are github/google; cloudflare is connect-only (publishing)
   @connectable ~w(github google cloudflare)

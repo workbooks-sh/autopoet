@@ -74,7 +74,14 @@ defmodule Autopoet.Cloud do
   def account do
     case get("/api/platform/me") do
       {:ok, %{"user" => u} = me} ->
-        %{email: u["email"] || "", name: u["name"] || "", org: me["active_org"], role: me["role"]}
+        %{
+          email: u["email"] || "",
+          name: u["name"] || "",
+          # avatar from the GitHub/Google profile — synced into desktop onboarding
+          avatar: u["avatar"] || u["picture"] || u["avatar_url"],
+          org: me["active_org"],
+          role: me["role"]
+        }
 
       _ ->
         nil
