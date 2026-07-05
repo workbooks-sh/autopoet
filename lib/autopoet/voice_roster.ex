@@ -71,16 +71,29 @@ defmodule Autopoet.VoiceRoster do
     :ok
   end
 
+  @doc "Pinned (cloned) voices — every <name>.wav+.txt pair in data/voices."
+  def pinned do
+    case File.ls(dir()) do
+      {:ok, files} ->
+        files
+        |> Enum.filter(&String.ends_with?(&1, ".wav"))
+        |> Enum.map(&String.trim_trailing(&1, ".wav"))
+        |> Enum.filter(&File.exists?(Path.join(dir(), &1 <> ".txt")))
+        |> Enum.sort()
+
+      _ ->
+        []
+    end
+  end
+
   @doc "The roster page — personas + takes + verdicts, flip buttons wired."
   def html(token) do
     v = verdicts()
     acc_tags = accents()
 
-    cards =
-      for name <- Autopoet.VoicePersonas.names() do
+    card = fn name, desc, kind ->
         take = Path.join(takes_dir(), name <> ".wav")
         state = v[name] || "candidate"
-        desc = Autopoet.VoicePersonas.description(name)
 
         audio =
           if File.exists?(take),
@@ -101,9 +114,11 @@ defmodule Autopoet.VoiceRoster do
             ~s(<option value="#{a}"#{sel}>#{a}</option>)
           end)
 
+        kindchip = if kind == :pinned, do: ~s(<span class="chip pin">cloned</span>), else: ""
+
         ~s"""
         <div class="card" data-state="#{state}" id="card-#{name}">
-          <div class="row"><span class="name">#{name}</span>
+          <div class="row"><span class="name">#{name}</span>#{kindchip}
             <span class="selwrap"><select class="asel" data-n="#{name}">#{aopts}</select></span>
             <span class="selwrap"><select class="vsel" data-n="#{name}">#{opts}</select></span>
           </div>
@@ -111,6 +126,15 @@ defmodule Autopoet.VoiceRoster do
           #{audio}
         </div>
         """
+      end
+
+    cards = for name <- Autopoet.VoicePersonas.names(),
+                do: card.(name, Autopoet.VoicePersonas.description(name), :designed)
+
+    pinned_cards =
+      for name <- pinned() do
+        ref_text = File.read!(Path.join(dir(), name <> ".txt")) |> String.slice(0, 90)
+        card.(name, "cloned from a #{name}.wav reference — “#{ref_text}…”", :pinned)
       end
 
     ~s"""
@@ -134,6 +158,8 @@ defmodule Autopoet.VoiceRoster do
       audio{width:100%;height:34px}
       .filters{margin-bottom:16px}
       .card.hid{display:none}
+      .chip.pin{background:#245cc0;color:#fff}
+      .sect{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#6a6f68;margin:26px 0 10px;border-bottom:1px solid #e2e6ec;padding-bottom:6px}
       .newbtn{font:600 11.5px ui-monospace,monospace;padding:7px 14px;border-radius:9px;border:0;
         background:#16161a;color:#fff;cursor:pointer;vertical-align:4px;margin-left:10px}
       #nvback{position:fixed;inset:0;background:rgba(15,16,20,.5);display:none;place-items:center;z-index:9}
@@ -162,6 +188,8 @@ defmodule Autopoet.VoiceRoster do
       </select></span>
     </div>
     #{Enum.join(cards)}
+    <h2 class="sect">pinned · cloned voices</h2>
+    #{Enum.join(pinned_cards)}
     <div id="nvback">
       <div class="nvcard">
         <h3>design a new voice</h3>
