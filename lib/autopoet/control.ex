@@ -297,11 +297,59 @@ defmodule Autopoet.Control do
     end)
   end
 
-  # is the agent powered? (cloud signed-in with a machine, or a local key set) —
-  # the onboarding gate reads this to allow "continue".
+  # is the agent powered? (cloud signed-in with an ACTIVE machine, or a local key)
   get "/power/status" do
-    powered = Autopoet.Cloud.signed_in?() or is_binary(Autopoet.Keys.openrouter())
-    conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(%{powered: powered, openrouter: is_binary(Autopoet.Keys.openrouter())}))
+    sub =
+      case Autopoet.Cloud.get("/api/platform/billing/subscription") do
+        {:ok, %{"status" => "active"} = s} -> s
+        _ -> nil
+      end
+
+    powered = sub != nil or is_binary(Autopoet.Keys.openrouter())
+    conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(%{powered: powered, openrouter: is_binary(Autopoet.Keys.openrouter()), subscription: sub}))
+  end
+
+  # ── inline Workbooks Cloud billing (proxied to the cloud via the signed-in PAT,
+  # so the machine purchase happens IN the app, not by bouncing to the dashboard).
+  # Same card (external_customer_id=org) across machine, credits, auto-top-up. ────
+  get "/power/cloud/tiers", do: cloud_proxy(conn, :get, "/api/platform/tiers", nil)
+
+  get "/power/cloud/summary" do
+    payload = %{
+      credits: cloud_get_or("/api/platform/credits", %{}),
+      autotopup: cloud_get_or("/api/platform/billing/autotopup", %{}),
+      subscription: cloud_get_or("/api/platform/billing/subscription", %{})
+    }
+
+    conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(payload))
+  end
+
+  post "/power/cloud/checkout" do
+    authed!(conn, fn conn ->
+      {:ok, body, conn} = read_body(conn)
+      cloud_proxy(conn, :post, "/api/platform/billing/checkout", body)
+    end)
+  end
+
+  post "/power/cloud/credits" do
+    authed!(conn, fn conn ->
+      {:ok, body, conn} = read_body(conn)
+      cloud_proxy(conn, :post, "/api/platform/credits/checkout", body)
+    end)
+  end
+
+  post "/power/cloud/autotopup" do
+    authed!(conn, fn conn ->
+      {:ok, body, conn} = read_body(conn)
+      cloud_proxy(conn, :post, "/api/platform/billing/autotopup", body)
+    end)
+  end
+
+  # open-in-browser fallback for the inline checkout (if the provider blocks framing)
+  post "/power/cloud/openurl" do
+    {:ok, url, conn} = read_body(conn)
+    if String.starts_with?(url, "https://"), do: spawn(fn -> System.cmd("open", [url]) end)
+    conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(%{ok: true}))
   end
 
   # The cloud redirects here with the minted PAT; store it and confirm in the tab (which pings the opener).
@@ -587,6 +635,40 @@ defmodule Autopoet.Control do
         {:error, reason} -> text(conn, "refused: #{inspect(reason)}\n")
       end
     end)
+  end
+
+  # proxy a call to Workbooks Cloud through the signed-in PAT, passing the cloud's
+  # JSON response (and status) straight back to the inline billing UI.
+  defp cloud_proxy(conn, method, path, raw) do
+    result =
+      case method do
+        :get -> Autopoet.Cloud.get(path)
+        :post -> Autopoet.Cloud.post(path, decode_json(raw))
+      end
+
+    {status, payload} =
+      case result do
+        {:ok, data} -> {200, data}
+        {:error, {code, data}} when is_integer(code) -> {code, data}
+        {:error, :not_signed_in} -> {401, %{error: "not signed in to Workbooks Cloud"}}
+        {:error, reason} -> {502, %{error: "cloud unreachable", detail: inspect(reason)}}
+      end
+
+    conn |> put_resp_content_type("application/json") |> send_resp(status, Jason.encode!(payload))
+  end
+
+  defp cloud_get_or(path, default) do
+    case Autopoet.Cloud.get(path) do
+      {:ok, v} -> v
+      _ -> default
+    end
+  end
+
+  defp decode_json(raw) do
+    case Jason.decode(raw || "") do
+      {:ok, m} -> m
+      _ -> %{}
+    end
   end
 
   defp body_path!(rel) do
@@ -1453,6 +1535,17 @@ defmodule Autopoet.Control do
           text(conn, "closing — BEAM will halt\n")
       end
     end)
+  end
+
+  # Cosmetic, page-driven (no token): match the native chrome to the page theme.
+  # Local-only server; the page POSTs this whenever the light/dark toggle flips.
+  post "/chrome-theme" do
+    theme = if conn.query_params["t"] == "dark", do: :dark, else: :light
+
+    case Process.whereis(Autopoet.Window) do
+      nil -> text(conn, "no window (headless)\n")
+      _pid -> Autopoet.Window.set_theme(theme); text(conn, "ok\n")
+    end
   end
 
   post "/request" do

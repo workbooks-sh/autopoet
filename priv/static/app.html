@@ -879,8 +879,8 @@
   .oauthbtn:hover { border-color:var(--border); box-shadow:0 1px 4px rgba(25,35,55,.1); }
   .oauthbtn svg { flex:none; }
   /* the MAIN door — Sign in with Workbooks (primary, dark) */
-  .oauthbtn-primary { background:#16161a; color:var(--on-accent); border-color:#16161a; }
-  .oauthbtn-primary:hover { background:#000; border-color:#000; box-shadow:0 2px 8px rgba(0,0,0,.18); }
+  .oauthbtn-primary { background:var(--btn-solid); color:var(--on-accent); border-color:var(--btn-solid); }
+  .oauthbtn-primary:hover { background:var(--btn-solid-hover); border-color:var(--btn-solid-hover); box-shadow:0 2px 8px rgba(0,0,0,.18); }
   .oauthbtn-primary.waiting { opacity:.6; cursor:progress; }
   .obsignhint { margin-top:10px; font:11px ui-monospace,monospace; color:var(--ink-dim); text-align:center; }
   /* POWER GATE — cloud vs local AI, the required onboarding choice */
@@ -897,6 +897,20 @@
   .obstepgo.alt { background:#eef0f2; color:#1c2230; }
   .obstepgo.alt:hover { background:#e2e6ec; }
   .pc-foot { display:flex; align-items:center; justify-content:space-between; gap:14px; width:100%; margin-top:6px; }
+  /* inline cloud billing panel */
+  .billpanel { display:flex; flex-direction:column; gap:2px; width:100%; border:1px solid #e2e6ec; border-radius:12px; overflow:hidden; }
+  .bp-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:13px 16px; border-bottom:1px solid #eef0f2; }
+  .bp-row:last-child { border-bottom:0; }
+  .bp-row label { font:12.5px ui-monospace,monospace; color:#1c2230; }
+  .bp-check { display:flex; align-items:center; gap:8px; cursor:pointer; }
+  .bp-inline { font:12.5px ui-monospace,monospace; color:#6a6f68; display:flex; align-items:center; gap:5px; }
+  .bp-num { width:64px; padding:5px 7px; text-align:right; }
+  #bp-tier { width:auto; min-width:200px; padding:6px 10px; }
+  #bp-modal { position:fixed; inset:0; z-index:90; background:rgba(15,16,20,.55); display:grid; place-items:center; }
+  .bpm-card { width:min(460px,94vw); height:min(660px,92vh); background:#fff; border-radius:14px; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,.35); }
+  .bpm-head { display:flex; align-items:center; justify-content:space-between; padding:11px 14px; border-bottom:1px solid #eef0f2; font:600 12px ui-monospace,monospace; }
+  .bpm-head a, .bpm-head button { font:11px ui-monospace,monospace; color:#245cc0; background:none; border:0; cursor:pointer; }
+  #bpm-frame { flex:1; border:0; width:100%; }
   /* onboarding steps (the cold-start flow after sign UP) */
   #obsteps { display:none; flex-direction:column; align-items:flex-start; gap:16px; max-width:500px; padding:40px; text-align:left; }
   .obstepgo { font:12.5px ui-monospace,monospace; padding:9px 18px; border-radius:10px;
@@ -4336,22 +4350,24 @@ async function mountOnboardFace() {
   const box = document.getElementById("obface");
   if (!box || _obFaceMounted) return;
   _obFaceMounted = true;
-  // the SAME avatar as the running app + the website: the 3D WebGL cube
+  // Prefer the SAME avatar as the running app + the website: the 3D WebGL cube
   // (avatar3d.mjs — real mesh + inverted-hull toon outline) with the DOM face
-  // overlay glued on. Native cube is 132px; scale it into the onboarding slot.
+  // overlay glued on. Wait briefly for the module; if WebGL/three isn't ready,
+  // fall back to the flat 2D face so login is never left blank.
+  for (let i = 0; i < 40 && !window.Avatar3D; i++) await new Promise(r => setTimeout(r, 50));
+  if (!window.Avatar3D) { createFace(box, { idPrefix: "ob" }); return; }
   box.innerHTML = "";
   box.style.border = "none"; box.style.background = "transparent";
   box.style.position = "relative"; box.style.overflow = "visible";
   const host = document.createElement("div");
   host.className = "cube-host";
-  const scale = (box.offsetWidth || 72) / 132;
+  const scale = (box.offsetWidth || 72) / 132;        // native cube is 132px
   host.style.cssText = `position:absolute;left:50%;top:50%;width:132px;height:132px;` +
     `transform:translate(-50%,-50%) scale(${scale});`;
   host.innerHTML = '<div class="sc-cube"><div class="sc-face"></div></div>';
   box.appendChild(host);
   const cube = host.firstChild, face = cube.firstChild;
-  for (let i = 0; i < 200 && !window.Avatar3D; i++) await new Promise(r => setTimeout(r, 50));
-  if (window.Avatar3D) host._avatar3d = Avatar3D.mount(host, cube);
+  try { host._avatar3d = Avatar3D.mount(host, cube); } catch (_) {}
   await createFace(face, { idPrefix: "ob", hoverTarget: cube, clickTarget: cube });
   // gentle idle breathing so the login cube feels alive like the app's
   let bt = 0;
@@ -5144,16 +5160,9 @@ function showPower() {
     document.getElementById("pc-status").textContent = msg;
     cont.disabled = !ok; cont.style.opacity = ok ? "1" : ".4";
   };
-  // CLOUD: open the dashboard to provision a machine, then poll until powered
-  document.getElementById("pc-cloud").onclick = () => {
-    authedPost("/power/cloud/open").catch(() => {});
-    setPowered(false, "Finish setup in the browser — checking…");
-    if (window._pcPoll) clearInterval(window._pcPoll);
-    window._pcPoll = setInterval(async () => {
-      try { const p = await (await fetch("/power/status")).json();
-        if (p.powered) { clearInterval(window._pcPoll); setPowered(true, "Workbooks Cloud connected ✓"); } } catch (_) {}
-    }, 3000);
-  };
+  // CLOUD: expand the INLINE billing panel (machine + tokens + auto-top-up) — one
+  // card, right here, no bounce to the dashboard.
+  document.getElementById("pc-cloud").onclick = () => showCloudBilling();
   // LOCAL: save the OpenRouter key
   document.getElementById("pc-local").onclick = async () => {
     const inp = document.getElementById("pc-orkey"), k = inp.value.trim();
@@ -5166,6 +5175,111 @@ function showPower() {
   fetch("/power/status").then(r => r.json())
     .then(p => { if (p.powered) setPowered(true, p.openrouter ? "Local AI connected ✓" : "Workbooks Cloud connected ✓"); })
     .catch(() => {});
+}
+
+// INLINE Workbooks Cloud billing — machine + initial tokens + auto-top-up, one
+// card. Reuses the cloud's billing endpoints through the desktop's PAT; the Polar
+// checkout opens in an in-app modal (with an open-in-browser fallback), and we
+// poll the subscription until it's active. The SAME flow the dashboard exposes.
+async function showCloudBilling() {
+  const s = document.getElementById("obsteps");
+  s.innerHTML = `
+    <div class="obword" style="font-size:22px">Set up Workbooks Cloud</div>
+    <p class="obtext" style="margin:0">Your own machine + AI credits, on one card. Auto-top-up keeps it
+      running. You can change any of this later.</p>
+    <div class="billpanel">
+      <div class="bp-row"><label>Machine</label><select id="bp-tier" class="obinput"></select></div>
+      <div class="bp-row"><label>Initial AI credits</label><span class="bp-inline">$<input id="bp-credits" class="obinput bp-num" type="number" value="10" min="0" step="5"></span></div>
+      <div class="bp-row"><label class="bp-check"><input type="checkbox" id="bp-ato"> Auto-top-up</label>
+        <span class="bp-inline" id="bp-ato-fields" style="visibility:hidden">below $<input id="bp-ato-thresh" class="obinput bp-num" type="number" value="5" min="1"> add $<input id="bp-ato-amt" class="obinput bp-num" type="number" value="20" min="5"></span></div>
+    </div>
+    <div class="pc-foot">
+      <button class="obstepgo alt" id="bp-back">← back</button>
+      <span id="bp-status" class="obtext" style="margin:0;flex:1;text-align:center"></span>
+      <button class="obstepgo" id="bp-pay">Continue to payment →</button>
+    </div>`;
+  refreshIcons();
+  const status = (m) => { document.getElementById("bp-status").textContent = m || ""; };
+  document.getElementById("bp-back").onclick = () => showPower();
+  document.getElementById("bp-ato").onchange = (e) =>
+    document.getElementById("bp-ato-fields").style.visibility = e.target.checked ? "visible" : "hidden";
+
+  // real machine tiers from the cloud (name + price), smallest first
+  const tierSel = document.getElementById("bp-tier");
+  try {
+    const t = await (await fetch("/power/cloud/tiers")).json();
+    (t.tiers || []).forEach(tr => {
+      const o = document.createElement("option");
+      const ram = tr.ram_mb >= 1024 ? (tr.ram_mb / 1024) + "GB" : tr.ram_mb + "MB";
+      o.value = tr.id; o.textContent = `${tr.name} — $${tr.price}/mo · ${ram} RAM · ${tr.storage_gb}GB`;
+      tierSel.appendChild(o);
+    });
+    if (!tierSel.options.length) { const o = document.createElement("option"); o.value = "cloud"; o.textContent = "Workbooks Cloud — from $20/mo"; tierSel.appendChild(o); }
+  } catch (_) { const o = document.createElement("option"); o.value = "cloud"; o.textContent = "Workbooks Cloud — from $20/mo"; tierSel.appendChild(o); }
+
+  document.getElementById("bp-pay").onclick = async () => {
+    const tier = tierSel.value;
+    const credits = parseFloat(document.getElementById("bp-credits").value) || 0;
+    const ato = document.getElementById("bp-ato").checked;
+    document.getElementById("bp-pay").disabled = true;
+    status("Preparing checkout…");
+
+    // 1 · save the auto-top-up preference (no charge)
+    if (ato) {
+      await authedPost("/power/cloud/autotopup", JSON.stringify({
+        enabled: true,
+        threshold: parseFloat(document.getElementById("bp-ato-thresh").value) || 5,
+        amount: parseFloat(document.getElementById("bp-ato-amt").value) || 20
+      })).catch(() => {});
+    }
+    // 2 · machine subscription checkout (captures the card)
+    const r = await authedPost("/power/cloud/checkout", JSON.stringify({ plan: tier, initial_credit: credits }));
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.url) {
+      status(d.detail || d.error || "Couldn't start checkout — is billing configured?");
+      document.getElementById("bp-pay").disabled = false;
+      return;
+    }
+    // 3 · open the Polar checkout inline, poll the subscription until active
+    openCheckout(d.url, async () => {
+      status("Confirming…");
+      const ok = await pollPowered(60);
+      if (ok) {
+        if (credits > 0) { await authedPost("/power/cloud/credits", JSON.stringify({ amount: credits })).catch(() => {}); }
+        // back to the gate, now powered → continue
+        showPower();
+      } else {
+        status("Payment not detected yet — finish in the checkout, then retry.");
+        document.getElementById("bp-pay").disabled = false;
+      }
+    });
+  };
+}
+
+// in-app checkout modal: iframe the Polar page (open-in-browser fallback if the
+// provider blocks framing); resolve when the tab is done or the poll succeeds.
+function openCheckout(url, onClose) {
+  document.getElementById("bp-modal")?.remove();
+  const m = document.createElement("div");
+  m.id = "bp-modal";
+  m.innerHTML = `
+    <div class="bpm-card">
+      <div class="bpm-head"><span>Workbooks Cloud checkout</span>
+        <span><a href="#" id="bpm-ext">open in browser ↗</a> · <button id="bpm-x">✕</button></span></div>
+      <iframe id="bpm-frame" src="${url}" allow="payment"></iframe>
+    </div>`;
+  document.body.appendChild(m);
+  document.getElementById("bpm-ext").onclick = (e) => { e.preventDefault(); authedPost("/power/cloud/openurl", url).catch(() => {}); window.open(url, "_blank"); };
+  const done = () => { m.remove(); onClose && onClose(); };
+  document.getElementById("bpm-x").onclick = done;
+}
+
+async function pollPowered(tries) {
+  for (let i = 0; i < tries; i++) {
+    try { const p = await (await fetch("/power/status")).json(); if (p.powered) return true; } catch (_) {}
+    await new Promise(r => setTimeout(r, 2500));
+  }
+  return false;
 }
 // the deck exits INTO the setup quiz (its own file: /static/quiz.js) — skip included
 function showQuiz() {
@@ -5331,7 +5445,13 @@ document.getElementById("foot-profile").onclick = e => {
 };
 
 // settings · theme (persisted) + app config
-function applyTheme(t) { document.documentElement.setAttribute("data-theme", t); localStorage.setItem("ap-theme", t); window.dispatchEvent(new CustomEvent("themechange", { detail: { theme: t } })); }
+function applyTheme(t) {
+  document.documentElement.setAttribute("data-theme", t);
+  localStorage.setItem("ap-theme", t);
+  window.dispatchEvent(new CustomEvent("themechange", { detail: { theme: t } }));
+  // match the native window chrome (frame + drag strip) — desktop only, harmless elsewhere
+  try { fetch("/chrome-theme?t=" + encodeURIComponent(t), { method: "POST" }).catch(() => {}); } catch (_) {}
+}
 applyTheme(localStorage.getItem("ap-theme") || "light");
 document.getElementById("foot-settings").onclick = e => {
   e.stopPropagation();
