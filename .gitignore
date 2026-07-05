@@ -30,3 +30,11 @@ autopoet-*.tar
 .claude/worktrees/
 history/
 eval/live-runs/
+
+# runtime artifacts — re-created on boot or by the desk; never source
+.wrangler/
+/archive/
+/eval/desk/
+/eval/desks/
+/eval/venture/
+/guide/skill--*.work
