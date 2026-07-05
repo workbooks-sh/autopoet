@@ -147,3 +147,29 @@ Open questions for the owner:
   dashboard/preview/digest (the DATA + nodes exist; the frontend views consume them);
   wiring SelfServe/Registrar/Shopify into the genesis checklist-resolver so `self-serve`
   items auto-execute and `needs-human` items render cards.
+
+---
+
+## 8 · CLOUD ↔ DESKTOP IDENTITY (owner grill, 2026-07-05 #2)
+
+Two layers, one sync. Cloud = identity + billing (browser); Desktop = the agent
++ its setup (app), gated behind cloud sign-in. Onboarding happens in BOTH,
+split by concern: cloud onboards the ACCOUNT, desktop onboards the AGENT.
+
+LOCKED:
+- **Free tier = auth + local only.** A free account signs in and runs the
+  DESKTOP app on the user's own keys. Every CLOUD-run feature (machine, Composio,
+  phone, email, 24/7) is PAID — you buy a machine to start Workbooks Cloud.
+- **Cloud OAuth = Google + GitHub + email/password.** GitHub + email exist;
+  ADD Google. (Public signup currently hidden — 'locked to our account' — must
+  open for the free tier.)
+- **Desktop keeps the full onboarding quiz**, but SEEDED by the synced cloud
+  identity (name/email/avatar from GitHub/Google) — pre-fill, don't re-ask blind.
+
+BUILD:
+1. Cloud: `/api/platform/me` returns {name, email, avatar} (avatar from the
+   GitHub/Google profile) — the desktop's sync source.
+2. Cloud: un-hide signup on the login island + free-account policy (auth only,
+   no machine); add Google OAuth beside GitHub.
+3. Desktop: on cloud sign-in, sync identity → seed the quiz (name pre-filled,
+   avatar shown), then the existing quiz → sell → set up nexus.
