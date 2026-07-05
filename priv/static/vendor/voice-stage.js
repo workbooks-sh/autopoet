@@ -1057,6 +1057,18 @@
   // Kokoro survives only as a FALLBACK when the server engine is off
   // (missing model files or espeak-ng).
   var kokoro = false, kokoroMode = null;   // "server" | "worker"
+  // the SESSION voice engine: "qwen" (premium sidecar) | "kokoro". Locked at
+  // stage entry — a voice must never change mid-conversation. Qwen boots
+  // fire-and-forget; if it isn't ready by the first line, kokoro owns the
+  // whole session and qwen waits for the next one.
+  var ttsEngine = null;
+  function lockEngine() {
+    fetch("/voice/tts/qwen/boot", { method: "POST",
+      headers: { authorization: "Bearer " + TOKEN } }).catch(function () {});
+    return fetch("/voice/tts/qwen/status").then(function (r) { return r.text(); })
+      .then(function (st) { ttsEngine = st.trim() === "ready" ? "qwen" : "kokoro"; })
+      .catch(function () { ttsEngine = "kokoro"; });
+  }
   // stage type + TTS gate: voice always speaks; plan starts silent (visemes +
   // karaoke caption still run — perform()'s no-clip path) until toggled on
   var vmode = "voice", tts = true;
@@ -1112,7 +1124,7 @@
     words.forEach(function (w, i) {
       counts[sN] = (counts[sN] || 0) + 1;
       cur += (cur ? " " : "") + (pres[i] || "") + w;
-      if (/[.!?]$/.test(w) || (/[,;:]$/.test(w) && counts[sN] >= (sN === 0 ? 3 : 5))) { sText[sN] = cur; cur = ""; sN++; }
+      if (/[.!?]$/.test(w)) { sText[sN] = cur; cur = ""; sN++; }
     });
     if (cur) sText[sN] = cur;
     return sText;
@@ -1125,7 +1137,9 @@
   }
   function kokoroGenRaw(text) {
     if (kokoroMode === "server") {
-      return fetch("/voice/tts?voice=" + encodeURIComponent(VOICE_ID), {
+      var vparam = ttsEngine === "qwen" ? "Ryan" : VOICE_ID;
+      return fetch("/voice/tts?voice=" + encodeURIComponent(vparam) +
+                   (ttsEngine ? "&engine=" + ttsEngine : ""), {
         method: "POST",
         headers: { authorization: "Bearer " + TOKEN, "content-type": "text/plain" },
         body: text.replace(/\[[^\]]+\]\s*/g, "")   // never SAY a stray bracket tag
@@ -1247,7 +1261,7 @@
       // clip boundaries at sentence ends AND clause breaks (,;:) once the
       // clause is ≥5 words: synthesis is ~0.6x realtime, so smaller clips =
       // the first sound arrives after one CLAUSE, not one full sentence
-      if (/[.!?]$/.test(w) || (/[,;:]$/.test(w) && counts[sN] >= (sN === 0 ? 3 : 5))) {
+      if (/[.!?]$/.test(w)) {
         sText[sN] = cur; cur = ""; sN++;
       }
     });
@@ -1755,6 +1769,7 @@
     injectCSS();
     buildDOM();
     mounted = true;
+    lockEngine();
     deckMd = ""; deckInst = null;
     if (voice) {
       fetch("/voice/deck/new", { method: "POST",

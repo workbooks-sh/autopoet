@@ -38,6 +38,21 @@ control. Quality ceiling is "good small TTS," not "expressive actor."
 | **Ortex (BEAM, our proven lane)** | ⚠️ feasible | ~3–5 days after a spike | The 9-graph split maps onto patterns we ALREADY run: Moonshine drives `decoder_with_past` with an external KV-cache loop — same shape as `talker_prefill`/`talker_decode`. Elixir loop: text_project → prefill → decode-with-cache per 12Hz step → code_predictor → codec decode → wav. Unknowns: INT8 ConvInteger on CPU (may need fp16 = ~3GB, or CoreML EP), CPU RTF for a 0.6B AR model (likely near/below realtime on M-series — fine for plan mode since we **pre-render** lines, marginal for live calls). |
 | **Cloud GPU (vLLM-Omni)** | ✅ best fit first | ~1–2 days | Run it where the GPUs are: a Workbooks Cloud voice endpoint (vLLM-Omni day-0), desktop `/voice/tts` server-mode proxies to it. Full quality: streaming 97ms, cloning, voice design, 10 langs. Fits the product line — **local = Kokoro free; cloud nexus = premium voice**. |
 
+## OUTCOME (built 2026-07-05 — the spike graduated)
+
+Local premium voice SHIPPED on the Ortex-free MLX sidecar lane:
+- **1.7B-CustomVoice-4bit** (0.6B-4bit is collapsed — breathing/laughs; never ship it)
+- measured **xRT ~2.0–2.2** sustained through the production `/voice/tts` route; TTFA ~1.9s
+- **defaults matter**: temp 0.4 starves EOS → babble-to-cap; model-default sampling is correct
+- **whole-utterance generation** (sentence-only splits) — per-clause fragments each sample
+  their own emotion (the "disjointed" bug); one generation = one coherent delivery
+- **process drift is real**: long-lived sidecar degrades (longer, breathier takes) —
+  fixed with idle recycle every 6 generations
+- **ramble guard**: max_tokens ∝ text length (a 5-word line once produced 23s of audio)
+- **VoiceDesign-4bit** proven on the same sidecar (`boot?model=design`, description via
+  `engine=qwen-design&design=…`) — voices from text descriptions, local
+- engine LOCKED per stage session (qwen if ready at entry, else kokoro) — never mid-convo swaps
+
 ## Recommendation
 
 1. **Keep Kokoro as the instant local default.** 82M vs 600M is a different

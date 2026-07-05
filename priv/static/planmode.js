@@ -31,8 +31,13 @@ build.sched -> build.weave: wakes
 `;
 
   // step 0 = the CHARACTER opening: no graph, wave + hello.
+  // the greeting knows YOU — the cloud identity synced your name at sign-in
+  const seedName = () => {
+    const n = (typeof currentUser !== "undefined" && currentUser && currentUser.name) || "";
+    return n && n !== "demo" ? n.split(" ")[0].toLowerCase() : "";
+  };
   const SEED = [
-    { say: "hi — i'm your autopoet. i turn your plain words into a living, running system. this board is where we design yours, together.",
+    { get say() { const n = seedName(); return `hi${n ? " " + n : ""} — i'm your autopoet. i turn your plain words into a living, running system. this board is where we design yours, together.`; },
       next: "say hi back →", gesture: "wave" },
     { say: "watch. everything starts with the two of us…",
       reveal: ["you", "you->ap"], point: "ap" },

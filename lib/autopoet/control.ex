@@ -1025,11 +1025,23 @@ defmodule Autopoet.Control do
       conn = fetch_query_params(conn)
       q = conn.query_params
       engine = q["engine"]
-      use_qwen = engine == "qwen" or (engine == nil and Autopoet.QwenTts.ready?())
+      use_qwen = engine in ["qwen", "qwen-design"] or (engine == nil and Autopoet.QwenTts.ready?())
+      # kokoro voice ids (af_heart…) don't name a qwen speaker — map to the default
+      qvoice =
+        case q["voice"] do
+          v when is_binary(v) -> if String.match?(v, ~r/^[a-z]+_/), do: "Ryan", else: v
+          _ -> "Ryan"
+        end
 
       result =
         if use_qwen do
-          case Autopoet.QwenTts.speak(body, q["voice"] || "Ryan", q["instruct"]) do
+          # qwen-design: the voice IS a description (rides instruct; no presets)
+          {qv, qi} =
+            if engine == "qwen-design",
+              do: {nil, q["design"] || q["instruct"]},
+              else: {qvoice, q["instruct"]}
+
+          case Autopoet.QwenTts.speak(body, qv, qi) do
             {:ok, wav} -> {:ok, wav}
             # premium engine down mid-flight → the instant engine still answers
             _ when engine != "qwen" -> Autopoet.Kokoro.speak(body, "af_heart")
@@ -1055,7 +1067,9 @@ defmodule Autopoet.Control do
   # boot the premium engine (heavy: ~30s load, ~5.4GB resident) — explicit, never implicit
   post "/voice/tts/qwen/boot" do
     authed!(conn, fn conn ->
-      Autopoet.QwenTts.ensure()
+      conn = fetch_query_params(conn)
+      model = if conn.query_params["model"] == "design", do: :design, else: :custom
+      Autopoet.QwenTts.ensure(model)
       text(conn, Autopoet.QwenTts.status() <> "\n")
     end)
   end

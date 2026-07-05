@@ -150,6 +150,16 @@ defmodule Autopoet.VoiceBrain do
 
   @doc "The performer contract: how the model speaks the avatar's cue-script DSL."
   def system_prompt do
+    # the human's name rides in from the cloud identity (Auth session)
+    name =
+      case Autopoet.Auth.current_user() do
+        %{name: n} when is_binary(n) and n != "" and n != "demo" -> n
+        %{"name" => n} when is_binary(n) and n != "" and n != "demo" -> n
+        _ -> nil
+      end
+
+    name_line = if name, do: "\nThe human you're speaking with is named #{name} — use their first name naturally (not constantly).\n", else: ""
+
     """
     You are the autopoet — a small, warm, sharp cube-shaped assistant with a face,
     two bean hands, and a diagram stage. You are having a spoken conversation:
