@@ -960,6 +960,11 @@
   .pm-dots { display:flex; gap:5px; }
   .pm-dots i { width:6px; height:6px; border-radius:50%; background:#dfe3e9; }
   .pm-dots i.on { background:#16161a; }
+  .pm-tools { display:flex; align-items:center; gap:8px; }
+  .pm-ico { display:grid; place-items:center; width:32px; height:32px; border-radius:9px; border:1px solid #e2e6ec;
+    background:#fff; cursor:pointer; color:#1c2230; }
+  .pm-ico:hover { border-color:#b9c2cd; }
+  .pm-ico svg { width:15px; height:15px; }
   /* the caption sits above the widget while plan mode is on */
   body:has(.pm-widget) #vs-caption { bottom:132px; }
   /* PLAN SCREEN — onboarding owns the viewport: no dashboard chrome, just the
@@ -5272,6 +5277,7 @@ async function showPlanMode() {
                adopt: { scene: selfCube, cube: selfCubeInner, prefix: "ap-" },
                selfSpot: vsSelfSpot, hideWorld: vsHideWorld, showWorld: vsShowWorld,
                resync: syncSelfCube, settleMs: 620 },
+      refreshIcons,
       onDone: obDone
     });
     if (!ok) showQuiz();              // a live call owns the stage — fall back

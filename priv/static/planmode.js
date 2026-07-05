@@ -61,13 +61,29 @@ build.sched -> build.weave: wakes
     widget.innerHTML = `
       <div class="pm-q" id="pm-q"></div>
       <div class="pm-nav">
-        <button id="pm-back" class="pm-btn ghost">← back</button>
+        <span class="pm-tools">
+          <button id="pm-sound" class="pm-ico" title="voice on/off"><i data-lucide="volume-x"></i></button>
+          <button id="pm-recenter" class="pm-ico" title="recenter the board"><i data-lucide="crosshair"></i></button>
+          <button id="pm-back" class="pm-btn ghost">← back</button>
+        </span>
         <span class="pm-dots" id="pm-dots"></span>
         <button id="pm-next" class="pm-btn">next →</button>
       </div>`;
     document.body.appendChild(widget);
     widget.querySelector("#pm-back").onclick = () => go(step - 1);
     widget.querySelector("#pm-next").onclick = () => go(step + 1);
+
+    // sound: Kokoro TTS of the lines (visemes run either way — perform()'s
+    // silent path mouths the words to text cadence when sound is off)
+    widget.querySelector("#pm-sound").onclick = () => {
+      const on = board.setTTS(!board.ttsOn());
+      widget.querySelector("#pm-sound").innerHTML = `<i data-lucide="${on ? "volume-2" : "volume-x"}"></i>`;
+      opts.refreshIcons && opts.refreshIcons();
+    };
+    // recenter: snap the board's pan/zoom home
+    widget.querySelector("#pm-recenter").onclick = () => camReset(true);
+    wireCamera();
+    opts.refreshIcons && opts.refreshIcons();
 
     step = -1; shown = false;
     // let the cube's glide-to-center settle before the first line
@@ -93,6 +109,7 @@ build.sched -> build.weave: wakes
       (s.reveal || []).forEach(r => board.reveal(r));
     }
 
+    camReset(true);   // each step re-locks focus; wander + recenter anytime
     board.say(s.say);
     if (s.point) setTimeout(() => board.point(s.point, 3000), 500);
     if (s.gesture === "wave") setTimeout(() => board.wave(), 300);
@@ -113,6 +130,29 @@ build.sched -> build.weave: wakes
       next.textContent = s.next || "next →";
       next.onclick = () => go(step + 1);
     }
+  }
+
+  // ── board camera: pan (drag) + zoom (wheel) on the D2 whiteboard, recenter ──
+  const cam = { x: 0, y: 0, k: 1 };
+  function bgEl() { return document.getElementById("vs-graph-bg"); }
+  function camApply(animate) {
+    const bg = bgEl(); if (!bg) return;
+    bg.style.transition = animate ? "transform .5s cubic-bezier(.4,0,.2,1)" : "none";
+    bg.style.transform = `translate(${cam.x}px,${cam.y}px) scale(${cam.k})`;
+  }
+  function camReset(animate) { cam.x = 0; cam.y = 0; cam.k = 1; camApply(animate); }
+  function wireCamera() {
+    const bg = bgEl(); if (!bg) return;
+    bg.style.pointerEvents = "auto"; bg.style.cursor = "grab"; bg.style.transformOrigin = "50% 50%";
+    let drag = null;
+    bg.addEventListener("mousedown", e => { drag = { x: e.clientX - cam.x, y: e.clientY - cam.y }; bg.style.cursor = "grabbing"; e.preventDefault(); });
+    window.addEventListener("mousemove", e => { if (!drag) return; cam.x = e.clientX - drag.x; cam.y = e.clientY - drag.y; camApply(false); });
+    window.addEventListener("mouseup", () => { drag = null; bg.style.cursor = "grab"; });
+    bg.addEventListener("wheel", e => {
+      e.preventDefault();
+      cam.k = Math.max(0.4, Math.min(2.5, cam.k * (e.deltaY < 0 ? 1.08 : 0.93)));
+      camApply(false);
+    }, { passive: false });
   }
 
   function teardown() {

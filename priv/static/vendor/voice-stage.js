@@ -1057,6 +1057,9 @@
   // Kokoro survives only as a FALLBACK when the server engine is off
   // (missing model files or espeak-ng).
   var kokoro = false, kokoroMode = null;   // "server" | "worker"
+  // stage type + TTS gate: voice always speaks; plan starts silent (visemes +
+  // karaoke caption still run — perform()'s no-clip path) until toggled on
+  var vmode = "voice", tts = true;
   var kWorker = null, kSeq = 0, kPending = {};
   var VOICE_ID = "bf_emma";
   function bootKokoro() {
@@ -1065,7 +1068,7 @@
       s = s.trim();
       if (s.indexOf("ready") === 0) {
         kokoro = true; kokoroMode = "server";
-        if (mounted && !playing) capStatus("ready — just talk");
+        if (mounted && !playing && vmode === "voice") capStatus("ready — just talk");
       } else if (s === "loading") {
         if (mounted && !playing) capStatus("warming local voice…");
         setTimeout(bootKokoro, 2500);
@@ -1078,7 +1081,7 @@
       kWorker = new Worker("/static/vendor/kokoro-worker.mjs", { type: "module" });
       kWorker.onmessage = function (e) {
         var m = e.data;
-        if (m.type === "ready") { kokoro = true; kokoroMode = "worker"; if (mounted && !playing) capStatus("ready — just talk"); }
+        if (m.type === "ready") { kokoro = true; kokoroMode = "worker"; if (mounted && !playing && vmode === "voice") capStatus("ready — just talk"); }
         else if (m.type === "progress") {
           if (mounted && !playing && !kokoro) capStatus("downloading voice model… " + m.pct + "%");
         }
@@ -1235,7 +1238,7 @@
 
     // pipeline synthesis: all sentences fired at once, speak on first arrival
     var clips = [], clipP = [];
-    if (kokoro) {
+    if (kokoro && tts) {
       for (var s = 0; s < sText.length; s++) {
         clipP[s] = kokoroGen(sText[s]);   // → clip {buffer, duration} (server or worker)
         clipP[s].then((function (idx) { return function (a) { clips[idx] = a; }; })(s));
@@ -1290,7 +1293,7 @@
       if (playing !== runId) return;
       if (sIdx >= groups.length) {
         revealAll();   // whatever the cues missed, the finished diagram shows whole
-        later(setTimeout(function () { if (playing === runId) { stopPerform(); if (kokoro) capStatus("ready — just talk"); } }, 700));
+        later(setTimeout(function () { if (playing === runId) { stopPerform(); if (kokoro && vmode === "voice") capStatus("ready — just talk"); } }, 700));
         return;
       }
       var g2 = groups[sIdx], sentNo = sIdx; sIdx++;
@@ -1721,6 +1724,8 @@
     opts = opts || {};
     var mode = opts.type || "voice";
     var voice = mode === "voice";
+    vmode = mode;
+    tts = voice ? true : !!opts.tts;
     TOKEN = opts.token || TOKEN;
     stageEl = opts.stage || document.getElementById("stage");
     callbarEl = opts.callbar || (voice ? document.getElementById("callbar") : null);
@@ -1796,8 +1801,11 @@
         var t = pieces.nodes[name] || pieces.edges[name];
         if (t) pointAt(t, ms || 2600);
       },
-      say: function (text) { if (mounted) captionShow("", escT(text)); },
+      say: function (text) { if (mounted) perform(text); },
+      caption: function (text) { if (mounted) captionShow("", escT(text)); },
       status: function (text) { if (mounted) capStatus(text); },
+      setTTS: function (on) { tts = !!on; if (tts) bootKokoro(); return tts; },
+      ttsOn: function () { return tts; },
       wave: function () { if (mounted) wave(); },
       nod: function () { if (mounted) nod(); },
       thumbsUp: function () { if (mounted) thumbsUp(); },
