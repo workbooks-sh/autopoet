@@ -437,7 +437,11 @@ defmodule Autopoet.Venture do
   defp deploy(site_dir) do
     project = "autopoet-venture"
 
-    case System.cmd("wrangler", ["pages", "deploy", site_dir, "--project-name=#{project}", "--branch=main", "--commit-dirty=true"], stderr_to_stdout: true) do
+    # pin the account: the OAuth login sees multiple CF accounts and wrangler
+    # refuses to guess (issues.log #1-5); the venture lives on the owner's
+    env = [{"CLOUDFLARE_ACCOUNT_ID", System.get_env("CF_ACCOUNT_ID") || "6d4b74aeb10f455fbf88141901e7595d"}]
+
+    case System.cmd("wrangler", ["pages", "deploy", site_dir, "--project-name=#{project}", "--branch=main", "--commit-dirty=true"], stderr_to_stdout: true, env: env) do
       {out, 0} ->
         url =
           case Regex.run(~r/https:\/\/[a-z0-9.-]+\.pages\.dev/, out) do
