@@ -230,6 +230,22 @@ defmodule Autopoet.Venture do
     _ -> read_body("venture/identity.work")
   end
 
+  # the venture's PUBLIC url — from the ratified identity (## Site), never the
+  # raw pages.dev deployment url (which leaked into outbound copy as a brand)
+  defp canonical_site do
+    case Regex.run(~r/https:\/\/[a-z0-9.-]+/, charter_section_of(identity_doc(), "Site")) do
+      [u] -> u
+      _ -> "(site not yet public)"
+    end
+  end
+
+  defp charter_section_of(doc, name) do
+    case Regex.run(~r/##\s*#{Regex.escape(name)}[^\n]*\n(.*?)(?:\n##|\z)/s, doc) do
+      [_, body] -> String.trim(body)
+      _ -> ""
+    end
+  end
+
   defp identity_feedback do
     case File.read(Path.join(artifacts(), "identity-feedback.txt")) do
       {:ok, t} -> t
@@ -603,11 +619,14 @@ defmodule Autopoet.Venture do
     """
   end
 
-  defp market_prompt(s) do
+  defp market_prompt(_s) do
     """
-    You are the founder of your venture, writing this session's outbound content. Your product's NAME and voice come from your charter and identity — never from these instructions. Charter GTM:
+    You are the founder of your venture, writing this session's outbound content.
+    YOUR PRODUCT (name it EXACTLY this, never a url slug or an internal label):
+    #{String.slice(charter_section("Product"), 0, 300)}
+    Your public site (the ONLY url you share): #{canonical_site()}
+    Charter GTM:
     #{charter_section("GTM")}
-    Site: #{s.site_url || "(not deployed yet)"}
 
     HONESTY RULE: never invent statistics or outcomes. Cite only numbers you
     can source from your research notes, or frame them explicitly as hypotheses
@@ -625,7 +644,7 @@ defmodule Autopoet.Venture do
     """
     You are the founder of your venture, measuring against your validation test. Charter validation test:
     #{charter_section("Validation")}
-    Site: #{s.site_url || "(not deployed)"} · deploys so far: #{s.deploys}
+    Site: #{canonical_site()} · deploys so far: #{s.deploys}
     Signals this slot: #{if signals == [], do: "NONE (analytics not wired yet — say what you'd instrument first)", else: inspect(signals)}
 
     Journal honestly against the validation numbers: where demand proof stands,
