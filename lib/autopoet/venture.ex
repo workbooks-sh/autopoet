@@ -568,7 +568,7 @@ defmodule Autopoet.Venture do
 
   defp build_prompt(s) do
     """
-    You are the founder of your venture — BUILD slot. Your charter:
+    You are the founder of your venture, in a building session. Your charter:
     #{charter()}
     Current deployed site: #{s.site_url || "(none yet)"}
     Latest feedback:
@@ -591,7 +591,7 @@ defmodule Autopoet.Venture do
 
   defp feedback_prompt(harvest) do
     """
-    You are the founder of your venture — FEEDBACK slot. Your charter niche:
+    You are the founder of your venture, reviewing fresh feedback. Your charter niche:
     #{charter_section("Niche")}
 
     FRESH WEB EVIDENCE:
@@ -605,11 +605,16 @@ defmodule Autopoet.Venture do
 
   defp market_prompt(s) do
     """
-    You are the founder of your venture — MARKET slot. Charter GTM:
+    You are the founder of your venture, writing this session's outbound content. Your product's NAME and voice come from your charter and identity — never from these instructions. Charter GTM:
     #{charter_section("GTM")}
     Site: #{s.site_url || "(not deployed yet)"}
 
-    Draft this slot's outbound: 3 X posts (each standalone, practitioner voice,
+    HONESTY RULE: never invent statistics or outcomes. Cite only numbers you
+    can source from your research notes, or frame them explicitly as hypotheses
+    ("we suspect", "in our early testing"). Unverifiable promises kill trust
+    with this ICP.
+
+    Draft this session's outbound: 3 X posts (each standalone, practitioner voice,
     no hype-slop, one insight each; max 260 chars each) + 1 community post
     (300 words, gives real value first, product mentioned once at the end).
     These go to the HUMAN for approval before posting — write them ready-to-ship.
@@ -618,7 +623,7 @@ defmodule Autopoet.Venture do
 
   defp measure_prompt(s, signals) do
     """
-    You are the founder of your venture — MEASURE slot. Charter validation test:
+    You are the founder of your venture, measuring against your validation test. Charter validation test:
     #{charter_section("Validation")}
     Site: #{s.site_url || "(not deployed)"} · deploys so far: #{s.deploys}
     Signals this slot: #{if signals == [], do: "NONE (analytics not wired yet — say what you'd instrument first)", else: inspect(signals)}
