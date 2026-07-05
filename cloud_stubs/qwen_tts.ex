@@ -9,5 +9,7 @@ defmodule Autopoet.QwenTts do
   def status, do: "off"
   def ready?, do: false
   def ensure(_model \\ :custom), do: :ok
+  def switch(_model), do: :ok
+  def model, do: nil
   def speak(_text, _voice \\ nil, _instruct \\ nil), do: {:error, :not_available}
 end

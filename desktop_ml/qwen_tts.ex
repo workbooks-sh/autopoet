@@ -39,8 +39,22 @@ defmodule Autopoet.QwenTts do
 
   def ready?, do: status() == "ready"
 
-  @doc "Boot the sidecar if it isn't running (async — poll status/0). :custom | :design."
-  def ensure(model \\ :custom), do: GenServer.cast(__MODULE__, {:ensure, model})
+  @doc """
+  Boot the sidecar if it isn't running (async — poll status/0). GENTLE: if a
+  model is already resident, ensure/1 keeps it (a default boot from a client
+  must never stomp a deliberately-loaded model). Explicit switching = switch/1.
+  """
+  def ensure(model \\ :custom), do: GenServer.cast(__MODULE__, {:ensure, model, false})
+
+  @doc "Switch to `model`, recycling the sidecar if a different one is resident."
+  def switch(model), do: GenServer.cast(__MODULE__, {:ensure, model, true})
+
+  @doc "The resident model (:custom | :design) — resident or booting."
+  def model do
+    GenServer.call(__MODULE__, :model, 1_000)
+  catch
+    :exit, _ -> nil
+  end
 
   @doc "Synthesize. Returns {:ok, wav_binary} | {:error, reason}. Boots on demand."
   def speak(text, voice \\ "Ryan", instruct \\ nil) do
@@ -61,6 +75,8 @@ defmodule Autopoet.QwenTts do
     {:reply, (s.ready && "ready") || (s.port && "loading") || "off", s}
   end
 
+  def handle_call(:model, _from, s), do: {:reply, (s.port && s.model) || nil, s}
+
   def handle_call({:speak, text, voice, instruct}, from, s) do
     s = boot(s, s.model)
 
@@ -77,13 +93,19 @@ defmodule Autopoet.QwenTts do
   end
 
   @impl true
-  def handle_cast({:ensure, model}, s) do
-    if s.port != nil and model != s.model do
-      # switch models: recycle onto the requested one
-      Port.close(s.port)
-      {:noreply, boot(%{s | port: nil, ready: false, buf: "", model: model}, model)}
-    else
-      {:noreply, boot(%{s | model: model}, model)}
+  def handle_cast({:ensure, model, force}, s) do
+    cond do
+      s.port != nil and model != s.model and force ->
+        # explicit switch: recycle onto the requested model
+        Port.close(s.port)
+        {:noreply, boot(%{s | port: nil, ready: false, buf: "", model: model}, model)}
+
+      s.port != nil ->
+        # resident model stays — gentle ensure never stomps it
+        {:noreply, s}
+
+      true ->
+        {:noreply, boot(%{s | model: model}, model)}
     end
   end
 

@@ -11,19 +11,26 @@ defmodule Autopoet.VoicePersonas do
   """
 
   @personas %{
-    # ≤10 words each, EXPLICITLY simple: voice + use case, nothing ornate —
-    # complexity drifts. NO slow-pacing words anywhere: pacing prompts skew
-    # slow in practice, so every persona is prompted fast regardless of pitch.
+    # ≤10 words: voice + use case, nothing ornate. All prompted fast/brisk —
+    # pacing words skew slow in practice. CARTOON RULE (learned): energy/cheer
+    # adjectives (cute, playful, cheerful, upbeat, bright) combined with youth
+    # or high pitch produce cartoon voices — "fast" is safe ONLY on grounded
+    # adult timbres. No british lilt, nothing childish or high-pitched.
+
+    # ── accepted (owner, 2026-07-05) ──
     "narrator" => "Calm male forties voice, fast dry delivery, documentary narration.",
     "sage" => "Mellow elderly male voice, quick warm delivery, philosophical audiobooks.",
     "commander" => "Deep gravelly male voice, fast confident delivery, movie trailers.",
-    "spark" => "Bright young female voice, fast cheerful delivery, social videos.",
     "crisp" => "Crisp professional female voice, fast clear delivery, product explainers.",
-    "buddy" => "Friendly casual male voice, quick upbeat delivery, podcast banter.",
     "noir" => "Low smoky female voice, brisk intimate delivery, late-night radio.",
-    "coach" => "Energetic male voice, fast motivating delivery, workout coaching.",
-    "pixie" => "Cute high-pitched child voice, quick playful delivery, animation characters.",
-    "anchor" => "Clear authoritative female voice, fast steady delivery, news reading."
+    "anchor" => "Clear authoritative female voice, fast steady delivery, news reading.",
+    "buddy" => "Friendly casual male voice, quick upbeat delivery, podcast banter.",
+
+    # ── candidates (replacing pixie/coach/spark — grounded, varied) ──
+    "baritone" => "Rich baritone male voice, brisk vivid delivery, fiction audiobooks.",
+    "editor" => "Dry witty female voice, forties, brisk delivery, essay narration.",
+    "captain" => "Weathered male voice, fifties, brisk calm delivery, aviation radio.",
+    "velvet" => "Smooth low male voice, brisk gentle delivery, meditation guides."
   }
 
   @doc "The description for a persona name, or nil."

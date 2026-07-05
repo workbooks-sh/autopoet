@@ -1034,7 +1034,15 @@ defmodule Autopoet.Control do
         end
 
       result =
-        if use_qwen do
+        cond do
+          engine == "qwen-design" and Autopoet.QwenTts.model() != :design ->
+            # design personas need the DESIGN model — never cross-speak on
+            # custom (delivery-instruction ≠ designed timbre) and never mask
+            # with kokoro. Trigger the switch; the client's next clip lands.
+            Autopoet.QwenTts.switch(:design)
+            {:error, :design_model_loading}
+
+          use_qwen ->
           # qwen-design: the voice IS a description (rides instruct; no presets)
           {qv, qi} =
             if engine == "qwen-design" do
@@ -1049,12 +1057,15 @@ defmodule Autopoet.Control do
 
           case Autopoet.QwenTts.speak(body, qv, qi) do
             {:ok, wav} -> {:ok, wav}
-            # premium engine down mid-flight → the instant engine still answers
-            _ when engine != "qwen" -> Autopoet.Kokoro.speak(body, "af_heart")
+            # AUTO mode only: the instant engine covers a mid-flight failure.
+            # An EXPLICIT qwen/qwen-design request fails loudly — a silent
+            # kokoro swap masked the design-model stomp for a full session.
+            _ when engine == nil -> Autopoet.Kokoro.speak(body, "af_heart")
             err -> err
           end
-        else
-          Autopoet.Kokoro.speak(body, q["voice"] || "af_heart")
+
+          true ->
+            Autopoet.Kokoro.speak(body, q["voice"] || "af_heart")
         end
 
       case result do
@@ -1074,8 +1085,11 @@ defmodule Autopoet.Control do
   post "/voice/tts/qwen/boot" do
     authed!(conn, fn conn ->
       conn = fetch_query_params(conn)
-      model = if conn.query_params["model"] == "design", do: :design, else: :custom
-      Autopoet.QwenTts.ensure(model)
+      case conn.query_params["model"] do
+        "design" -> Autopoet.QwenTts.switch(:design)
+        "custom" -> Autopoet.QwenTts.switch(:custom)
+        _ -> Autopoet.QwenTts.ensure(:custom)
+      end
       text(conn, Autopoet.QwenTts.status() <> "\n")
     end)
   end

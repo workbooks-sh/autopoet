@@ -41,6 +41,11 @@ for line in sys.stdin:
         rid = req.get("id")
         t = time.time()
         text = req["text"]
+        # pronunciation respells (synthesis only — never shown): "autopoet"
+        # reads as "poe-ET"; hyphenating restores the natural "poet" ending
+        import re as _re
+        text = _re.sub(r"(?i)autopoets", "auto-poets", text)
+        text = _re.sub(r"(?i)autopoet", "auto-poet", text)
         # voice default applies ONLY when nothing else steers the speaker —
         # the VoiceDesign model has NO presets (its instruct IS the voice)
         kwargs = {"text": text}
