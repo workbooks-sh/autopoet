@@ -193,10 +193,46 @@ defmodule Autopoet.Venture do
   # FEEDBACK: real practitioner reactions from the live web (+X when connected)
   defp feedback_cycle(s) do
     with {:ok, s, harvest} <- web_research(s, "reactions, complaints, and feature demands about: #{String.slice(charter_section("Niche"), 0, 300)} — real posts from practitioners"),
-         {:ok, s, reply} <- think(s, :feedback, feedback_prompt(harvest), max_tokens: 1600) do
+         {:ok, s, reply} <- think(s, :feedback, feedback_prompt(harvest <> x_harvest(s)), max_tokens: 1600) do
       append_body("venture/feedback.work", "\n## feedback #{s.day} ##{s.work_cycles + 1}\n\n" <> reply)
       %{s | work_cycles: s.work_cycles + 1}
     end
+  end
+
+  # X recent-search: live practitioner posts on the niche. Skips cleanly when
+  # unconnected or the dev account has no API credits (X's credit pricing).
+  defp x_harvest(_s) do
+    case x_token() do
+      nil ->
+        ""
+
+      bearer ->
+        q = URI.encode_www_form(String.slice(charter_section("Niche"), 0, 60) <> " -is:retweet lang:en")
+        url = "https://api.twitter.com/2/tweets/search/recent?query=#{q}&max_results=10"
+
+        :inets.start()
+        :ssl.start()
+
+        case :httpc.request(:get, {String.to_charlist(url), [{~c"authorization", String.to_charlist("Bearer " <> bearer)}]}, [timeout: 15_000], body_format: :binary) do
+          {:ok, {{_, 200, _}, _, body}} ->
+            case Jason.decode(body) do
+              {:ok, %{"data" => tweets}} ->
+                "\n\n--- LIVE X POSTS ---\n" <> Enum.map_join(tweets, "\n", fn t -> "X: " <> String.slice(t["text"] || "", 0, 240) end)
+
+              _ ->
+                ""
+            end
+
+          {:ok, {{_, code, _}, _, body}} ->
+            issue("x search #{code}: #{String.slice(to_string(body), 0, 120)}")
+            ""
+
+          _ ->
+            ""
+        end
+    end
+  rescue
+    _ -> ""
   end
 
   # MARKET: draft outward content — GATED: drafts are proposals, posting needs
