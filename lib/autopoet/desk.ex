@@ -239,7 +239,9 @@ defmodule Autopoet.Desk do
               results
               |> Enum.take(2)
               |> Enum.map(fn r ->
-                url = str(r["url"] || r[:url])
+                # encode: search results can carry unicode URLs; the http lane's
+                # charlist path crashes on raw codepoints (issue #2, rescued tick)
+                url = str(r["url"] || r[:url]) |> URI.encode()
 
                 body =
                   case url != "" && Nexus.Browse.read(url, timeout: 15_000) do
