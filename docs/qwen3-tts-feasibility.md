@@ -53,6 +53,17 @@ Local premium voice SHIPPED on the Ortex-free MLX sidecar lane:
   `engine=qwen-design&design=…`) — voices from text descriptions, local
 - engine LOCKED per stage session (qwen if ready at entry, else kokoro) — never mid-convo swaps
 
+## NEXT MILESTONE — pin personas via design→clone
+
+The VoiceDesign guidance's recommended pipeline: design a voice → keep the
+winning preview clip → reuse it as a CLONE prompt (the Base model's 3-second
+cloning) for every future line. That freezes a persona — same voice across
+boots and recycles, no re-rolling. Also the onboarding hook: a new autopoet
+designs its voice once in plan mode, the owner approves the clip, and the
+clone pin makes it permanent identity. Prompt discipline (encoded in
+Autopoet.VoicePersonas): identity → pitch/pace/timbre → emotion → "suitable
+for…" anchor, 15–40 words, concrete adjectives, iterate one dimension at a time.
+
 ## Recommendation
 
 1. **Keep Kokoro as the instant local default.** 82M vs 600M is a different

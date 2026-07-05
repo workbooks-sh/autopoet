@@ -11,14 +11,18 @@ defmodule Autopoet.VoicePersonas do
   """
 
   @personas %{
+    # structure per the VoiceDesign guidance: identity → pitch/pace/timbre →
+    # emotion → "suitable for…" anchor; 15–40 words; concrete adjectives only
+    # (vague/metaphoric traits destabilize the voice). Iterate ONE dimension
+    # at a time when tuning.
     "narrator" =>
-      "a warm, dry narrator in his forties, calm and quietly amused, like he is letting you in on a good secret",
+      "A calm male voice in his forties, medium-low pitch, slow to moderate pace, dry and quietly amused, suitable for documentary narration.",
     "sage" =>
-      "an unhurried elder philosopher with a deep mellow voice and a slight british lilt, hypnotic musing storyteller cadence, a playful chuckle hiding at the edges of every sentence",
+      "A gentle elderly male voice, low mellow pitch, slow unhurried pace with musing pauses, warm and contemplative, suitable for philosophical audiobook narration.",
     "commander" =>
-      "a deep gravelly commanding male voice, streetwise and effortlessly cool, punchy emphatic preacher-like delivery with dramatic pauses, radiating unshakable confidence",
+      "A deep gravelly male voice in his forties, low pitch, punchy deliberate pace with dramatic pauses, confident and commanding, suitable for movie trailer voice-overs.",
     "spark" =>
-      "a young bright bubbly social media girl, fast casual delivery with playful upspeak, sounds like she is hyping her best friend on camera, infectious energy"
+      "A young lively female voice, early twenties, high pitch, fast speaking rate with rising intonation, cheerful and energetic, suitable for social media product videos."
   }
 
   @doc "The description for a persona name, or nil."
