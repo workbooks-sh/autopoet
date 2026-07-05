@@ -34,8 +34,10 @@ defmodule Autopoet.Venture do
   use GenServer
   require Logger
 
-  @tick 60_000
-  @slot_every 900
+  # intervals are env-tunable so the pipeline eval can run the WHOLE lifecycle
+  # in seconds through the production machinery (validate-the-instrument)
+  defp tick_every, do: Application.get_env(:autopoet, :desk_tick_ms, 60_000)
+  defp slot_every, do: Application.get_env(:autopoet, :desk_slot_s, 900)
   @max_llm_day 150
   @agenda ~w(build feedback market measure)a
 
@@ -91,7 +93,7 @@ defmodule Autopoet.Venture do
 
   @impl true
   def handle_info(:tick, s) do
-    Process.send_after(self(), :tick, @tick)
+    Process.send_after(self(), :tick, tick_every())
 
     s =
       try do
@@ -111,7 +113,7 @@ defmodule Autopoet.Venture do
   # ── cadence: one unit of work per 15-min slot ───────────────────────────────
 
   defp step(s) do
-    if System.os_time(:second) - s.last_slot >= @slot_every do
+    if System.os_time(:second) - s.last_slot >= slot_every() do
       s = %{s | last_slot: System.os_time(:second)}
 
       cond do
@@ -490,6 +492,13 @@ defmodule Autopoet.Venture do
 
   # Cloudflare Pages via wrangler (logged in on this machine) — a REAL deploy.
   defp deploy(site_dir) do
+    case Application.get_env(:autopoet, :venture_deploy) do
+      fun when is_function(fun, 1) -> fun.(site_dir)
+      _ -> deploy_wrangler(site_dir)
+    end
+  end
+
+  defp deploy_wrangler(site_dir) do
     project = "autopoet-venture"
 
     # pin the account: the OAuth login sees multiple CF accounts and wrangler
@@ -637,6 +646,12 @@ defmodule Autopoet.Venture do
     (what you track weekly)
     ## Kill criteria
     (NUMERIC thresholds that mean stop)
+    ## Integrations
+    (the TYPED checklist your plan needs — one line each:
+     `- [connected] <name> — <why>` platform wallet covers it, needs a grant
+     `- [self-serve] <name> — <why>` you sign up yourself with your own inbox
+     `- [needs-human] <name> — <why>` payment/phone/policy: say exactly what the human must do
+     `- [suggested] <name> — <why>` a catalog integration that would help but isn't required)
 
     No commentary outside the document. This is YOUR venture — commit.
     """
@@ -742,6 +757,14 @@ defmodule Autopoet.Venture do
 
   defp think(s, phase, prompt, opts \\ []) do
     cond do
+      # injected test brain (same seam as Autopoet.Brain) — takes precedence so
+      # the pipeline eval drives the WHOLE lifecycle hermetically
+      is_function(Application.get_env(:autopoet, :brain_llm), 1) ->
+        case Application.get_env(:autopoet, :brain_llm).(prompt) do
+          {:ok, reply} when is_binary(reply) -> {:ok, %{s | llm_calls: s.llm_calls + 1}, reply}
+          _ -> s
+        end
+
       not Application.get_env(:autopoet, :brain_live, true) ->
         s
 
@@ -776,7 +799,10 @@ defmodule Autopoet.Venture do
 
       harvest =
         Enum.flat_map(queries, fn q ->
-          case Nexus.Browse.search(q, limit: 3) do
+          case (case Application.get_env(:autopoet, :venture_search) do
+                  fun when is_function(fun, 1) -> fun.(q)
+                  _ -> Nexus.Browse.search(q, limit: 3)
+                end) do
             {:ok, results} ->
               results
               |> Enum.take(2)

@@ -75,6 +75,7 @@ defmodule Autopoet.MixProject do
       "test/fund_eval_test.exs",
       "test/workspace_eval_test.exs",
       "test/actions_eval_test.exs",
+      "test/pipeline_eval_test.exs",
       "test/corpus_eval_test.exs",
       "test/efficiency_eval_test.exs",
       "test/armlift_eval_test.exs",

@@ -1250,6 +1250,117 @@ defmodule Autopoet.Control do
     end)
   end
 
+  # ── the project spine (lifecycle-plan §1): full CLI control ─────────────────
+
+  get "/projects" do
+    body =
+      case Autopoet.Projects.list() do
+        [] ->
+          "no projects\n"
+
+        ps ->
+          Enum.map_join(ps, "\n", fn {slug, p} ->
+            "#{slug} #{p.status} archetype=#{p.archetype} chartered=#{p.chartered} desk=#{if p.desk_running, do: "running", else: "stopped"}"
+          end) <> "\n"
+      end
+
+    text(conn, body)
+  end
+
+  # conversational creation: the request BODY is what you'd say to the agent —
+  # it becomes the project's onboarding note; genesis runs from it.
+  post "/projects/new" do
+    authed!(conn, fn conn ->
+      slug = conn.query_params["slug"] || "project-#{System.os_time(:second)}"
+      archetype = String.to_atom(conn.query_params["archetype"] || "venture")
+      {:ok, prompt, conn} = Plug.Conn.read_body(conn)
+
+      case Autopoet.Projects.create(slug, archetype: archetype) do
+        {:ok, p} ->
+          if String.trim(prompt) != "" do
+            dir = Autopoet.Projects.artifacts_dir(p.slug)
+            File.mkdir_p!(dir)
+            File.write!(Path.join(dir, "onboarding.txt"), prompt)
+          end
+
+          case Autopoet.Desks.launch(p.slug) do
+            {:ok, _} -> text(conn, "created #{p.slug} — desk running, genesis begins\n")
+            {:error, why} -> text(conn, "created #{p.slug} — desk failed: #{inspect(why)}\n")
+          end
+
+        {:error, :exists} ->
+          text(conn, "refused: project exists\n")
+      end
+    end)
+  end
+
+  get "/projects/:slug/status" do
+    case Autopoet.Projects.get(slug) do
+      nil ->
+        text(conn, "unknown project\n")
+
+      p ->
+        hb = Path.join(Autopoet.Projects.artifacts_dir(slug), "state.txt")
+        state = case File.read(hb) do
+          {:ok, t} -> t
+          _ -> "(no heartbeat yet)\n"
+        end
+
+        text(conn, "#{slug} #{p.status} chartered=#{p.chartered} desk=#{p.desk_running}\n#{state}")
+    end
+  end
+
+  post "/projects/:slug/desk/start" do
+    authed!(conn, fn conn ->
+      case Autopoet.Desks.launch(slug) do
+        {:ok, _} -> text(conn, "desk running: #{slug}\n")
+        {:error, why} -> text(conn, "refused: #{inspect(why)}\n")
+      end
+    end)
+  end
+
+  post "/projects/:slug/desk/stop" do
+    authed!(conn, fn conn ->
+      Autopoet.Desks.halt(slug)
+      text(conn, "desk stopped: #{slug}\n")
+    end)
+  end
+
+  post "/projects/:slug/archive" do
+    authed!(conn, fn conn ->
+      case Autopoet.Projects.archive(slug) do
+        :ok -> text(conn, "archived #{slug}\n")
+        {:error, why} -> text(conn, "refused: #{inspect(why)}\n")
+      end
+    end)
+  end
+
+  # the BATCHED DIGEST (locked decision #4): pending proposals grouped by
+  # project — reviewed when the operator opens the app / runs ctl, never pinged.
+  get "/digest" do
+    pending = Autopoet.Proposals.pending()
+
+    grouped =
+      Enum.group_by(pending, fn {id, _} ->
+        case Autopoet.Proposals.target_of(id) do
+          "projects/" <> rest -> rest |> String.split("/") |> hd()
+          _ -> "(organism)"
+        end
+      end)
+
+    body =
+      if grouped == %{} do
+        "digest empty — nothing pending\n"
+      else
+        Enum.map_join(grouped, "\n", fn {proj, items} ->
+          "## #{proj}\n" <>
+            Enum.map_join(items, "\n", fn {id, _} -> "  #{id} → #{Autopoet.Proposals.target_of(id)}" end)
+        end) <> "\n"
+      end
+
+    text(conn, body)
+  end
+
   get "/sse" do
     conn =
       conn

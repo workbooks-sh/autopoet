@@ -11,8 +11,36 @@ read -r PORT TOKEN <"$CTL"
 BASE="http://127.0.0.1:$PORT"
 
 case "${1:-status}" in
-  status | log | proposals)
+  status | log | proposals | projects | digest)
     curl -s "$BASE/${1:-status}"
+    ;;
+  project)
+    # project new <slug> [archetype] <prompt...> | status <slug> | archive <slug>
+    #         desk-start <slug> | desk-stop <slug>
+    SUB="$2"
+    case "$SUB" in
+      new)
+        SLUG="$3"; ARCH="${4:-venture}"; shift 4 2>/dev/null || shift 3
+        [ -n "$SLUG" ] || { echo "usage: autopoetctl project new <slug> [archetype] <prompt...>"; exit 2; }
+        curl -s -X POST -H "authorization: Bearer $TOKEN" --data-binary "$*" \
+          "$BASE/projects/new?slug=$SLUG&archetype=$ARCH"
+        ;;
+      status)
+        curl -s "$BASE/projects/$3/status"
+        ;;
+      archive)
+        curl -s -X POST -H "authorization: Bearer $TOKEN" "$BASE/projects/$3/archive"
+        ;;
+      desk-start)
+        curl -s -X POST -H "authorization: Bearer $TOKEN" "$BASE/projects/$3/desk/start"
+        ;;
+      desk-stop)
+        curl -s -X POST -H "authorization: Bearer $TOKEN" "$BASE/projects/$3/desk/stop"
+        ;;
+      *)
+        echo "usage: autopoetctl project new|status|archive|desk-start|desk-stop ..."; exit 2
+        ;;
+    esac
     ;;
   tail)
     curl -sN "$BASE/sse"
@@ -55,7 +83,7 @@ case "${1:-status}" in
     curl -s -H "authorization: Bearer $TOKEN" --data-urlencode "name=$NAME" --data-urlencode "task=$*" -G "$BASE/limb" -X POST
     ;;
   *)
-    echo "usage: autopoetctl status|log|tail|proposals|arm [every]|disarm|request <target> <change>|cycle|research <question>|accept <id>|reject <id>|close|kill"
+    echo "usage: autopoetctl status|log|tail|proposals|projects|digest|project <new|status|archive|desk-start|desk-stop>|arm [every]|disarm|request|cycle|research|accept <id>|reject <id>|close|kill"
     exit 2
     ;;
 esac
