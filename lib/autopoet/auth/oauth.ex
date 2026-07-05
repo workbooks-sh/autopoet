@@ -71,6 +71,19 @@ defmodule Autopoet.Auth.OAuth do
       # the client but under scope strings we haven't nailed — resolve them
       # authoritatively from the account once connected, then append here.
       scope_env: "CLOUDFLARE_OAUTH_SCOPE",
+      # EMPIRICALLY CONFIRMED read-only (loaded the authorize URL 2026-07-05):
+      # CF rejects `zone.edit` / `dns.edit` / `account-settings.edit` with
+      # "The OAuth 2.0 Client is not allowed to request scope …". The requested
+      # scope must be a SUBSET of what the "Workbooks" OAuth APP was registered
+      # with — and it holds only reads. To grant the agent WRITE via user OAuth:
+      # add the edit permission groups to the app at Cloudflare (DNS Edit, Zone
+      # Edit, Cloudflare Pages Edit, Email Routing Edit, SSL Edit, offline_access),
+      # THEN set CLOUDFLARE_OAUTH_SCOPE to the broadened set (no recompile). Until
+      # then agent CF writes ride the account API token (CF_DNS_TOKEN), not OAuth.
+      # broadened set, ready for the env flip once the app is upgraded:
+      #   user-details.read account-settings.read account-settings.edit
+      #   zone.read zone.edit dns.read dns.edit ssl-and-certificates.edit
+      #   cloudflare-pages.edit account-analytics.read offline_access
       scope: "user-details.read account-settings.read zone.read dns.read account-analytics.read",
       id_key: "CLOUDFLARE_OAUTH_CLIENT_ID",
       secret_key: "CLOUDFLARE_OAUTH_CLIENT_SECRET"
