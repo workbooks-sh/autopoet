@@ -405,7 +405,16 @@ defmodule Autopoet.Venture do
             end
 
           {:ok, {{_, code, _}, _, body}} ->
-            issue("x search #{code}: #{String.slice(to_string(body), 0, 120)}")
+            # known-degraded lane (e.g. CreditsDepleted): log once per day, not
+            # every slot — repeats drown real issues
+            marker = Path.join(artifacts(), "x-issue-day.txt")
+            today = Date.to_iso8601(Date.utc_today())
+
+            if File.read(marker) != {:ok, today} do
+              File.write!(marker, today)
+              issue("x search #{code}: #{String.slice(to_string(body), 0, 120)} (throttled to 1/day)")
+            end
+
             ""
 
           _ ->
