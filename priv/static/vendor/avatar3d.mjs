@@ -35,12 +35,40 @@ function roundedRectShape(w, h, r) {
   return s;
 }
 
-// materials shared by everything (body + hands): warm white, soft side shading
+// theme-aware face colors — read the app's CSS tokens so the cube follows the
+// light/dark toggle (body = the face squircle, inverted hull = its toon outline).
+const _hexInt = (v, fb) => {
+  v = (v || "").trim().replace(/^#/, "");
+  if (v.length === 3) v = v.split("").map(c => c + c).join("");
+  const n = parseInt(v, 16);
+  return (v.length === 6 && !Number.isNaN(n)) ? n : fb;
+};
+const _cssVar = name => getComputedStyle(document.documentElement).getPropertyValue(name);
+const faceBody = () => _hexInt(_cssVar("--face-bg"), 0xffffff);
+// the toon outline is the ONLY part that follows the UI theme (black in light,
+// white in dark); the body + face features are the character's own, theme-independent.
+const faceOutline = () => _hexInt(_cssVar("--face-outline"), INK);
+
+// materials shared by everything (body + hands): warm paper, soft side shading.
+// Tracked so a theme flip can re-skin every instance live.
+const _bodyMats = new Set(), _outlineMats = new Set();
 function bodyMaterial() {
-  return new THREE.MeshLambertMaterial({ color: 0xffffff });
+  const m = new THREE.MeshLambertMaterial({ color: faceBody() });
+  _bodyMats.add(m); return m;
 }
 function outlineMaterial() {
-  return new THREE.MeshBasicMaterial({ color: INK, side: THREE.BackSide });
+  const m = new THREE.MeshBasicMaterial({ color: faceOutline(), side: THREE.BackSide });
+  _outlineMats.add(m); return m;
+}
+function _reskin() {
+  const b = faceBody(), o = faceOutline();
+  _bodyMats.forEach(m => m.color.setHex(b));
+  _outlineMats.forEach(m => m.color.setHex(o));
+}
+if (typeof window !== "undefined") {
+  // theme flip OR AutoPoet character recolor both re-skin every material live
+  window.addEventListener("themechange", _reskin);
+  window.addEventListener("characterchange", _reskin);
 }
 
 // inverted hull: same geometry pushed out along normals by `w` world units
@@ -67,11 +95,24 @@ function withHull(mesh, w) {
   return g;
 }
 
+// shape presets — corner radius + bevel morph the body squircle → round → blocky.
+const SHAPES = {
+  squircle: { r: 35, bevel: 8 },   // the default soft cube
+  round:    { r: 58, bevel: 13 },  // pillowy, near-circular face
+  blocky:   { r: 8,  bevel: 3 },   // sharp, minecrafty cube
+};
+export const currentShape = () => {
+  const k = document.documentElement.getAttribute("data-ap-shape") || "squircle";
+  return SHAPES[k] ? k : "squircle";
+};
+
 // ── the body: extruded squircle with beveled (soft) front/back edges ──
-function buildBody() {
+function buildBody(shapeKey) {
+  const sh = SHAPES[shapeKey || currentShape()] || SHAPES.squircle;
   const depth = SIZE - 16;
-  const geo = new THREE.ExtrudeGeometry(roundedRectShape(SIZE - 12, SIZE - 12, R), {
-    depth, bevelEnabled: true, bevelThickness: 8, bevelSize: 6, bevelSegments: 4, curveSegments: 10
+  const geo = new THREE.ExtrudeGeometry(roundedRectShape(SIZE - 12, SIZE - 12, sh.r), {
+    depth, bevelEnabled: true, bevelThickness: sh.bevel, bevelSize: Math.min(6, sh.bevel),
+    bevelSegments: 4, curveSegments: 10
   });
   geo.translate(0, 0, -depth / 2);            // center on origin
   geo.computeVertexNormals();
@@ -140,8 +181,10 @@ export function mount(container, cubeEl) {
   scene.add(key);
 
   const rig = new THREE.Group();                 // rotation rig (body + hands)
+  let bodyGroup;
   scene.add(rig);
-  rig.add(buildBody());
+  bodyGroup = buildBody();
+  rig.add(bodyGroup);
 
   // hands: three pose groups per side, driven by the controller divs
   const handRigs = {};
@@ -220,9 +263,33 @@ export function mount(container, cubeEl) {
     renderer.render(scene, cam);
   })();
 
+  // swap the body geometry for a new shape preset, disposing the old one
+  function setShape(key) {
+    const next = buildBody(key);
+    if (bodyGroup) {
+      rig.remove(bodyGroup);
+      bodyGroup.traverse(o => {
+        if (o.geometry) o.geometry.dispose();
+        if (o.material) { _bodyMats.delete(o.material); _outlineMats.delete(o.material); o.material.dispose(); }
+      });
+    }
+    bodyGroup = next;
+    rig.add(bodyGroup);
+  }
+  // rebuild geometry only when the SHAPE actually changed (recolor is handled by
+  // _reskin); color-only swatch changes must not thrash the extrude geometry.
+  let _lastShape = currentShape();
+  const _onChar = () => {
+    const s = currentShape();
+    if (s !== _lastShape) { _lastShape = s; setShape(s); }
+  };
+  window.addEventListener("characterchange", _onChar);
+
   return {
+    setShape,
     dispose() {
       disposed = true;
+      window.removeEventListener("characterchange", _onChar);
       renderer.dispose();
       cv.remove();
     }

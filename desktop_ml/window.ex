@@ -78,6 +78,10 @@ defmodule Autopoet.Window do
   def control(:maximize), do: GenServer.cast(__MODULE__, :maximize)
   def control(_), do: :ok
 
+  @doc "Match the native chrome (frame + drag strip) to the page's light/dark theme."
+  def set_theme(theme) when theme in [:light, :dark], do: GenServer.cast(__MODULE__, {:set_theme, theme})
+  def set_theme(_), do: :ok
+
   # The app UI: a native WKWebView filling the frame (single child auto-fills).
   defp attach_view(frame) do
     url = ~c"http://127.0.0.1:#{Autopoet.Application.port()}/"
@@ -199,6 +203,18 @@ defmodule Autopoet.Window do
     # old bare-boolean call crashed this GenServer (restart: :temporary, so it
     # never came back and the wx frame died with it, taking the window with it).
     :wxTopLevelWindow.maximize(s.frame, maximize: not :wxTopLevelWindow.isMaximized(s.frame))
+    {:noreply, s}
+  end
+
+  # Repaint the native chrome to match the page theme. The webview draws its own
+  # dark UI, but the frame + drag strip are wx surfaces (hardcoded paper at boot);
+  # without this they stay light and leak a white seam at the top in dark mode.
+  def handle_cast({:set_theme, theme}, s) do
+    color = if theme == :dark, do: {16, 19, 24, 255}, else: {251, 251, 249, 255}
+    for win <- [s.frame, s.drag], win != nil do
+      :wxWindow.setBackgroundColour(win, color)
+      :wxWindow.refresh(win)
+    end
     {:noreply, s}
   end
 end

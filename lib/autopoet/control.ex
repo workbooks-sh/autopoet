@@ -56,6 +56,18 @@ defmodule Autopoet.Control do
     conn |> put_resp_content_type("application/javascript") |> send_resp(200, js)
   end
 
+  # interactive plan mode (docs/interactive-plan-mode.md) — own file, lazy-loaded
+  # only when entering plan mode (elk is 1.5MB; don't tax every boot)
+  get "/static/planmode.js" do
+    js = [:code.priv_dir(:autopoet), "static", "planmode.js"] |> Path.join() |> File.read!()
+    conn |> put_resp_content_type("application/javascript") |> send_resp(200, js)
+  end
+
+  get "/static/elk.bundled.js" do
+    js = [:code.priv_dir(:autopoet), "static", "elk.bundled.js"] |> Path.join() |> File.read!()
+    conn |> put_resp_content_type("application/javascript") |> send_resp(200, js)
+  end
+
   # the quiz's industry corpus — data, not code, so it swaps without touching quiz.js
   get "/static/quiz-corpus.js" do
     js = [:code.priv_dir(:autopoet), "static", "quiz-corpus.js"] |> Path.join() |> File.read!()
@@ -541,6 +553,17 @@ defmodule Autopoet.Control do
       # user sprinted past it, this is the last safe moment (marker-guarded)
       Autopoet.Intake.start()
       text(conn, "app\n")
+    end)
+  end
+
+  # DEV: restart onboarding (owner's plan-mode test loop). ?full=1 also signs
+  # out → the whole door→sign-in→onboarding sequence from the top.
+  post "/auth/onboarding/reset" do
+    authed!(conn, fn conn ->
+      conn = fetch_query_params(conn)
+      Autopoet.Auth.reset_onboarding()
+      if conn.query_params["full"] == "1", do: Autopoet.Auth.signout()
+      text(conn, "onboarding reset\n")
     end)
   end
 

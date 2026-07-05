@@ -122,6 +122,16 @@ defmodule Autopoet.Auth do
     File.write!(onboard_marker(), "done\n")
     put(Map.merge(state(), %{onboarded: true}))
   end
+
+  @doc """
+  DEV: restart onboarding — drop the marker + flip the session back to
+  `onboarding` (identity + connections kept). The owner's test loop for
+  interactive plan mode: settings → restart onboarding → reload.
+  """
+  def reset_onboarding do
+    File.rm(onboard_marker())
+    put(Map.merge(state(), %{onboarded: false}))
+  end
   def signout, do: put(%{authenticated: false, user: nil, onboarded: false, connections: %{}})
 
   # ── state persistence ──────────────────────────────────────────────────────

@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<script>try{var _r=document.documentElement;var _ap=function(v){v==="dark"?_r.setAttribute("data-theme","dark"):_r.removeAttribute("data-theme");};_ap(localStorage.getItem("ap-theme"));addEventListener("storage",function(e){if(e.key==="ap-theme")_ap(e.newValue);});}catch(e){}</script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>autopoet — voice</title>
   <style>
@@ -11,7 +12,14 @@
       --dim: rgba(18,19,22,.45); --edge: rgba(18,19,22,.38);
       --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
     }
-    /* light mode only -- the avatar's world is white grid paper */
+    /* dark theme — mirrors the app's tokens (applied via data-theme, synced from
+       the app's ap-theme setting across the shared origin) */
+    :root[data-theme="dark"] {
+      --page: #101318; --ink: #e4e7ec; --card: #171a20;
+      --line: rgba(220,230,245,.06); --border: rgba(220,230,245,.14);
+      --dim: rgba(220,230,245,.5); --edge: rgba(220,230,245,.42);
+    }
+    /* the avatar's world is grid paper — light or ink, per theme */
     * { box-sizing: border-box; margin: 0; }
     html, body { height: 100%; }
     body {

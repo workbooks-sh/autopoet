@@ -170,7 +170,11 @@ compiles *from* it, and the agent may only propose further edits to it.
 The target is the full-choreography experience. Sequenced so each phase runs:
 
 1. **Canvas + camera** — inset frame, graph paper, D3 + ELK layout, pan/zoom,
-   refocus. Static seed graph to prove layout + camera.
+   refocus. Static seed graph to prove layout + camera. **[SHIPPED 2026-07-05:
+   priv/static/planmode.js — lazy-loaded elk.bundled.js, stress layout, cluster
+   hulls, cube+beam+bubble (early), next/back widget, classic-quiz fallback.
+   Dev loop: settings → restart onboarding / plan mode (dev);
+   POST /auth/onboarding/reset (?full=1 → back to the door).]**
 2. **The brain loop** — server-side: coverage-requirement spine + depth math +
    branching; LLM emits `{nodes, edges, question, coverage}` deltas per answer,
    streamed to the client. Bottom widget (next/back, MC + open-ended).
