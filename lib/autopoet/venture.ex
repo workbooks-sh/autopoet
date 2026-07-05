@@ -109,6 +109,9 @@ defmodule Autopoet.Venture do
         # DNS/routing on acceptance). Runs before the first build. OWNER
         # FEEDBACK (identity-feedback.txt) retracts + re-opens the slot.
         not identity?() and (not s.identity_proposed or identity_feedback() != "") -> identity_step(s)
+        # LOGO: one slot, once identity is ratified — the venture designs its
+        # own mark (svg-logo-designer discipline), before the first real build
+        identity?() and not logo?() -> logo_step(s)
         true -> venture_cycle(s)
       end
     else
@@ -142,6 +145,89 @@ defmodule Autopoet.Venture do
     File.exists?(vault) or not String.starts_with?(read_body("venture/identity.work"), "(no")
   rescue
     _ -> false
+  end
+
+  # ── LOGO: the venture designs its own mark ──────────────────────────────────
+
+  defp logo?, do: not String.starts_with?(read_body("venture/logo.work"), "(no")
+
+  defp logo_step(s) do
+    log("LOGO — designing the mark (3 concepts, self-judged)")
+
+    with {:ok, s, reply} <- think(s, :logo, logo_prompt(), max_tokens: 3500) do
+      svgs = Regex.scan(~r/===\s*svg:\s*([a-z0-9-]+)\s*===\s*\n(.*?)(?=\n===|\z)/s, reply)
+
+      if svgs == [] do
+        issue("logo slot produced no svg blocks")
+        s
+      else
+        dir = Path.join(artifacts(), "site/assets")
+        File.mkdir_p!(dir)
+
+        for [_, name, svg] <- svgs do
+          File.write!(Path.join(dir, "#{name}.svg"), String.trim(svg))
+        end
+
+        append_body("venture/logo.work", "# The mark\n\n" <> strip_svgs(reply) <> "\n\nAssets: " <> Enum.map_join(svgs, ", ", fn [_, n, _] -> "#{n}.svg" end))
+        log("LOGO — #{length(svgs)} assets written")
+        %{s | work_cycles: s.work_cycles + 1}
+      end
+    end
+  end
+
+  defp strip_svgs(reply), do: Regex.replace(~r/===\s*svg:.*?(?=\n===|\z)/s, reply, "")
+
+  defp logo_assets do
+    case File.ls(Path.join(artifacts(), "site/assets")) do
+      {:ok, fs} -> Enum.join(fs, ", ")
+      _ -> "(none yet)"
+    end
+  rescue
+    _ -> "(none yet)"
+  end
+
+  defp logo_prompt do
+    """
+    You are the venture desk — design YOUR OWN LOGO. Your ratified identity:
+    #{identity_doc()}
+    Charter mission: #{charter_section("Mission")}
+
+    Discipline (non-negotiable): great logos are simple, memorable, timeless,
+    versatile, appropriate. Every SVG: a responsive viewBox (no pixel sizes),
+    colors defined ONCE in <defs> and reused, semantic <g> groups, role="img" +
+    <title> + <desc> for accessibility, minimal paths, no invisible elements,
+    legible at 16px and at billboard scale.
+
+    Produce THREE distinct concepts (different visual mechanisms, not variants
+    of one idea). For each, write one line of rationale, then the icon-only
+    mark. Then judge them honestly against the discipline and PICK ONE primary.
+    Emit blocks exactly like:
+
+    === svg: concept1-icon ===
+    <svg …>…</svg>
+
+    === svg: concept2-icon ===
+    <svg …>…</svg>
+
+    === svg: concept3-icon ===
+    <svg …>…</svg>
+
+    === svg: primary-mono ===
+    <the chosen concept re-cut in single-color monochrome>
+
+    End with: PRIMARY: <concept name> and the rationale for the choice.
+    """
+  end
+
+  defp identity_doc do
+    vault = Path.join(Autopoet.Notes.dir(), "venture/identity.work")
+
+    case File.read(vault) do
+      {:ok, c} -> String.slice(c, 0, 2500)
+      _ -> read_body("venture/identity.work")
+    end
+  rescue
+    _ -> read_body("venture/identity.work")
   end
 
   defp identity_feedback do
@@ -484,11 +570,15 @@ defmodule Autopoet.Venture do
     Latest feedback:
     #{String.slice(read_body("venture/feedback.work"), 0, 1500)}
 
+    Your logo assets deploy alongside the page at /assets/ (#{logo_assets()}) —
+    reference the primary as /assets/primary-icon.svg or inline the chosen mark.
+    Brand doc: #{String.slice(read_body("venture/logo.work"), 0, 600)}
+
     Produce the COMPLETE landing page for the product (or a sharp iteration of
     the current one, folding in feedback): single self-contained HTML file —
-    inline CSS, no external assets, mobile-first, a waitlist form (mailto: or
-    form action to /api/waitlist placeholder is fine for now), honest copy that
-    speaks the ICP's language from your research. Emit ONE block:
+    inline CSS, mobile-first (logo may reference /assets/*.svg), a waitlist
+    form (mailto: or form action to /api/waitlist placeholder is fine for now),
+    honest copy that speaks the ICP's language from your research. Emit ONE block:
 
     === html ===
     <the complete html>
