@@ -106,8 +106,9 @@ defmodule Autopoet.Venture do
         not charter?() -> genesis_step(s)
         # IDENTITY: one slot, once — the venture claims its own domain, email
         # proxies, and X presence (a PROPOSAL; the human agent executes the
-        # DNS/routing on acceptance). Runs before the first build.
-        not identity?() and not s.identity_proposed -> identity_step(s)
+        # DNS/routing on acceptance). Runs before the first build. OWNER
+        # FEEDBACK (identity-feedback.txt) retracts + re-opens the slot.
+        not identity?() and (not s.identity_proposed or identity_feedback() != "") -> identity_step(s)
         true -> venture_cycle(s)
       end
     else
@@ -117,8 +118,11 @@ defmodule Autopoet.Venture do
 
   defp identity_step(s) do
     log("IDENTITY — claiming domain + email + X presence (proposal)")
+    feedback = identity_feedback()
 
-    with {:ok, s, reply} <- think(s, :identity, identity_prompt(), max_tokens: 1800) do
+    with {:ok, s, reply} <- think(s, :identity, identity_prompt(feedback), max_tokens: 1800) do
+      # consume the feedback so the slot doesn't loop
+      if feedback != "", do: File.rm(Path.join(artifacts(), "identity-feedback.txt"))
       id =
         Autopoet.Proposals.record(
           %{target: "venture/identity.work", kind: "venture.identity", source: "venture-identity"},
@@ -140,17 +144,28 @@ defmodule Autopoet.Venture do
     _ -> false
   end
 
-  defp identity_prompt do
+  defp identity_feedback do
+    case File.read(Path.join(artifacts(), "identity-feedback.txt")) do
+      {:ok, t} -> t
+      _ -> ""
+    end
+  rescue
+    _ -> ""
+  end
+
+  defp identity_prompt(feedback \\ "") do
     zones =
       case File.read(Path.join(artifacts(), "zones.txt")) do
         {:ok, t} -> t
         _ -> "(no zone inventory — propose a purchase, minimal budget ~$15)"
       end
 
+    feedback_block = if feedback == "", do: "", else: "\nYOUR PREVIOUS PROPOSAL WAS RETRACTED. #{feedback}\n"
+
     """
     You are the venture desk. Your charter:
     #{charter()}
-
+    #{feedback_block}
     Claim your venture's IDENTITY. Available infrastructure:
     #{zones}
 
