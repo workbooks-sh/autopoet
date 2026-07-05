@@ -1,0 +1,65 @@
+  /* ── nexus choice: radio-card accordion + machine setup (custom components) ── */
+  .nx-stack { display:flex; flex-direction:column; gap:16px; width:100%; }
+  .nx-option { position:relative; border:1.6px solid #e2e6ec; border-radius:15px; background:#fff;
+    transition:border-color .18s ease, box-shadow .18s ease; }
+  .nx-option.open { border-color:#16161a; box-shadow:0 3px 14px rgba(20,30,50,.08); }
+  .nx-badge { position:absolute; top:-9px; left:16px; background:#16161a; color:#fff;
+    font:600 9.5px ui-monospace,monospace; letter-spacing:.04em; text-transform:uppercase;
+    padding:3px 8px; border-radius:6px; z-index:1; }
+  .nx-head { display:flex; align-items:center; gap:13px; width:100%; padding:18px;
+    background:none; border:0; cursor:pointer; text-align:left; }
+  .nx-ico { display:grid; place-items:center; width:34px; height:34px; border-radius:10px;
+    background:#f4f6f8; color:#16161a; flex:none; }
+  .nx-ico svg { width:16px; height:16px; }
+  .nx-title { font:600 13.5px ui-monospace,monospace; color:#1c2230; flex:1; }
+  .nx-meta { font:12px ui-monospace,monospace; color:#8a8f88; }
+  .nx-radio { width:16px; height:16px; border-radius:50%; border:1.6px solid #c9cfd8; flex:none;
+    transition:border-color .15s ease, box-shadow .15s ease; }
+  .nx-option.open .nx-radio { border-color:#16161a; box-shadow:inset 0 0 0 4px #16161a; }
+  .nx-body { display:none; flex-direction:column; gap:14px; padding:2px 20px 22px 65px; }
+  .nx-option.open .nx-body { display:flex; }
+  .nx-line { font:12px/1.55 ui-monospace,monospace; color:#6a6f68; margin:0; }
+  .nx-row { display:flex; gap:8px; align-items:center; }
+  .nx-row .obinput { flex:1; margin:0; }
+
+  /* existing-nexus picks */
+  .nx-pick { display:flex; align-items:center; gap:10px; width:100%; padding:11px 12px;
+    border:1.4px solid #e2e6ec; border-radius:11px; background:#fff; cursor:pointer; text-align:left; }
+  .nx-pick:hover { border-color:#b9c2cd; }
+  .nx-pick.sel { border-color:#16161a; box-shadow:inset 0 0 0 1px #16161a; }
+  .nx-pick-name { font:600 12.5px ui-monospace,monospace; color:#1c2230; flex:1; }
+  .nx-chips { display:flex; gap:5px; }
+  .nx-chip { font:10px ui-monospace,monospace; font-style:normal; color:#6a6f68;
+    background:#f4f6f8; border-radius:6px; padding:2.5px 7px; }
+  .nx-go { font:11.5px ui-monospace,monospace; color:#245cc0; }
+
+  /* machine setup: tier cards · credit chips · toggle */
+  .nx-lbl { font:600 10px ui-monospace,monospace; letter-spacing:.07em; text-transform:uppercase;
+    color:#8a8f88; margin-top:8px; }
+  .nx-tiers { display:grid; grid-template-columns:repeat(auto-fit,minmax(108px,1fr)); gap:10px; }
+  .nx-tier { display:flex; flex-direction:column; gap:4px; align-items:flex-start; padding:13px 14px;
+    border:1.4px solid #e2e6ec; border-radius:11px; background:#fff; cursor:pointer; }
+  .nx-tier:hover { border-color:#b9c2cd; }
+  .nx-tier.sel { border-color:#16161a; box-shadow:inset 0 0 0 1px #16161a; }
+  .nx-tier b { font:600 12px ui-monospace,monospace; color:#1c2230; }
+  .nx-price { font:14px ui-monospace,monospace; color:#16161a; }
+  .nx-price i { font-style:normal; font-size:10.5px; color:#8a8f88; }
+  .nx-spec { font:10px ui-monospace,monospace; color:#8a8f88; }
+  .nx-chipsrow { display:flex; gap:9px; flex-wrap:wrap; }
+  .nx-chipbtn { font:600 12px ui-monospace,monospace; padding:8px 16px; border-radius:9px;
+    border:1.4px solid #e2e6ec; background:#fff; color:#1c2230; cursor:pointer; }
+  .nx-chipbtn:hover { border-color:#b9c2cd; }
+  .nx-chipbtn.sel { border-color:#16161a; background:#16161a; color:#fff; }
+  .nx-toggle { display:flex; align-items:center; gap:11px; font:12px/1.7 ui-monospace,monospace;
+    color:#1c2230; cursor:default; margin-top:6px; }
+  .nx-switch { display:inline-block; width:34px; height:20px; border-radius:11px; background:#dfe3e9;
+    position:relative; cursor:pointer; flex:none; transition:background .18s ease; }
+  .nx-switch i { position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%;
+    background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.2); transition:left .18s ease; }
+  .nx-switch.on { background:#16161a; }
+  .nx-switch.on i { left:16px; }
+  .nx-mini { width:40px; font:12px ui-monospace,monospace; text-align:center; padding:3px 4px;
+    border:1px solid #d6dbe2; border-radius:7px; }
+  .nx-foot { display:flex; align-items:center; justify-content:space-between; gap:14px; width:100%; margin-top:4px; }
+  .nx-status { font:12px ui-monospace,monospace; color:#3f7a52; display:flex; align-items:center; gap:6px; }
+  .nx-status svg { width:14px; height:14px; }
