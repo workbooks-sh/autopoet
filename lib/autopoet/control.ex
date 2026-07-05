@@ -1115,6 +1115,17 @@ defmodule Autopoet.Control do
     end
   end
 
+  post "/voices/accent" do
+    authed!(conn, fn conn ->
+      conn = fetch_query_params(conn)
+
+      case Autopoet.VoiceRoster.set_accent(conn.query_params["name"] || "", conn.query_params["accent"] || "") do
+        :ok -> text(conn, "ok\n")
+        _ -> send_resp(conn, 422, "bad accent\n")
+      end
+    end)
+  end
+
   post "/voices/verdict" do
     authed!(conn, fn conn ->
       conn = fetch_query_params(conn)
