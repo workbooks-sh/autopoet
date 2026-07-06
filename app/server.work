@@ -1,0 +1,88 @@
+# The onboarding server — the brain, the voice, the tools
+
+The nexus-side of the app: the HTTP surface the client calls, as a `server` block.
+Every route the onboarding conversation drives — the plan brain's turns, the web
+search + agent bash tools, the designer's picks, the personality + voice
+catalogs, the voice-engine toggle — declared as `route`s with typed handlers
+that return JSON. Placement is the point: this runs on the BEAM/nexus, not the
+browser. It leans on the app's modules (`PlanBrain`, `Requisition`, `VoiceEngine`,
+`PlanTools`, `Nexus.Browse`) — the logic; this block is the door.
+
+server :onboard do
+  # the plan conversation's brain — one move per turn (ask / slide / search / bash / complete)
+  route "POST /plan/turn", :plan_turn, auth: :public
+
+  # the agent's TOOLS — the real Nexus web browser and the full agent bash shell
+  route "POST /plan/search", :plan_search, auth: :public
+  route "POST /plan/bash", :plan_bash, auth: :public
+
+  # the designer — build a character from the owner's picks; the catalogs it reads
+  route "POST /onboard/pick", :onboard_pick, auth: :public
+  route "GET /onboard/personalities.json", :personalities, auth: :public
+  route "GET /voice/kokoro/voices.json", :kokoro_voices, auth: :public
+
+  # the dev voice-engine toggle (Kokoro presets vs Qwen clones)
+  route "GET /voice/engine", :voice_engine_get, auth: :public
+  route "POST /voice/engine", :voice_engine_set, auth: :public
+
+  def plan_turn(req) do
+    state = if is_map(req.body), do: req.body, else: %{}
+
+    case Autopoet.PlanBrain.turn(state) do
+      {:ok, move} -> move
+      {:error, reason} -> {503, %{error: to_string(reason)}}
+    end
+  end
+
+  def plan_search(req) do
+    query = (is_map(req.body) && req.body["query"]) |> to_string() |> String.slice(0, 300)
+
+    results =
+      case query != "" and Nexus.Browse.search(query, limit: 5) do
+        {:ok, list} when is_list(list) ->
+          Enum.map(list, fn r -> %{title: r[:title], url: r[:url], snippet: r[:snippet]} end)
+
+        _ ->
+          []
+      end
+
+    %{query: query, results: results}
+  end
+
+  def plan_bash(req) do
+    line = (is_map(req.body) && (req.body["command"] || req.body["cmd"])) |> to_string()
+
+    case Autopoet.PlanTools.bash(line) do
+      {:ok, out} -> %{command: line, output: out, ok: true}
+      {:error, e} -> %{command: line, output: "error: #{e}", ok: false}
+    end
+  end
+
+  def onboard_pick(req) do
+    picks = if is_map(req.body), do: req.body, else: %{}
+    {:ok, identity} = Autopoet.Requisition.from_picks(picks)
+    identity
+  end
+
+  def personalities(_req) do
+    order = ~w(warm direct witty calm bold playful sage cheerful curious)
+    all = Autopoet.Requisition.personalities()
+
+    for k <- order, v = all[k] do
+      %{key: k, name: v.name, desc: v.desc, traits: Map.get(v, :traits, %{}), movement: Map.get(v, :movement, "")}
+    end
+  end
+
+  def kokoro_voices(_req), do: Autopoet.VoiceEngine.catalog()
+
+  def voice_engine_get(_req), do: %{engine: Autopoet.VoiceEngine.current()}
+
+  def voice_engine_set(req) do
+    engine = (is_map(req.body) && req.body["engine"]) |> to_string()
+
+    case Autopoet.VoiceEngine.set(engine) do
+      :ok -> %{engine: Autopoet.VoiceEngine.current()}
+      _ -> {400, %{error: "bad engine"}}
+    end
+  end
+end
