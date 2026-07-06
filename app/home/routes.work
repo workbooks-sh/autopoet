@@ -727,3 +727,82 @@ server :ops3 do
     end
   end
 end
+
+## Projects lifecycle, voice design, power/cloud
+
+server :ops4 do
+  route "POST /proposal/:id/revert", :proposal_revert, auth: :public
+  route "POST /projects/:slug/archive", :project_archive, auth: :public
+  route "POST /projects/:slug/desk/start", :desk_start, auth: :public
+  route "POST /projects/:slug/desk/stop", :desk_stop, auth: :public
+  route "POST /voices/accent", :voices_accent, auth: :public
+  route "POST /voices/create", :voices_create, auth: :public
+  route "POST /power/cloud/open", :power_cloud_open, auth: :public
+  route "POST /power/cloud/autotopup", :power_autotopup, auth: :public
+  route "POST /power/cloud/openurl", :power_openurl, auth: :public
+
+  defp t(s), do: {200, "text/plain; charset=utf-8", s}
+  defp slug(req), do: req.params["slug"] || req.params[:slug]
+
+  defp cloud_proxy(method, path, body) do
+    r = if method == :get, do: Autopoet.Cloud.get(path), else: Autopoet.Cloud.post(path, body)
+    case r do
+      {:ok, b} -> b
+      {:error, {c, b}} when is_integer(c) and is_map(b) -> {c, b}
+      _ -> {502, %{error: "cloud unavailable"}}
+    end
+  end
+
+  def proposal_revert(req) do
+    case Autopoet.Proposals.revert(req.params["id"] || req.params[:id], Autopoet.Notes.dir()) do
+      :ok -> t("reverted\n")
+      {:error, r} -> t("refused: #{inspect(r)}\n")
+    end
+  end
+
+  def project_archive(req) do
+    case Autopoet.Projects.archive(slug(req)) do
+      :ok -> t("archived\n")
+      {:error, w} -> t("refused: #{inspect(w)}\n")
+    end
+  end
+
+  def desk_start(req) do
+    case Autopoet.Desks.launch(slug(req)) do
+      {:ok, _} -> t("desk running\n")
+      {:error, w} -> t("refused: #{inspect(w)}\n")
+    end
+  end
+
+  def desk_stop(req) do
+    Autopoet.Desks.halt(slug(req))
+    t("desk stopped\n")
+  end
+
+  def voices_accent(req) do
+    case Autopoet.VoiceRoster.set_accent(req.query["name"] || "", req.query["accent"] || "") do
+      :ok -> t("ok\n")
+      _ -> {422, %{error: "bad accent"}}
+    end
+  end
+
+  def voices_create(req) do
+    case Autopoet.VoicePersonas.add(req.query["name"] || "", to_string(req.raw_body || "")) do
+      {:ok, _} -> t("ok\n")
+      _ -> {422, %{error: "bad voice"}}
+    end
+  end
+
+  def power_cloud_open(_req) do
+    spawn(fn -> System.cmd("open", [Autopoet.Cloud.base_url() <> "/cloud/"]) end)
+    %{ok: true}
+  end
+
+  def power_autotopup(req), do: cloud_proxy(:post, "/api/platform/billing/autotopup", req.body)
+
+  def power_openurl(req) do
+    url = req.query["url"] || ""
+    if url != "", do: spawn(fn -> System.cmd("open", [url]) end)
+    %{ok: true}
+  end
+end
