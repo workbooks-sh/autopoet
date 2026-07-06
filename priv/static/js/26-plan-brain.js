@@ -43,10 +43,13 @@ window.PlanBrain = (() => {
     if (bar) return;
     bar = document.createElement("div");
     bar.className = "pm-bar";
+    bar.dataset.state = "ready";
+    // a TEXTAREA (not a one-line input) so the FULL transcript is visible as it
+    // grows — talking or typing. The input is the single surface; no bubble.
     bar.innerHTML = `
       <div id="pm-qpin"></div>
       <div class="pm-bar-row">
-        <input id="pm-say" placeholder="type your answer…" autocomplete="off" spellcheck="false">
+        <textarea id="pm-say" placeholder="type your answer…" rows="1" autocomplete="off" spellcheck="false"></textarea>
         <button id="pm-send" class="pm-send" title="send">→</button>
       </div>
       <div class="pm-ptt" id="pm-ptt"></div>`;
@@ -54,16 +57,50 @@ window.PlanBrain = (() => {
     const input = bar.querySelector("#pm-say");
     const fire = () => {
       const t = input.value.trim();
-      if (!t) return;
-      input.value = "";
-      send(t);
+      if (!t || composerState === "talking" || composerState === "sending") return;
+      send(t);   // send() shows the "sending" state, then the loop clears it
     };
     bar.querySelector("#pm-send").onclick = fire;
-    input.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); fire(); } });
+    // Enter sends; Shift+Enter is a newline. Typing grows the box + flips state.
+    input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); fire(); } });
+    input.addEventListener("input", () => { growTA(input); if (composerState === "ready") bar.dataset.typing = input.value ? "1" : ""; });
+    input.addEventListener("focus", () => { if (composerState === "speaking") { /* clicking to type interrupts */ } });
     wirePTT(input);
     renderKeycap();
     // NOT autofocused — space is push-to-talk once mic is enabled; click to type
   }
+
+  // composer state machine: ready → typing → talking(locked) → sending → speaking.
+  // Single source of truth; every transition re-locks the field + re-renders the keycap.
+  let composerState = "ready", _retryT = null;
+  function setComposer(s) {
+    composerState = s;
+    if (!bar) return;
+    bar.dataset.state = s;
+    if (s !== "ready") bar.dataset.typing = "";
+    const ta = bar.querySelector("#pm-say");
+    if (ta) {
+      ta.readOnly = (s === "talking" || s === "sending" || s === "speaking");
+      ta.classList.toggle("pm-live-in", s === "talking");
+      ta.placeholder = s === "sending" ? "sending…" : s === "speaking" ? "" : s === "talking" ? "listening…" : "type your answer…";
+      if (ta.readOnly && document.activeElement === ta) ta.blur();   // free space for interrupt-to-talk
+      if (s === "ready" || s === "speaking") growTA(ta);
+    }
+    if (s !== "ready") { clearTimeout(_retryT); bar.dataset.retry = ""; }
+    renderKeycap();
+  }
+  function clearComposer() { const ta = bar && bar.querySelector("#pm-say"); if (ta) { ta.value = ""; growTA(ta); } }
+  // PTT ended with nothing usable → a brief "try again" so the owner KNOWS
+  function composerRetry() {
+    if (!bar) return;
+    setComposer("ready");
+    bar.dataset.retry = "1";
+    renderKeycap();
+    clearTimeout(_retryT);
+    _retryT = setTimeout(() => { if (bar) { bar.dataset.retry = ""; renderKeycap(); } }, 3000);
+  }
+  // grow a textarea to fit its content (capped by CSS max-height → then scrolls)
+  function growTA(ta) { if (!ta) return; ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 200) + "px"; }
 
   // ── push-to-talk state machine — SINGLE source of truth, infallible ──
   //   micState: "unknown"|"prompt"|"granted"|"denied"  ·  recording: bool
@@ -81,8 +118,14 @@ window.PlanBrain = (() => {
     const el = bar && bar.querySelector("#pm-ptt");
     if (!el) return;
     if (ptt.mic === "granted") {
-      const verb = ptt.recording ? "release to send" : (board && board.isSpeaking && board.isSpeaking() ? "to interrupt" : "to talk");
-      el.innerHTML = `<span class="pm-ptt-lead">hold</span><kbd class="pm-key">space</kbd><span class="pm-ptt-verb">${verb}</span>`;
+      if (bar && bar.dataset.retry) {
+        el.innerHTML = `<span class="pm-ptt-retry">didn't catch that — hold <kbd class="pm-key">space</kbd> to try again</span>`;
+      } else if (composerState === "sending") {
+        el.innerHTML = `<span class="pm-ptt-verb pm-ptt-sending">sending…</span>`;
+      } else {
+        const verb = ptt.recording ? "release to send" : (board && board.isSpeaking && board.isSpeaking() ? "to interrupt" : "to talk");
+        el.innerHTML = `<span class="pm-ptt-lead">hold</span><kbd class="pm-key">space</kbd><span class="pm-ptt-verb">${verb}</span>`;
+      }
       el.classList.remove("pm-ptt-enable");
       el.onclick = null;
     } else if (ptt.mic === "denied") {
@@ -101,27 +144,26 @@ window.PlanBrain = (() => {
   }
 
   function wirePTT(input) {
-    // live partials land IN THE INPUT (owner: not a bubble, not above — the input)
-    const live = t => { if (ptt.recording) { input.value = t; input.classList.add("pm-live-in"); } };
+    // live partials land IN THE INPUT and GROW it, so the FULL transcript is
+    // visible as they speak (owner: in the input, not a bubble, not above)
+    const live = t => { if (ptt.recording) { input.value = t; growTA(input); } };
 
     async function start() {
       if (ptt.recording || ptt.mic !== "granted") return;
       ptt.recording = true;
-      bar.classList.add("ptt-live");
-      renderKeycap();
+      input.value = "";                       // fresh transcript
+      setComposer("talking");                 // locked, live, "release to send"
       const ok = await board.pttStart(live);
-      if (!ok) { ptt.recording = false; bar.classList.remove("ptt-live"); ptt.mic = "denied"; renderKeycap(); }
+      if (!ok) { ptt.recording = false; ptt.mic = "denied"; setComposer("ready"); }
     }
     async function stop() {
       if (!ptt.recording) return;
       ptt.recording = false;
-      bar.classList.remove("ptt-live");
-      renderKeycap();
-      input.classList.remove("pm-live-in");
+      setComposer("sending");                 // acknowledge the hold ended → processing
       const final = await board.pttStop();
       const text = (final || input.value || "").trim();
-      input.value = "";
-      if (text) send(text);
+      if (text) { input.value = text; growTA(input); send(text); }
+      else composerRetry();                   // nothing captured → "didn't catch that"
     }
 
     const onDown = e => {
@@ -152,10 +194,11 @@ window.PlanBrain = (() => {
     _keycapT = setInterval(() => { if (ptt.mic === "granted" && !ptt.recording) renderKeycap(); }, 400);
   }
 
-  // owner speaks → into history; if the brain was waiting on an answer, release
+  // owner speaks → into history; if the brain was waiting on an answer, release.
+  // No bubble — the input already showed it; the "sending" state confirms it left.
   function send(text) {
-    bubble("you", text);
     state.history.push({ role: "user", content: text });
+    setComposer("sending");
     if (askResolve) { const r = askResolve; askResolve = null; r(); }
   }
 
@@ -192,6 +235,21 @@ window.PlanBrain = (() => {
       }
       misses = 0;
 
+      // SEARCH move: the agent looks something up on the real web (Nexus.Browse).
+      // Say the "checking" line, show the searching bubble, then feed results
+      // back into history so the NEXT turn uses them.
+      if (move.move === "search") {
+        state.history.push({ role: "assistant", content: move.say });
+        setComposer("speaking"); clearComposer();
+        if (move.say) { if (board.warm) board.warm(move.say); await board.say(move.say); }
+        if (board.think) board.think(true, "searching the web…");
+        const summary = await postSearch(move.query);
+        if (board.think) board.think(false);
+        state.history.push({ role: "system",
+          content: `WEB SEARCH RESULTS for "${move.query}" (use these to inform your next move; cite naturally, don't dump):\n${summary}` });
+        continue;
+      }
+
       // voice first: the say's clips start synthesizing IMMEDIATELY (the deck
       // compile and everything else overlaps the synth, not the other way)
       if (move.say && board.warm) board.warm(move.say);
@@ -208,9 +266,12 @@ window.PlanBrain = (() => {
       // the FULL question stays readable above the input while it's open —
       // the spoken caption is transient, this pin is not
       if (move.move === "ask") pinQuestion(move.say);
+      // the AP is now responding → lock the composer + clear the consumed answer
+      setComposer("speaking"); clearComposer();
       await board.say(move.say);       // resolves when narration ends
 
       if (move.move === "ask") {
+        setComposer("ready");          // open for the owner's answer
         await waitForUser();           // block until the owner responds
         pinQuestion(null);
       } else if (move.move === "complete") {
@@ -235,6 +296,22 @@ window.PlanBrain = (() => {
       if (!r.ok) return null;
       return await r.json();
     } catch (_) { return null; }
+  }
+
+  // run the agent's web search through the Nexus browser, return a compact
+  // numbered digest the brain can read on its next turn
+  async function postSearch(query) {
+    try {
+      const r = await fetch("/plan/search", {
+        method: "POST",
+        headers: { authorization: "Bearer " + TOKEN, "content-type": "application/json" },
+        body: JSON.stringify({ query })
+      });
+      if (!r.ok) return "(search unavailable)";
+      const d = await r.json();
+      if (!d.results || !d.results.length) return "(no results found)";
+      return d.results.map((x, i) => `${i + 1}. ${x.title || ""} — ${(x.snippet || "").slice(0, 200)} [${x.url || ""}]`).join("\n");
+    } catch (_) { return "(search failed)"; }
   }
 
   // ── completion → processing → the build lane (vault + graph fill) ──

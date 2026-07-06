@@ -108,15 +108,19 @@ window.PlanMode = (() => {
           <button class="pmd-play" data-play="${id}"><i data-lucide="play"></i></button>
           <button class="pmd-arw" data-k="${id}+">›</button></div></div>`;
     designer.innerHTML = `
-      <div class="pmd-row"><span class="pmd-lbl">name</span>
-        <input class="pmd-nameinput" id="pmd-nameinput" type="text" maxlength="24"
-          placeholder="name your autopoet" autocomplete="off" spellcheck="false"></div>
-      <div class="pmd-row"><span class="pmd-lbl">shape</span><div class="pmd-shapes">${
-        shapes.map(s => `<button class="pmd-shp" data-s="${s.key}">${s.name}</button>`).join("")}</div></div>
-      <div class="pmd-row"><span class="pmd-lbl">color</span><div class="pmd-swatches">${
-        pal.map(p => `<button class="pmd-sw" data-c="${p.key}" style="background:${p.body}" title="${p.name}"></button>`).join("")}</div></div>
-      ${pickRow("voice", "voice")}${pickRow("personality", "pers")}
-      <button class="pmd-meet">meet your autopoet →</button>`;
+      <div class="pmd-card">
+        <div class="pmd-row"><span class="pmd-lbl">name</span>
+          <input class="pmd-nameinput" id="pmd-nameinput" type="text" maxlength="24"
+            placeholder="name your autopoet" autocomplete="off" spellcheck="false"></div>
+        <div class="pmd-row"><span class="pmd-lbl">shape</span><div class="pmd-shapes">${
+          shapes.map(s => `<button class="pmd-shp" data-s="${s.key}">${s.name}</button>`).join("")}</div></div>
+        <div class="pmd-row"><span class="pmd-lbl">color</span><div class="pmd-swatches">${
+          pal.map(p => `<button class="pmd-sw" data-c="${p.key}" title="${p.name}" style="background:radial-gradient(circle at 38% 32%, #fff 6%, ${p.body} 125%)"></button>`).join("")}</div></div>
+      </div>
+      <div class="pmd-card">
+        ${pickRow("voice", "voice")}${pickRow("personality", "pers")}
+        <button class="pmd-meet">meet your autopoet →</button>
+      </div>`;
     document.body.appendChild(designer);
 
     const mark = () => {
@@ -132,6 +136,7 @@ window.PlanMode = (() => {
     const rv = () => vn.textContent = voices[vi].label;
     const rp = () => pn.textContent = personalities[pi].name;
     rv(); rp();
+    if (board.setMotion) board.setMotion(personalities[pi].traits);   // idle motion matches the starting personality
     designer.querySelectorAll(".pmd-arw").forEach(b => b.onclick = () => {
       const k = b.dataset.k;
       if (k === "voice-") vi = (vi + voices.length - 1) % voices.length;
@@ -139,6 +144,12 @@ window.PlanMode = (() => {
       if (k === "pers-") pi = (pi + personalities.length - 1) % personalities.length;
       if (k === "pers+") pi = (pi + 1) % personalities.length;
       rv(); rp();
+      // switching personality loads its motion profile (idle/bob/expressiveness)
+      // and plays its signature — so you see how it MOVES, not just its name
+      if (k.indexOf("pers") === 0) {
+        if (board.setMotion) board.setMotion(personalities[pi].traits);
+        if (board.signature) board.signature(personalities[pi].traits);
+      }
     });
     // preview through board.previewVoice → the cube's mouth is AUDIO-DRIVEN
     // (visemes), same path the live call uses. Icon toggles play→loader→stop.
@@ -155,7 +166,10 @@ window.PlanMode = (() => {
         .catch(() => { if (previewing === btn) previewing = null; setIcon(btn, "play"); });
     };
     designer.querySelector('[data-play="voice"]').onclick = e => preview("Hello — this is how I'll sound.", e.currentTarget.closest("button"));
-    designer.querySelector('[data-play="pers"]').onclick = e => preview((typeof AP_PSAMPLE !== "undefined" && AP_PSAMPLE[personalities[pi].key]) || "Let's build this together.", e.currentTarget.closest("button"));
+    designer.querySelector('[data-play="pers"]').onclick = e => {
+      if (board.signature) board.signature(personalities[pi].traits);   // move + speak in character
+      preview((typeof AP_PSAMPLE !== "undefined" && AP_PSAMPLE[personalities[pi].key]) || "Let's build this together.", e.currentTarget.closest("button"));
+    };
     designer.querySelector(".pmd-meet").onclick = async () => {
       board.hush();
       const c = (typeof getChar === "function") ? getChar() : {};
@@ -184,6 +198,9 @@ window.PlanMode = (() => {
     pairing = identity || null;
     if (!pairing) return;           // the form retries until the office answers
     SCRIPT = scriptFromPairing(pairing);
+    // the character's MOTION profile rides with it into the live conversation —
+    // idle drift, speaking bob, and self-affect expressiveness all match it
+    if (board && board.setMotion && pairing.traits) board.setMotion(pairing.traits);
 
     // the character's SHAPE is part of its identity — a blocky cube for a
     // serious voice, round for a warm one (color the owner keeps for later)

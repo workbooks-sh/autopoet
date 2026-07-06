@@ -110,9 +110,12 @@
   display:flex;align-items:center;gap:8px;width:min(560px,86vw);
   background:#fff;border:1.6px solid #e2e6ec;border-radius:14px;padding:7px 8px 7px 14px;
   box-shadow:0 6px 24px rgba(22,22,26,.10);animation:pm-enter-in .5s cubic-bezier(.34,1.5,.4,1) both}
-.pm-bar input{flex:1;border:0;outline:none;background:transparent;font:14px/1.4 ui-sans-serif,system-ui;color:#1c2230}
+/* the composer is a TEXTAREA so the full transcript shows as it grows (talking
+   or typing); it auto-grows in JS up to max-height, then scrolls */
+.pm-bar textarea{flex:1;border:0;outline:none;background:transparent;resize:none;overflow-y:auto;
+  font:14px/1.45 ui-sans-serif,system-ui;color:#1c2230;max-height:200px;padding:5px 0;min-height:22px}
 .pm-send{width:34px;height:34px;flex:none;border:0;border-radius:10px;background:#16161a;color:#fff;
-  font-size:16px;cursor:pointer}
+  font-size:16px;cursor:pointer;align-self:flex-end}
 .pm-send:hover{background:#2e2e34}
 /* fork — the one physical choice: three direction cards */
 .pm-fork{position:fixed;inset:0;z-index:70;display:grid;place-items:center;
@@ -170,11 +173,24 @@ body.pm-convo #vs-caption { display:none !important; }
   padding:0 10px; border:1.4px solid #c9cdd2; border-bottom-width:3px; border-radius:7px; background:#fff;
   color:#3a3f47; font:700 10.5px ui-monospace,monospace; letter-spacing:.12em; text-transform:uppercase;
   box-shadow:0 1px 0 rgba(22,22,26,.04); }
-.pm-bar.ptt-live { box-shadow:0 0 0 2px #16161a, 0 6px 24px rgba(22,22,26,.14); }
-.pm-bar.ptt-live .pm-key { border-color:#16161a; background:#16161a; color:#fff; animation:pm-ptt-pulse 1s ease-in-out infinite; }
-.pm-bar.ptt-live .pm-ptt-lead::before { content:"● "; color:#e0483a; }
-.pm-bar.ptt-live .pm-ptt-verb { color:#16161a; }
+/* ── composer STATE MACHINE (data-state on .pm-bar) ── */
+/* talking — live push-to-talk: dark ring + pulsing key + red dot */
+.pm-bar[data-state="talking"] { box-shadow:0 0 0 2px #16161a, 0 6px 24px rgba(22,22,26,.14); }
+.pm-bar[data-state="talking"] .pm-key { border-color:#16161a; background:#16161a; color:#fff; animation:pm-ptt-pulse 1s ease-in-out infinite; }
+.pm-bar[data-state="talking"] .pm-ptt-lead::before { content:"● "; color:#e0483a; }
+.pm-bar[data-state="talking"] .pm-ptt-verb { color:#16161a; }
 @keyframes pm-ptt-pulse { 50% { transform:translateY(-1px); } }
+/* sending — the answer left; brief processing acknowledgement */
+.pm-bar[data-state="sending"] { box-shadow:0 0 0 2px #b6bcc4, 0 6px 24px rgba(22,22,26,.12); }
+.pm-bar[data-state="sending"] .pm-send { background:#8a8f88; pointer-events:none; }
+.pm-ptt-sending { color:#16161a; }
+.pm-ptt-sending::after { content:""; }
+/* speaking — the AP holds the floor; input dimmed, space interrupts */
+.pm-bar[data-state="speaking"] #pm-say { opacity:.45; }
+.pm-bar[data-state="speaking"] .pm-send { opacity:.4; pointer-events:none; }
+/* retry — push-to-talk caught nothing */
+.pm-ptt-retry { color:#b0663a; font:600 11px ui-monospace,monospace; text-transform:none; }
+.pm-ptt-retry .pm-key { min-width:auto; height:17px; padding:0 6px; vertical-align:middle; margin:0 2px; }
 .pm-bub.pm-live { opacity:.85; font-style:italic; }
 /* mic-permission badge (first run) + live-transcript-in-input state */
 .pm-enable-mic { font:700 11px ui-monospace,monospace; letter-spacing:.04em; text-transform:uppercase;
@@ -187,11 +203,21 @@ body.pm-convo #vs-caption { display:none !important; }
 /* the DESIGNER (Kokoro) — lives on the plan-mode grid with the real cube.
    every row is a [label | control] grid; every control fills the SAME width at
    one 40px baseline height, so the panel reads as one clean stack. */
-.pm-designer { position:fixed; left:50%; bottom:26px; transform:translateX(-50%); z-index:66;
+/* full-viewport frame: the two cards sit ABOVE and BELOW the centered cube, the
+   avatar living in the gap between them. Container ignores pointer events so the
+   empty middle stays click-through; the cards re-enable them. */
+.pm-designer { position:fixed; inset:0; z-index:66; pointer-events:none;
   --ctl-h:40px; --line:#e0e4ea; --ink:#16161a;
-  width:min(500px,94vw); background:#fff; border:1px solid #e6eaf0; border-radius:20px; padding:22px 24px 20px;
-  box-shadow:0 18px 50px rgba(20,30,50,.16); display:flex; flex-direction:column; gap:13px;
-  font-family:ui-sans-serif,system-ui,sans-serif; animation:pm-enter-in .5s cubic-bezier(.34,1.5,.4,1) both; }
+  display:flex; flex-direction:column; justify-content:space-between; align-items:center;
+  padding:4vh 0 3vh; font-family:ui-sans-serif,system-ui,sans-serif; }
+/* no card chrome — the controls sit directly on the grid page; only the fields
+   that would otherwise show graph lines through them carry a white fill. */
+.pmd-card { pointer-events:auto; width:min(500px,94vw);
+  background:none; border:0; box-shadow:none; padding:0 24px;
+  display:flex; flex-direction:column; gap:13px;
+  animation:pm-enter-in .5s cubic-bezier(.34,1.5,.4,1) both; }
+.pmd-card:first-child { margin-top:3vh; }
+.pmd-card:last-child { margin-bottom:3vh; animation-delay:.06s; }
 .pmd-title { font:800 15px ui-sans-serif,system-ui; color:var(--ink); text-align:center; }
 .pmd-row { display:grid; grid-template-columns:88px 1fr; align-items:center; gap:16px; }
 .pmd-lbl { font:600 10px ui-monospace,monospace; letter-spacing:.09em; text-transform:uppercase; color:#9aa0a8; }
@@ -219,7 +245,7 @@ body.pm-convo #vs-caption { display:none !important; }
 .pmd-sw.on { box-shadow:0 0 0 2px var(--ink); border-color:#fff; }
 
 /* VOICE + PERSONALITY — full-width picker with centered label */
-.pmd-pick { display:flex; align-items:center; gap:2px; height:var(--ctl-h);
+.pmd-pick { display:flex; align-items:center; gap:2px; height:var(--ctl-h); background:#fff;
   border:1.4px solid var(--line); border-radius:11px; padding:0 6px; }
 .pmd-arw { border:0; background:none; cursor:pointer; font:400 18px/1 ui-monospace,monospace; color:#6a6f77;
   width:30px; height:30px; border-radius:8px; flex:none; display:grid; place-items:center; transition:background .12s; }

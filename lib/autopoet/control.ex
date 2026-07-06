@@ -724,7 +724,15 @@ defmodule Autopoet.Control do
   end
 
   get "/onboard/personalities.json" do
-    list = for {k, v} <- Autopoet.Requisition.personalities(), do: %{key: k, name: v.name, desc: v.desc}
+    # a stable order (warm-first, then the rest) so the picker doesn't shuffle
+    order = ~w(warm direct witty calm bold playful sage cheerful curious)
+    all = Autopoet.Requisition.personalities()
+
+    list =
+      for k <- order, v = all[k] do
+        %{key: k, name: v.name, desc: v.desc, traits: Map.get(v, :traits, %{}), movement: Map.get(v, :movement, "")}
+      end
+
     conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(list))
   end
 
@@ -760,6 +768,35 @@ defmodule Autopoet.Control do
           |> put_resp_content_type("application/json")
           |> send_resp(503, Jason.encode!(%{error: reason}))
       end
+    end)
+  end
+
+  # WEB SEARCH — the onboarding brain's one tool. Runs the REAL Nexus browser
+  # (Nexus.Browse, keyless metasearch), NOT any provider web plugin. The client
+  # shows a "searching the web" thought bubble while this runs, then feeds the
+  # results back into the conversation.
+  post "/plan/search" do
+    authed!(conn, fn conn ->
+      {:ok, body, conn} = read_body(conn, length: 4_000)
+
+      query =
+        case Jason.decode(body) do
+          {:ok, %{"query" => q}} -> q |> to_string() |> String.slice(0, 300)
+          _ -> ""
+        end
+
+      results =
+        case query != "" and Nexus.Browse.search(query, limit: 5) do
+          {:ok, list} when is_list(list) ->
+            Enum.map(list, fn r -> %{title: r[:title], url: r[:url], snippet: r[:snippet]} end)
+
+          _ ->
+            []
+        end
+
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(200, Jason.encode!(%{query: query, results: results}))
     end)
   end
 

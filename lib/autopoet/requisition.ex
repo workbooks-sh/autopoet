@@ -79,17 +79,47 @@ defmodule Autopoet.Requisition do
 
   # ── the AUTOPOET EDITOR path (Kokoro): the owner picked voice + personality +
   # color + shape directly, no AP-7 form. Build the character from those. ──
+  # Each personality carries a MOTION PROFILE — the same six 0-1 sliders the
+  # voice roster uses (energy/expanse/warmth/steadiness/dominance/playfulness) +
+  # a movement thesis. These feed the cube's pose engine so switching a
+  # personality changes how it MOVES, not just how it speaks.
   @personalities %{
     "warm" => %{name: "Warm", desc: "a warm, encouraging companion who makes setup feel easy",
-                delivery: "Warm and encouraging. Reassure, celebrate small wins, plain language."},
+                delivery: "Warm and encouraging. Reassure, celebrate small wins, plain language.",
+                traits: %{"energy" => 0.45, "expanse" => 0.5, "warmth" => 0.9, "steadiness" => 0.6, "dominance" => 0.35, "playfulness" => 0.5},
+                movement: "leans in gently, soft reassuring nods, open unhurried hands"},
     "direct" => %{name: "Direct", desc: "a crisp, no-nonsense operator who cuts to what matters",
-                  delivery: "Crisp and to the point. No fluff. Short confident sentences."},
+                  delivery: "Crisp and to the point. No fluff. Short confident sentences.",
+                  traits: %{"energy" => 0.55, "expanse" => 0.35, "warmth" => 0.35, "steadiness" => 0.8, "dominance" => 0.8, "playfulness" => 0.2},
+                  movement: "square and still, one decisive beat, minimal and purposeful"},
     "witty" => %{name: "Witty", desc: "a dry, playful wit who keeps setup fun",
-                 delivery: "Dry humor, a light joke when it fits, never at the owner's expense."},
+                 delivery: "Dry humor, a light joke when it fits, never at the owner's expense.",
+                 traits: %{"energy" => 0.6, "expanse" => 0.55, "warmth" => 0.6, "steadiness" => 0.45, "dominance" => 0.5, "playfulness" => 0.9},
+                 movement: "quick sly head tilts and shakes, a light bounce on the punchline"},
     "calm" => %{name: "Calm", desc: "a measured, steady guide who never rushes",
-                delivery: "Measured, unhurried, reassuring. Let sentences breathe."},
+                delivery: "Measured, unhurried, reassuring. Let sentences breathe.",
+                traits: %{"energy" => 0.2, "expanse" => 0.3, "warmth" => 0.7, "steadiness" => 0.95, "dominance" => 0.35, "playfulness" => 0.2},
+                movement: "barely moves, long slow sways, everything breathes"},
     "bold" => %{name: "Bold", desc: "an energetic, decisive builder who drives momentum",
-                delivery: "Energetic and decisive. Spirited, forward-leaning, makes the call."}
+                delivery: "Energetic and decisive. Spirited, forward-leaning, makes the call.",
+                traits: %{"energy" => 0.95, "expanse" => 0.8, "warmth" => 0.5, "steadiness" => 0.4, "dominance" => 0.85, "playfulness" => 0.5},
+                movement: "big eager nods, forward drive, sweeping confident gestures"},
+    "playful" => %{name: "Playful", desc: "a playful spark who keeps the whole setup fun",
+                   delivery: "Playful and light. Banter and quick wordplay, keep it fun and moving.",
+                   traits: %{"energy" => 0.8, "expanse" => 0.7, "warmth" => 0.7, "steadiness" => 0.3, "dominance" => 0.4, "playfulness" => 0.95},
+                   movement: "bouncy wiggles, side to side, can't sit still, waves a lot"},
+    "sage" => %{name: "Sage", desc: "a thoughtful guide who frames the bigger picture",
+                delivery: "Thoughtful and wise. Frame the bigger picture, patient, a touch philosophical.",
+                traits: %{"energy" => 0.3, "expanse" => 0.4, "warmth" => 0.65, "steadiness" => 0.9, "dominance" => 0.6, "playfulness" => 0.25},
+                movement: "slow contemplative tilts, holds a considered pose, deliberate"},
+    "cheerful" => %{name: "Cheerful", desc: "a sunny optimist who celebrates every step",
+                    delivery: "Sunny and upbeat. Genuine enthusiasm, celebrate everything, bright energy.",
+                    traits: %{"energy" => 0.85, "expanse" => 0.75, "warmth" => 0.85, "steadiness" => 0.45, "dominance" => 0.4, "playfulness" => 0.8},
+                    movement: "sunny bounces, frequent warm waves, bright open motion"},
+    "curious" => %{name: "Curious", desc: "an inquisitive mind who riffs on your ideas",
+                   delivery: "Inquisitive and engaged. Ask good questions, riff on ideas, think out loud.",
+                   traits: %{"energy" => 0.6, "expanse" => 0.55, "warmth" => 0.6, "steadiness" => 0.5, "dominance" => 0.45, "playfulness" => 0.7},
+                   movement: "inquisitive head tilts, quick peeks, leans toward what's new"}
   }
 
   def personalities, do: @personalities
@@ -113,6 +143,8 @@ defmodule Autopoet.Requisition do
       "shape" => picks["shape"] || "squircle",
       "delivery" => p.delivery,
       "persona_desc" => p.desc,
+      "traits" => Map.get(p, :traits, %{}),
+      "movement" => Map.get(p, :movement, ""),
       "slides" => [],
       "form" => %{"name" => name, "areas" => List.wrap(picks["areas"])}
     }

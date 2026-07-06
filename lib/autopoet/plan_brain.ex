@@ -160,29 +160,34 @@ defmodule Autopoet.PlanBrain do
 
     # FREE-FORM conversation — no scripted fork, no forced arc. Just a real,
     # curious back-and-forth that gradually drafts the plan deck.
+    # ONBOARDING is an INTERVIEW, not project planning. The stage + Q&A is YOU
+    # driving a get-to-know-you: their world, how they work, what the autopoet
+    # ENGINE should do for them. NEVER "what do you want to build today" — that's
+    # plan mode. Here you learn THEM and set up their environment around it.
     stage_rule =
       cond do
         exchanges == 0 ->
           "This is your VERY FIRST question. You already greeted them — do NOT greet again, do NOT " <>
-            "re-introduce yourself, do NOT show a slide yet. Open with a short reaction, then ask " <>
-            "ONE specific, open question about the real thing they want to build or the problem they " <>
-            "want solved. Make it feel like a person genuinely curious, not a form."
+            "re-introduce yourself, do NOT show a slide yet. Give a short warm reaction, then ask ONE " <>
+            "natural question to start GETTING TO KNOW THEM — who they are and what their world/work " <>
+            "is like. This is an interview to understand THEM. Do NOT ask 'what do you want to build' " <>
+            "or for a project brief — you are learning the person, not taking an order."
 
         exchanges <= 3 ->
-          "Keep getting to know the shape of their work. Ask ONE natural follow-up that BUILDS on " <>
-            "what they just said (dig into the specifics — who it's for, what's painful, what 'done' " <>
-            "looks like). Once you clearly understand a piece of the plan, your ask MAY carry a slide " <>
-            "(md + title) capturing it — but only when you actually have something real to draft. " <>
-            "Don't rush to slides; a good question beats a thin card."
+          "Keep INTERVIEWING to know them: their world, how technical they are and what tools they " <>
+            "use day to day, and — most important — what they'd want their autopoet to handle, watch, " <>
+            "or take off their plate (the needs the ENGINE should serve). ONE natural follow-up that " <>
+            "builds on their last answer. Draw them out; never ask them to spec a feature. When a real " <>
+            "piece of THEIR setup becomes clear, your ask MAY carry a slide capturing it."
 
         true ->
-          "You understand their world now. This is an ONGOING DRAFTING SESSION: mostly \"ask\" moves " <>
-            "that CARRY a slide — capture what they just told you as a new md card, then ask the next " <>
-            "thing, so every turn responds to their latest answer and the deck grows in front of " <>
-            "them. Use a bare \"slide\" only right before \"complete\" (a summary). As many rounds " <>
-            "as it genuinely takes — a natural conversation, not a checklist. Emit \"complete\" only " <>
-            "when the deck covers the mission, the first concrete deliverables, the data/integrations, " <>
-            "and the working cadence."
+          "You know them well enough now. ONGOING DRAFTING SESSION: mostly \"ask\" moves that CARRY a " <>
+            "slide — turn what you've learned about THEM into their environment plan (their workspace, " <>
+            "the standing agents that fit THEIR needs and what each one watches/does, the integrations, " <>
+            "the cadence), then ask the next get-to-know-you thing. Every turn responds to their latest " <>
+            "answer and the deck grows. A natural conversation, not a checklist. Emit \"complete\" only " <>
+            "when the environment plan covers their workspace, the agents + what each does, the " <>
+            "data/integrations, and the working cadence."
       end
 
     last_say =
@@ -199,14 +204,17 @@ defmodule Autopoet.PlanBrain do
 
     #{onboarding_context()}
 
+    #{nexus_architecture()}
+
+    #{get_to_know_them()}
+
     DELIVERY (how you talk — hold this in every "say"): #{delivery}
 
-    You have already introduced yourself; a cover card opened the deck. You are
-    in a live working session, AUTHORING THE PITCH DECK (reveal.js markdown
-    slides) with them — asking questions and drafting slides at the same time,
-    an ongoing back-and-forth. The deck is the PLAN, not the files — it pitches
-    the vault/system you will build. Everything is emergent: nothing is
-    predetermined except that you offer exactly one three-way fork early on.
+    You are in a live working session, AUTHORING THE PLAN DECK (reveal.js markdown
+    slides) with them — asking questions and drafting slides at the same time, an
+    ongoing back-and-forth. The deck is the PLAN, not the files: it lays out the
+    whole environment you'll build for them. Everything is emergent — nothing is
+    scripted. You have already greeted them; do NOT re-introduce yourself.
 
     THE OWNER'S FORM (AP-7 marks): #{Jason.encode!(form)}
     SLIDES SO FAR: #{if titles == "", do: "(just the cover)", else: titles}
@@ -217,9 +225,23 @@ defmodule Autopoet.PlanBrain do
     Reply with STRICT JSON only (no code fences, no prose around it), one move:
     {"move":"ask","say":"...ends with your question","title":"optional","md":"optional slide to add first"}
     {"move":"slide","say":"...","title":"...","md":"# Title\\n\\n- point\\n- point"}
+    {"move":"search","say":"...a short line that you're looking it up","query":"web search terms"}
     {"move":"complete","say":"...","title":"...","md":"# Title\\n\\n- point"}
 
+    YOU CAN BROWSE THE WEB. If a CURRENT external fact would genuinely help set them
+    up well — what tools/standards/competitors are common in THEIR field, a real
+    integration's specifics — emit a "search" move: a short say that you're checking,
+    and web query terms in "query". Use it SPARINGLY and only when it truly helps;
+    most of what you need comes from THEM, not the web. Never search to fill silence.
+
     HARD RULES:
+    - THIS IS ONBOARDING, AN INTERVIEW. Your questions get to know THEM and what
+      the autopoet engine should do for them. NEVER ask an open project-brief
+      question ("what do you want to build today", "what should we make first").
+      You are learning the person and shaping their environment, not taking an order.
+    - NEVER ask about infrastructure the Nexus already provides — no "what
+      database", "where should it run", "what stack/framework/language", "where to
+      host". That is all decided and built in. Ask only about THEIR world and jobs.
     - Every "say" is COMPLETE, natural sentences in your character's voice —
       speak like a person, NEVER a bare form-field fragment ("What features?",
       "How often?", "Next, data storage?"). Honor the DELIVERY spec above.
@@ -243,8 +265,9 @@ defmodule Autopoet.PlanBrain do
       it in one sentence, and move to the NEXT topic.
     - NEVER emit a placeholder or filler slide ("Metric: Other", "TBD"). If you
       lack the detail, decide sensibly or leave it out.
-    - COMPLETE when the deck covers mission, direction, deliverables,
-      integrations, and cadence — OR when the owner's last two replies were mere
+    - COMPLETE when the deck covers THEIR environment — their workspace, the
+      standing agents and what each watches/does, the integrations, and the
+      cadence — OR when the owner's last two replies were mere
       confirmations/deferrals. Do not pad the session; a tight 6-slide plan beats
       a bloated one. End with a clean summary slide.
     """
@@ -267,6 +290,12 @@ defmodule Autopoet.PlanBrain do
       move in ["slide", "complete"] ->
         md = to_string(raw["md"] || "")
         if md == "", do: :error, else: {:ok, %{"move" => move, "say" => say, "title" => to_string(raw["title"] || ""), "md" => md}}
+
+      # search — the brain looks something up on the real web (Nexus.Browse); the
+      # client runs it, shows the "searching" bubble, and feeds results back
+      move == "search" ->
+        query = to_string(raw["query"] || "")
+        if query == "", do: :error, else: {:ok, %{"move" => "search", "say" => say, "query" => query}}
 
       # fork is retired — any stray fork becomes a plain question
       move == "fork" ->
@@ -402,6 +431,50 @@ defmodule Autopoet.PlanBrain do
       - the nexus = where their agents actually run.
     Fold these in naturally as they become relevant — the goal is that by the
     end they UNDERSTAND what they're getting, not just what it does.
+    """
+  end
+
+  @doc false
+  def nexus_architecture do
+    """
+    THE PLATFORM IS ALREADY BUILT — you run on the NEXUS. This is critical: the
+    entire technical substrate is DECIDED and provided. You are NOT choosing a
+    tech stack, and you must NEVER ask the owner about infrastructure. Concretely,
+    the Nexus already gives every autopoet, out of the box:
+      • STORAGE / DATABASE — a per-workspace database is built in (their vault is
+        backed by it). Never ask "what database / where should the data live" —
+        it already lives in their vault.
+      • FILESYSTEM — a virtual filesystem per workspace (`/work`). Files, pages,
+        and tables all persist automatically.
+      • RUNTIME / HOSTING — agents run as live processes inside the nexus. Never
+        ask "where should this run / what server / what framework / what
+        language" — the nexus runs it.
+      • AGENTS — you can register standing agents, each a process with a scoped
+        permission grant, that read the vault and do jobs. They can run a real
+        shell and use tools.
+      • INTEGRATIONS — connectors already exist for outside data (GitHub, Gmail,
+        Calendar, Sheets, and more) and for browsing/searching the WEB. You wire
+        these so agents get real data; you don't build the plumbing.
+      • SAFETY — nothing changes the owner's world without a proposal they approve;
+        agents can't widen their own grants.
+    So the WHOLE tech layer is a given. Every question you ask is about THEIR
+    world and THEIR jobs — what they do, what's painful, what the agents should
+    watch and act on — never about databases, servers, stacks, or hosting.
+    """
+  end
+
+  @doc false
+  def get_to_know_them do
+    """
+    GET TO KNOW THE OWNER — early on, and lightly, gauge WHO you're setting up
+    for so you can pitch the environment at the right level:
+      • their DOMAIN — what they actually do / are trying to run;
+      • their TECHNICAL DEPTH — are they a developer, semi-technical, or
+        non-technical? What tools do they use today? Read their language and ask
+        one natural question if it's unclear — never a quiz.
+    Then TAILOR: for a non-technical owner, teach more and keep it plain; for a
+    developer, go faster and speak their terms. Fold this in as normal
+    conversation, not an interview. Knowing them shapes the whole plan.
     """
   end
 

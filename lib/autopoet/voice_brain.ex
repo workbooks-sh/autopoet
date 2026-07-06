@@ -19,10 +19,11 @@ defmodule Autopoet.VoiceBrain do
   """
 
   # providers in preference order — both OpenAI-compatible chat completions.
-  # Cerebras (gemma-4-31b) is the current pick; Groq stays as the fallback.
+  # Cerebras (Z.ai GLM-4.6) is the current pick — stronger reasoning + instruction
+  # following than gemma for the onboarding brain; Groq stays as the fallback.
   @providers [
     %{secret: "CEREBRAS_API_KEY", host: "api.cerebras.ai",
-      url: ~c"https://api.cerebras.ai/v1/chat/completions", model: "gemma-4-31b"},
+      url: ~c"https://api.cerebras.ai/v1/chat/completions", model: "zai-glm-4.6"},
     %{secret: "GROQ_API_KEY", host: "api.groq.com",
       url: ~c"https://api.groq.com/openai/v1/chat/completions", model: "llama-3.3-70b-versatile"}
   ]

@@ -149,6 +149,12 @@
     "#vs-think .dot:nth-child(3) { animation-delay:.3s; }",
     "@keyframes vs-think-b { 0%,60%,100% { transform:translateY(0); opacity:.45; }",
     "  30% { transform:translateY(-3px); opacity:1; } }",
+    // labelled thought pill — a tool-in-progress note beside the cloud
+    "#vs-think-label { position:absolute; top:-104px; right:-104px; white-space:nowrap; pointer-events:none;",
+    "  font:600 11px ui-monospace,monospace; letter-spacing:.02em; color:#3a3f47; background:#fff;",
+    "  border:1.4px solid #e2e6ec; border-radius:9px; padding:4px 10px; box-shadow:0 6px 18px rgba(20,30,50,.14);",
+    "  opacity:0; transform:translateY(4px); transition:opacity .2s ease, transform .2s ease; z-index:2; }",
+    "#vs-think-label.on { opacity:1; transform:translateY(0); }",
     "#vs-ref-overlay path { fill:none; stroke:rgba(18,19,22,.45); stroke-width:2; stroke-linecap:round;",
     "  stroke-dasharray:5 6; animation:vs-ants .6s linear infinite; }",
     "@keyframes vs-ants { to { stroke-dashoffset:-11; } }",
@@ -279,6 +285,52 @@
     '<g id="vs-ap-eyes-open"><path d="M29.8 36.53v4.54c0 .52.46 1.02 1 1s1-.44 1-1V36.4c0-.52-.46-1.02-1-1s-1 .44-1 1M49.2 36l-.15 4.81a1 1 0 0 0 1 1c.56-.02.98-.44 1-1l.15-4.8a1 1 0 0 0-1-1 1 1 0 0 0-1 1" fill="#121316"/></g>' +
     '<g id="vs-ap-eyes-closed" display="none"><path d="M28.9 38.9h3.9a1 1 0 0 1 0 2h-3.9a1 1 0 0 1 0-2M48.3 38.9h3.9a1 1 0 0 1 0 2h-3.9a1 1 0 0 1 0-2" fill="#121316"/></g>' +
     '</g><g id="vs-ap-mouth" transform="translate(0 2)"></g></g></svg>';
+
+  // ── personality MOTION engine ──────────────────────────────────────────
+  // The six trait sliders → derived motion params. Set when a character loads
+  // (board.setMotion) so idle drift, the speaking "bob", and how readily the
+  // cube reacts to its OWN words all match the persona. Everything below reads
+  // `motionProfile`; a neutral default keeps un-profiled cubes calm.
+  function _deriveMotion(t) {
+    t = t || {};
+    var energy = +t.energy || 0.5, warm = +t.warmth || 0.5, steady = +t.steadiness || 0.5,
+        dom = +t.dominance || 0.5, play = +t.playfulness || 0.5, expanse = +t.expanse || 0.5;
+    return {
+      bobAmp: (0.5 + energy * 2.0) * (1 - steady * 0.55),        // speaking bounce, deg
+      bobRate: 1.6 + energy * 1.9,                                // bob speed
+      breathAmp: 0.45 + (1 - steady) * 0.5,                       // idle breath depth
+      wander: Math.max(0, play * 0.7 + expanse * 0.2 - steady * 0.45), // idle glance drive
+      express: Math.min(1, play * 0.55 + energy * 0.3 + warm * 0.2),   // self-affect gate
+      firm: dom
+    };
+  }
+  var motionProfile = _deriveMotion(null);
+  function setMotion(t) { motionProfile = _deriveMotion(t); }
+
+  // GoEmotions labels that warrant a spoken-line "activation"
+  var _LIFT = { joy: 1, excitement: 1, amusement: 1, gratitude: 1, pride: 1, approval: 1,
+                admiration: 1, optimism: 1, relief: 1, love: 1, desire: 1, caring: 1 };
+  var _PERK = { surprise: 1, realization: 1, curiosity: 1, confusion: 1 };
+  // read the affect of the avatar's OWN line; expressive personalities punctuate
+  // it with a matching micro-gesture (bounce on joy, perk on surprise). No-op for
+  // composed personalities — they stay still. Layered on --nod, above the bob.
+  function speakAffect(text) {
+    var mp = motionProfile;
+    if (!text || mp.express < 0.25) return;
+    affectOf(text).then(function (top) {
+      if (!mounted || !top) return;
+      var strong = top.score >= 0.35;
+      if (_LIFT[top.label] && (strong || mp.express > 0.6)) {
+        later(setTimeout(function () {
+          if (!mounted) return;
+          if (mp.express > 0.7) { setMouth("smirk"); setBrows("raised"); bigNod(); }
+          else nod();
+        }, 380));
+      } else if (_PERK[top.label]) {
+        later(setTimeout(function () { if (mounted) { setBrows("raised"); tinyNod(); } }, 340));
+      }
+    });
+  }
 
   // ────────────────────────── face runtime ──────────────────────────
   var mood = "neutral", squintRestore = null;
@@ -454,21 +506,41 @@
         var C = stageCenter();
         want = { x: clamp1((attention.x - C.x) / (innerWidth * 0.45)),
                  y: clamp1((attention.y - C.y) / (innerHeight * 0.45)) };
-      } else if (playing) want = { x: 0, y: 0 };
+      } else if (listening) want = { x: 0, y: -0.12 };   // hold the owner's gaze while they talk
+      else if (playing) want = { x: 0, y: 0 };
       else want = cursorWant;
       tx += (want.x - tx) * 0.22; ty += (want.y - ty) * 0.22;
       f.setAttribute("transform", "translate(" + (tx * 2.2).toFixed(2) + " " + (ty * 2.2).toFixed(2) + ") skewX(" + (-tx * 1.8).toFixed(2) + ") skewY(" + (ty * 1.0).toFixed(2) + ")");
       px.setAttribute("transform", "translate(" + (tx * 0.8).toFixed(2) + " " + (ty * 0.8).toFixed(2) + ")");
       cube.style.setProperty("--ry", (tx * 8).toFixed(2) + "deg");
       cube.style.setProperty("--rx", (-ty * 8).toFixed(2) + "deg");
-      if (Math.abs(want.x - tx) > 0.005 || Math.abs(want.y - ty) > 0.005 || playing || attention) raf = requestAnimationFrame(apply);
+      if (Math.abs(want.x - tx) > 0.005 || Math.abs(want.y - ty) > 0.005 || playing || attention || listening) raf = requestAnimationFrame(apply);
     };
-    // breathing
-    var bt = 0;
+    // breathing → personality motion. Idle: a slow breath whose depth tracks the
+    // persona; playful/curious ones also glance around. Speaking: the breath
+    // becomes a faster BOB so the cube talks in a bobbing cadence. Amplitude and
+    // rate come from motionProfile, so each personality idles + speaks its own way.
+    var bt = 0, wanderT = 4;
     later(setInterval(function () {
       if (!mounted) return;
       bt += 0.09;
-      cube.style.setProperty("--br", (Math.sin(bt * 2 * Math.PI / 4.0) * 0.7).toFixed(2) + "deg");
+      var mp = motionProfile;
+      if (playing) {
+        var period = 4.0 / Math.max(0.5, mp.bobRate);       // faster than the breath
+        cube.style.setProperty("--br", (Math.sin(bt * 2 * Math.PI / period) * mp.bobAmp).toFixed(2) + "deg");
+      } else {
+        cube.style.setProperty("--br", (Math.sin(bt * 2 * Math.PI / 4.0) * mp.breathAmp).toFixed(2) + "deg");
+        // idle glances — more wander = more frequent, alternating sides (no RNG)
+        if (mp.wander > 0.15 && !attention) {
+          wanderT -= 0.09;
+          if (wanderT <= 0) {
+            wanderT = 3.0 + (1 - mp.wander) * 6.0;
+            var ang = (Math.floor(bt / 3) % 2) ? 1 : -1;
+            var C = stageCenter();
+            setAttention({ x: C.x + ang * innerWidth * 0.11, y: C.y - innerHeight * 0.03 }, 850 + mp.wander * 650, 1);
+          }
+        }
+      }
     }, 90));
   }
 
@@ -1339,6 +1411,7 @@
     performDone = onDone || null;
     narrationVoiceLive = voiceQuery();
     logLine("poet", text.replace(/\[[^\]]+\]/g, "").trim());
+    speakAffect(text.replace(/\[[^\]]+\]/g, ""));   // self-affect activation while speaking
     stopThink();
     moveTo(0, stageEl.clientHeight * 0.12);
     mood = "smirk"; setMouth("smirk");
@@ -1431,6 +1504,7 @@
     neutral: ["neutral", "none"]
   };
   var playing = null, timer = null, performDone = null, narrationVoiceLive = "";
+  var listening = false;   // push-to-talk active → the cube holds the owner's gaze
   // the entrance. ADOPT mode (live call from the dashboard): release the self
   // cube from its node footprint and glide it to center stage. STANDALONE mode
   // (onboarding + /voice/widget): the stage owns its own cube — scale it in at
@@ -1556,6 +1630,7 @@
     });
     if (!words.length) { stopPerform(); return; }
     logLine("poet", words.join(" "));
+    speakAffect(words.join(" "));   // self-affect activation while speaking
 
     var sentOf = [], counts = [], sText = [], sN = 0, cur = "";
     words.forEach(function (w, i) {
@@ -1712,19 +1787,30 @@
     '<ellipse cx="22" cy="64" rx="6.5" ry="5" fill="#fff" stroke="#121316" stroke-width="2"/>' +
     '<ellipse cx="11" cy="74" rx="4" ry="3" fill="#fff" stroke="#121316" stroke-width="1.8"/>' +
     '</svg>';
-  function startThink() {
+  function startThink(label) {
     if (!mounted) return;
     var tk = document.getElementById("vs-think");
     if (tk) tk.classList.add("on");
+    thinkLabel(label || "");
     setBrows("skeptical");
     setMouth("neutral");
     // eyes drift up toward the cloud
     var r = scene && scene.getBoundingClientRect();
     if (r) setAttention({ x: r.right - 10, y: r.top - 40 }, 8000, 1.4);
   }
+  // an optional pill by the cloud — e.g. "searching the web…" while a tool runs
+  function thinkLabel(text) {
+    if (!scene) return;
+    var lab = document.getElementById("vs-think-label");
+    if (!text) { if (lab) lab.classList.remove("on"); return; }
+    if (!lab) { lab = document.createElement("div"); lab.id = "vs-think-label"; scene.appendChild(lab); }
+    lab.textContent = text;
+    lab.classList.add("on");
+  }
   function stopThink() {
     var tk = document.getElementById("vs-think");
     if (tk) tk.classList.remove("on");
+    thinkLabel("");
   }
 
   // ── streaming prewarm: as the model writes, complete clauses go to the
@@ -1945,6 +2031,7 @@
   //    held, final transcript on release. Holding INTERRUPTS the agent. ──
   var pttStream = null, pttCtx = null, pttNode = null, pttSrc = null;
   var pttRec = false, pttFrames = [], pttPartialT = null, pttPartialBusy = false, pttOnPartial = null;
+  var pttNodT = null, pttNodLen = 0;   // acknowledgment nods while the owner speaks
   async function pttEnsure() {
     if (pttNode) return true;
     pttStream = await navigator.mediaDevices.getUserMedia({
@@ -1978,6 +2065,9 @@
         pttPartialBusy = false; t = (t || "").trim();
         if (!t || !pttRec) return;
         if (pttOnPartial) pttOnPartial(t);   // live text → the input field
+        // understanding nod — when meaningfully MORE words have landed since the
+        // last nod, dip the head (it registered what they just said)
+        if (t.length >= pttNodLen + 14) { pttNodLen = t.length; if (!playing) nod(); }
         reactToUser(t, true);                // LIVE emotion: react as they speak
       })
       .catch(function () { pttPartialBusy = false; });
@@ -1988,17 +2078,25 @@
     pttOnPartial = onPartial || null;
     try { await pttEnsure(); } catch (e) { return false; }
     pttFrames = []; pttRec = true;
-    // listening posture — attentive, eyes toward the owner (bottom of screen)
+    // listening posture — attentive, holding the owner's gaze (looking UP toward
+    // them / the camera, not down at the input). `listening` keeps the pose held.
+    listening = true; pttNodLen = 0;
     setBrows("raised"); setMouth("neutral");
-    setAttention({ x: (typeof window !== "undefined" ? window.innerWidth : 800) / 2, y: (typeof window !== "undefined" ? window.innerHeight : 600) }, 20000, 1.3);
+    setAttention({ x: (typeof window !== "undefined" ? window.innerWidth : 800) / 2, y: (typeof window !== "undefined" ? window.innerHeight : 600) * 0.26 }, 30000, 1.4);
     clearInterval(pttPartialT);
     pttPartialT = later(setInterval(pttPartial, 500));
+    // a slow attentive micro-nod baseline ("I'm with you"); real understanding
+    // nods fire from pttPartial when new words actually land
+    clearInterval(pttNodT);
+    pttNodT = later(setInterval(function () { if (pttRec && !playing) gesture("--nod", [3, 0], 160); }, 3000));
     return true;
   }
   async function pttStop() {
     if (!pttRec) return "";          // idempotent — a stray keyup can't double-fire
     pttRec = false;
+    listening = false;
     clearInterval(pttPartialT);
+    clearInterval(pttNodT);
     setBrows("none");
     var buf = pttMerge(); pttFrames = [];
     if (!buf.length || buf.length < (pttCtx ? pttCtx.sampleRate * 0.2 : 3200)) return "";  // too short
@@ -2254,7 +2352,7 @@
         void scene.offsetWidth;
         scene.style.transition = "";
         scene.style.setProperty("--sc", "1");
-        setMouth("smirk");
+        setMouth("neutral");
         later(setTimeout(function () { if (mounted && !playing) wave(); }, 500));
       },
       // BEAM: the SAME cube (WebGL body) drops to center, faceless, and slowly
@@ -2346,7 +2444,7 @@
       status: function (text) { if (mounted) capStatus(text); },
       // the thinking beat — cloud + upward gaze while the brain works
       // (perform() clears it automatically when the next line starts)
-      think: function (on) { if (mounted) (on !== false ? startThink() : stopThink()); },
+      think: function (on, label) { if (mounted) (on !== false ? startThink(label) : stopThink()); },
       // push-to-talk: pttStart(onPartial) begins recording (interrupts the
       // agent) with LIVE emotional reactions; pttStop() resolves the final
       // Moonshine transcript. micState()/enableMic() gate the first-run prompt.
@@ -2411,7 +2509,8 @@
             if (!ab || !ab.byteLength) return;
             return actx.decodeAudioData(ab.slice(0)).then(function (buf) {
               return new Promise(function (res) {
-                playing = rid;
+                playing = rid;               // truthy → the bob loop runs while it speaks
+                speakAffect(text);           // GoEmotions activation on the sample line
                 if (onStart) { try { onStart(); } catch (e) {} }
                 playClip({ buffer: buf, duration: buf.duration }, function () { if (playing === rid) playing = null; res(); });
               });
@@ -2419,6 +2518,31 @@
           });
       },
       hush: function () { stopClip(); playing = null; },
+      // load a personality's motion profile (the six sliders) → idle drift, the
+      // speaking bob, and self-affect expressiveness all shift to match it.
+      setMotion: function (t) { setMotion(t); },
+      // personality SIGNATURE — the pose engine reads the six motion sliders
+      // (energy/expanse/warmth/steadiness/dominance/playfulness) and fires the
+      // move that expresses the loudest trait, so switching personality changes
+      // how the cube MOVES, not just how it talks. A brief mood rides along and
+      // settles back to neutral. Uses --nod/--rz only (gaze owns --ry).
+      signature: function (t) {
+        if (!mounted || !t) return;
+        var energy = +t.energy || 0, expanse = +t.expanse || 0, warm = +t.warmth || 0,
+            steady = +t.steadiness || 0, dom = +t.dominance || 0, play = +t.playfulness || 0;
+        var mood = play > 0.6 ? "excited" : warm > 0.7 ? "happy" : dom > 0.65 ? "serious"
+                 : steady > 0.75 ? "neutral" : "happy";
+        if (MOODS[mood]) { setMouth(MOODS[mood][0]); setBrows(MOODS[mood][1]); }
+        var top = Math.max(play, energy, dom, steady, warm);
+        if (top === play && play > 0.55) gesture("--rz", [-9, 9, -6, 6, 0], 110);   // playful wiggle
+        else if (top === energy && energy > 0.6) bigNod();                          // eager drive
+        else if (top === dom && dom > 0.6) gesture("--nod", [8, 8, 2, 0], 150);     // firm assertive
+        else if (top === steady && steady > 0.7) sigh();                            // calm sway
+        else if (warm > 0.6) nod();                                                 // warm nod
+        else tinyNod();
+        if ((expanse > 0.65 || play > 0.8) && !playing) later(setTimeout(function () { if (mounted && !playing) wave(); }, 300));
+        later(setTimeout(function () { if (mounted && !playing) { setMouth("neutral"); setBrows("none"); } }, 1450));
+      },
       setVoice: function (spec) {
         ttsVoice = spec || null;
         genCache.clear();

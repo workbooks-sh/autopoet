@@ -60,19 +60,21 @@ function applyTheme(t) {
 // eyes/mouth features auto-picked for contrast. Only the toon OUTLINE follows the
 // theme (black in light, white in dark) — handled by --face-outline, not here.
 // A white + a dark neutral, then soft pastels.
+// body = a matte matcap: the cube reads white, this hue is the ACCENT that
+// pools in the depth/rim. So these are mid-soft (not near-white) — under the
+// matcap the flat face still whitens; only the flanks carry the color.
 const AP_PALETTE = [
   { key: "white",   name: "White",   body: "#ffffff" },
-  { key: "dark",    name: "Dark",    body: "#2a2f37" },
-  { key: "mint",    name: "Mint",    body: "#dcf2e5" },
-  { key: "sky",     name: "Sky",     body: "#dbecf8" },
-  { key: "blue",    name: "Blue",    body: "#d7e6f5" },
-  { key: "violet",  name: "Violet",  body: "#ede5f8" },
-  { key: "rose",    name: "Rose",    body: "#f6dbeb" },
-  { key: "peach",   name: "Peach",   body: "#fae7da" },
-  { key: "cream",   name: "Cream",   body: "#faf0dd" },
-  { key: "sage",    name: "Sage",    body: "#e9f2dd" },
+  { key: "mint",    name: "Mint",    body: "#79cca6" },
+  { key: "sky",     name: "Sky",     body: "#7cc4e2" },
+  { key: "blue",    name: "Blue",    body: "#8fabe8" },
+  { key: "violet",  name: "Violet",  body: "#b89de2" },
+  { key: "rose",    name: "Rose",    body: "#e79ac4" },
+  { key: "peach",   name: "Peach",   body: "#f2ac7d" },
+  { key: "cream",   name: "Cream",   body: "#eecd82" },
+  { key: "sage",    name: "Sage",    body: "#aed082" },
 ];
-const AP_SHAPES = [{ key: "squircle", name: "Squircle" }, { key: "round", name: "Round" }, { key: "blocky", name: "Blocky" }];
+const AP_SHAPES = [{ key: "squircle", name: "Squircle" }, { key: "round", name: "Round" }, { key: "blocky", name: "Blocky" }, { key: "blob", name: "Blob" }];
 
 // eyes/mouth: dark ink on light/pastel bodies, light ink on the dark body
 function faceFeatures(hex) {

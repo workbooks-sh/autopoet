@@ -49,20 +49,93 @@ const faceBody = () => _hexInt(_cssVar("--face-bg"), 0xffffff);
 // white in dark); the body + face features are the character's own, theme-independent.
 const faceOutline = () => _hexInt(_cssVar("--face-outline"), INK);
 
-// materials shared by everything (body + hands): warm paper, soft side shading.
-// Tracked so a theme flip can re-skin every instance live.
+// body finish: a MATTE MATCAP — the cube reads mostly white, the character's
+// color pools only in the depth (grazing bevels/edges) and the shaded flank,
+// like a soft ceramic. Not a full-body flat color; an accent on the shadow.
+const _hexStr = n => "#" + (n & 0xffffff).toString(16).padStart(6, "0");
+const _mix = (aHex, bHex, t) => {
+  const ar = (aHex >> 16) & 255, ag = (aHex >> 8) & 255, ab = aHex & 255;
+  const br = (bHex >> 16) & 255, bg = (bHex >> 8) & 255, bb = bHex & 255;
+  const r = Math.round(ar + (br - ar) * t), g = Math.round(ag + (bg - ag) * t), b = Math.round(ab + (bb - ab) * t);
+  return "#" + (((r << 16) | (g << 8) | b) >>> 0).toString(16).padStart(6, "0");
+};
+// paint a matcap sphere in TWO passes:
+//   1. color — a bright matte-white core up-left (the key) fading to the accent
+//      on the flank (white→color divergence, not a flat body tint).
+//   2. shadow — a NEUTRAL dark vignette multiplied over the rim. Multiply leaves
+//      the lit core untouched but deepens the edge on EVERY hue — so the white
+//      character finally casts a real grey shadow instead of vanishing.
+function matcapTexture(hex) {
+  const S = 128, cv = document.createElement("canvas");
+  cv.width = cv.height = S;
+  const g = cv.getContext("2d");
+
+  // pass 1 — white core → accent flank
+  g.fillStyle = _hexStr(hex);
+  g.fillRect(0, 0, S, S);
+  const col = g.createRadialGradient(S * 0.36, S * 0.30, S * 0.03, S * 0.52, S * 0.54, S * 0.82);
+  col.addColorStop(0.00, "#ffffff");
+  col.addColorStop(0.42, _mix(hex, 0xffffff, 0.90));
+  col.addColorStop(0.72, _hexStr(hex));
+  col.addColorStop(1.00, _hexStr(hex));
+  g.fillStyle = col;
+  g.fillRect(0, 0, S, S);
+
+  // pass 2 — neutral depth shadow, multiplied (core stays lit, rim darkens)
+  g.globalCompositeOperation = "multiply";
+  const sh = g.createRadialGradient(S * 0.40, S * 0.34, S * 0.08, S * 0.54, S * 0.58, S * 0.82);
+  sh.addColorStop(0.00, "#ffffff");   // no darkening on the lit core
+  sh.addColorStop(0.55, "#eceef1");
+  sh.addColorStop(0.82, "#9a9ea6");
+  sh.addColorStop(1.00, "#5f636b");   // deep rim → a real cast shadow on any hue
+  g.fillStyle = sh;
+  g.fillRect(0, 0, S, S);
+  g.globalCompositeOperation = "source-over";
+
+  const tx = new THREE.CanvasTexture(cv);
+  tx.colorSpace = THREE.SRGBColorSpace;
+  return tx;
+}
+// ── the BLOB wobble ──────────────────────────────────────────────────────
+// A vertex displacement injected into every body/outline shader, scaled by a
+// per-material uAmp (0 = rigid; the "blob" shape turns it on). It is a PURE
+// FUNCTION of the vertex's rest position and a single shared clock — so it is
+// bounded for all time and CANNOT accumulate drift over recursive frames, and
+// the loop is seamless. Displacement rides the outward direction, so the flat
+// front bulges in depth while the DOM face overlay (a separate layer) stays
+// perfectly clean — organic body, unbroken character.
+const _wobT = { value: 0 };                 // shared clock (seconds), one write/frame
+const CHUNK_HEAD = "uniform float uTime; uniform float uAmp;";
+const CHUNK_DISP = `
+  #include <begin_vertex>
+  if (uAmp > 0.0001) {
+    float _w = sin(position.x * 0.045 + uTime * 1.10)
+             + sin(position.y * 0.050 + uTime * 0.90)
+             + sin(position.z * 0.040 + uTime * 1.30);
+    transformed += normalize(position + vec3(0.0001)) * (uAmp * _w);
+  }`;
+function _wobbleShader(m) {
+  m.userData.uAmp = { value: 0 };
+  m.onBeforeCompile = shader => {
+    shader.uniforms.uTime = _wobT;
+    shader.uniforms.uAmp = m.userData.uAmp;
+    shader.vertexShader = CHUNK_HEAD + "\n" + shader.vertexShader
+      .replace("#include <begin_vertex>", CHUNK_DISP);
+  };
+}
+// Tracked so a theme flip / character recolor can re-skin every instance live.
 const _bodyMats = new Set(), _outlineMats = new Set();
 function bodyMaterial() {
-  const m = new THREE.MeshLambertMaterial({ color: faceBody() });
-  _bodyMats.add(m); return m;
+  const m = new THREE.MeshMatcapMaterial({ matcap: matcapTexture(faceBody()) });
+  _wobbleShader(m); _bodyMats.add(m); return m;
 }
 function outlineMaterial() {
   const m = new THREE.MeshBasicMaterial({ color: faceOutline(), side: THREE.BackSide });
-  _outlineMats.add(m); return m;
+  _wobbleShader(m); _outlineMats.add(m); return m;
 }
 function _reskin() {
   const b = faceBody(), o = faceOutline();
-  _bodyMats.forEach(m => m.color.setHex(b));
+  _bodyMats.forEach(m => { const old = m.matcap; m.matcap = matcapTexture(b); m.needsUpdate = true; if (old && old !== m.matcap) old.dispose(); });
   _outlineMats.forEach(m => m.color.setHex(o));
 }
 if (typeof window !== "undefined") {
@@ -110,9 +183,10 @@ function withHull(mesh, w) {
 
 // shape presets — corner radius + bevel morph the body squircle → round → blocky.
 const SHAPES = {
-  squircle: { r: 35, bevel: 8 },   // the default soft cube
-  round:    { r: 58, bevel: 13 },  // pillowy, near-circular face
-  blocky:   { r: 8,  bevel: 3 },   // sharp, minecrafty cube
+  squircle: { r: 35, bevel: 8 },              // the default soft cube
+  round:    { r: 58, bevel: 13 },             // pillowy, near-circular face
+  blocky:   { r: 8,  bevel: 3 },              // sharp, minecrafty cube
+  blob:     { r: 60, bevel: 16, wobble: 1.7 },// organic goo — round base + live wobble
 };
 export const currentShape = () => {
   const k = document.documentElement.getAttribute("data-ap-shape") || "squircle";
@@ -130,7 +204,11 @@ function buildBody(shapeKey) {
   geo.translate(0, 0, -depth / 2);            // center on origin
   geo.computeVertexNormals();
   const mesh = new THREE.Mesh(geo, bodyMaterial());
-  return withHull(mesh);
+  const grp = withHull(mesh);
+  // "blob": arm the wobble on this body's materials (body + its hull) so only
+  // the goo shape ripples; every other shape stays rigid (uAmp = 0).
+  if (sh.wobble) grp.traverse(o => { if (o.material && o.material.userData.uAmp) o.material.userData.uAmp.value = sh.wobble; });
+  return grp;
 }
 
 // ── hands: capsule mitts per pose, mirrored for the left ──
@@ -231,6 +309,8 @@ export function mount(container, cubeEl) {
   (function frame() {
     if (disposed) return;
     requestAnimationFrame(frame);
+
+    _wobT.value = performance.now() / 1000;   // shared blob clock (bounded, no drift)
 
     // body rotation from the CSS vars the app already writes — smoothed
     const trx = readVar(cubeEl, "--rx") + readVar(cubeEl, "--nod") + readVar(cubeEl, "--br");

@@ -33,7 +33,11 @@ const AP_PSAMPLE = {
   direct: "Right. Let's set up your environment and get to work.",
   witty: "Well then. Let's turn your plans into something that actually runs.",
   calm: "Take a breath. We'll set this up one steady step at a time.",
-  bold: "Let's go. We're building your entire operation from the ground up."
+  bold: "Let's go. We're building your entire operation from the ground up.",
+  playful: "Ooh, fun — let's make something great and enjoy doing it.",
+  sage: "Let's step back and set this up the way it should be.",
+  cheerful: "This is going to be great! Let's set everything up together.",
+  curious: "Interesting. Tell me what you're building — let's dig in."
 };
 let _apVoice = 0, _apPers = 0, _apPersonalities = null, _apPrevAudio = null;
 
