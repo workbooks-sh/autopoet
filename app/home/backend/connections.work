@@ -5,7 +5,6 @@
 The module verbatim, now authored as `.work` — its Elixir source lives inside
 a beam-compiled `server` block instead of a scattered `.ex` file.
 
-server :connections do
 defmodule Autopoet.Connections do
   @moduledoc """
   The local, encrypted home for a user's CONNECTION tokens — the OAuth access
@@ -107,5 +106,4 @@ defmodule Autopoet.Connections do
 
   defp provider!(p) when p in @providers, do: p
   defp provider!(p), do: raise(ArgumentError, "unknown provider: #{inspect(p)}")
-end
 end

@@ -5,7 +5,6 @@
 The module verbatim, now authored as `.work` — its Elixir source lives inside
 a beam-compiled `server` block instead of a scattered `.ex` file.
 
-server :projects do
 defmodule Autopoet.Projects do
   @moduledoc """
   The PROJECT SPINE (lifecycle-plan §1, wb-emkxi step 1) — many projects, ONE
@@ -133,5 +132,4 @@ defmodule Autopoet.Projects do
   defp normalize(slug) do
     slug |> to_string() |> String.downcase() |> String.replace(~r/[^a-z0-9-]+/, "-") |> String.trim("-")
   end
-end
 end

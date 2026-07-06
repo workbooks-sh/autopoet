@@ -5,7 +5,6 @@
 The module verbatim, now authored as `.work` — its Elixir source lives inside
 a beam-compiled `server` block instead of a scattered `.ex` file.
 
-server :avatar do
 defmodule Autopoet.Avatar do
   @moduledoc """
   The face of the nexus — composed 100% locally from the vendored dylan part
@@ -58,5 +57,4 @@ defmodule Autopoet.Avatar do
   defp part(group, name), do: File.read!(Path.join([dir(), group, name <> ".svg"]))
   defp base_path(name), do: Path.join(dir(), name <> ".svg")
   defp dir, do: Path.join(:code.priv_dir(:autopoet), "avatar-dylan")
-end
 end

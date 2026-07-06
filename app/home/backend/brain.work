@@ -5,7 +5,6 @@
 The module verbatim, now authored as `.work` — its Elixir source lives inside
 a beam-compiled `server` block instead of a scattered `.ex` file.
 
-server :brain do
 defmodule Autopoet.Brain do
   @moduledoc """
   The proposal-only brain — the injectable `proposer` for `Nexus.Autopoet.Worker`.
@@ -525,5 +524,4 @@ defmodule Autopoet.Brain do
     appends = for {"append", p, b} <- blocks, into: %{}, do: {p, b}
     {writes, appends}
   end
-end
 end

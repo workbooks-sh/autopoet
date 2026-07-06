@@ -25,23 +25,19 @@ defmodule Autopoet.Application do
     port = port()
     root = Path.join([Autopoet.Discovery.home(), "app", "home"])
 
-    # Compile the `.work` BEAM tier NOW — before the supervision tree — so every
-    # server-block module the app supervises, `Autopoet.Spine` first among them, is a
-    # loaded module by the time its child slot starts. This makes the dependency
-    # EXPLICIT rather than relying on Nexus.Server's own bringup side-effect firing at
-    # the right moment; Nexus.Server (child 1) re-runs bringup, but the nexus compile
-    # cache is content-addressed, so that second pass is a cache hit, not a recompile.
-    Nexus.Compile.workbook(root)
-
     # v0-nexus tree — three top-level boundaries; the fat domain child list now
     # lives in the `.work`-authored `Autopoet.Spine` (app/home/backend/spine.work):
     #
     #   1. Nexus.Server — owns HTTP on the port the window points at, serves the
     #      `.work` app surface (app/home) at `/`. All ~166 routes are server blocks
     #      (P1); Autopoet.Control + its Bandit are RETIRED — the runtime owns HTTP.
+    #      Its `start_link` runs `bringup` SYNCHRONOUSLY — compiling every `.work`
+    #      BEAM unit (the spine + all 57 backend modules) — before it returns, so by
+    #      the time child 2 starts, `Autopoet.Spine` is a loaded module. Ordered FIRST
+    #      for exactly this reason; no separate pre-compile pass is needed.
     #   2. Autopoet.Spine — the app's own domain/brain processes (P2). Handed as an
     #      explicit map spec (start: mfa, no upfront `child_spec/1`) so the Supervisor
-    #      never touches the module until its slot actually starts.
+    #      never touches the module before Nexus.Server's bringup has defined it.
     #   3. Autopoet.Window — the desktop kill-switch (closing it halts the BEAM).
     children =
       [

@@ -1,11 +1,13 @@
 # Autopoet.Keys
 
-  Workbooks Cloud — the ONE model front door. Every LLM call the autopoet makes
+  Provider keys + the ONE model front door. Every LLM call the autopoet makes rides the
+  Workbooks Cloud AI Gateway; the vendor behind it is an implementation detail.
 
-The module verbatim, now authored as `.work` — its Elixir source lives inside
-a beam-compiled `server` block instead of a scattered `.ex` file.
+The modules verbatim, authored as `.work` — the Elixir source lives in a beam-compiled
+`defmodule` code block instead of a scattered `.ex` file. `Autopoet.Keys` resolves
+provider keys through `Nexus.Secrets`; `Autopoet.Providers` is the single-model seam that
+hands off to `Nexus.Llm` (which owns gateway routing + the money boundary).
 
-server :keys do
 defmodule Autopoet.Keys do
   @moduledoc """
   Provider keys, resolved through `Nexus.Secrets` (store-first, env-fallback) —
@@ -64,8 +66,7 @@ defmodule Autopoet.Providers do
   the vendor's direct endpoint, so dev without the gateway still works. Both paths
   cross the `Nexus.Llm` money boundary (gate + meter) — no call skips it.
   """
-  @openrouter_url "https://openrouter.ai/api/v1/chat/completions"
-  @agent_model "openai/gpt-5.2"       # the ONE brain model ("Go 5.2")
+  @agent_model "z-ai/glm-5.2"         # the ONE brain model (GLM-5.2, "Go 5.2")
   @sub_model "xiaomi/mimo-v2.5"       # the multimodal sub / browsing / limb model
 
   # `brain_live: false` (test config) is the MASTER kill for live providers:
@@ -88,32 +89,16 @@ defmodule Autopoet.Providers do
   def gateway?, do: Nexus.Secrets.has?("CF_AIG_URL") and Nexus.Secrets.has?("CF_AIG_TOKEN")
 
   @doc """
-  A completion through Workbooks Cloud. Routes the requested model (default the
-  single agent model) through the gateway to OpenRouter with pass-through auth;
-  falls back to OpenRouter-direct when the gateway isn't configured. `openrouter/2`
-  is the historical name for this ONE seam — kept for the existing call sites.
+  A completion through Workbooks Cloud. Picks the model (default the single agent
+  model) and hands off to `Nexus.Llm`, which owns the gateway routing: with the
+  gateway configured every call rides the `workbooks` front door to the OpenRouter
+  upstream (pass-through auth, model auto-prefixed); without it, direct OpenRouter.
+  `openrouter/2` is the historical name for this ONE seam — kept for the call sites.
   """
   def openrouter(messages, opts \\ []), do: complete(messages, opts)
 
   def complete(messages, opts \\ []) do
     model = opts[:model] || agent_model()
-    opts = Keyword.delete(opts, :model)
-
-    computed =
-      if gateway?() do
-        [
-          base_url: Nexus.Secrets.get("CF_AIG_URL"),
-          api_key: Autopoet.Keys.openrouter(),
-          model: "openrouter/" <> model,
-          extra_headers: [{"cf-aig-authorization", "Bearer " <> Nexus.Secrets.get("CF_AIG_TOKEN")}],
-          tenant: nil
-        ]
-      else
-        [base_url: @openrouter_url, api_key: Autopoet.Keys.openrouter(), model: model, tenant: nil]
-      end
-
-    # computed routing wins over any stray caller opts of the same key.
-    Nexus.Llm.complete(messages, Keyword.merge(opts, computed))
+    Nexus.Llm.complete(messages, Keyword.merge(opts, model: model, api_key: Autopoet.Keys.openrouter(), tenant: nil))
   end
-end
 end

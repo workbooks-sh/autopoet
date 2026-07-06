@@ -5,7 +5,6 @@
 The module verbatim, now authored as `.work` — its Elixir source lives inside
 a beam-compiled `server` block instead of a scattered `.ex` file.
 
-server :actions do
 defmodule Autopoet.Actions do
   @moduledoc """
   The agent's ACTION VOCABULARY (wb-siutv.2) — the unified set of things the
@@ -259,5 +258,4 @@ defmodule Autopoet.Actions do
   rescue
     _ -> :ok
   end
-end
 end

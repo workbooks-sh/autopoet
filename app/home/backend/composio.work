@@ -5,7 +5,6 @@
 The module verbatim, now authored as `.work` — its Elixir source lives inside
 a beam-compiled `server` block instead of a scattered `.ex` file.
 
-server :composio do
 defmodule Autopoet.Composio do
   @moduledoc """
   The agent's toolbelt — Composio's 1000+ app library, driven straight from
@@ -157,5 +156,4 @@ defmodule Autopoet.Composio do
   end
 
   defp key, do: Nexus.Secrets.get("COMPOSIO_API_KEY")
-end
 end
