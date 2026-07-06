@@ -738,6 +738,29 @@ defmodule Autopoet.Control do
     end)
   end
 
+  # eval-only: LLM rubric over a finished session (evals/plan_session.py)
+  post "/plan/judge" do
+    authed!(conn, fn conn ->
+      {:ok, body, conn} = read_body(conn, length: 400_000)
+
+      session =
+        case Jason.decode(body) do
+          {:ok, m} when is_map(m) -> m
+          _ -> %{}
+        end
+
+      case Autopoet.PlanBrain.judge(session) do
+        {:ok, scores} ->
+          conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(scores))
+
+        {:error, reason} ->
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(503, Jason.encode!(%{error: reason}))
+      end
+    end)
+  end
+
   # ── the intake agent: builds the first world while the finale is on screen ──
   post "/intake/start" do
     authed!(conn, fn conn -> text(conn, "#{Autopoet.Intake.start()}\n") end)

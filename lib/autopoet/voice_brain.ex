@@ -36,6 +36,16 @@ defmodule Autopoet.VoiceBrain do
     end)
   end
 
+  # every configured provider, in preference order (for laddered completion)
+  defp providers do
+    Enum.flat_map(@providers, fn p ->
+      case Nexus.Secrets.get(p.secret) do
+        key when is_binary(key) -> [{p, key}]
+        _ -> []
+      end
+    end)
+  end
+
   def available?, do: provider() != nil
 
   def model do
@@ -68,6 +78,32 @@ defmodule Autopoet.VoiceBrain do
 
         request(prov, key, body)
     end
+  end
+
+  @doc """
+  RAW completion on the fast conversational lane (Cerebras→Groq) — the
+  caller owns the entire message list (no voice-widget system prompt).
+  Built for latency-sensitive conversational callers (the plan session's
+  turns); the planner decree ("no Groq") still stands for LIMB/planner lanes.
+  """
+  def complete(messages, opts \\ []) when is_list(messages) do
+    # ladder across EVERY configured fast provider (Cerebras → Groq), not just
+    # the first — one provider rate-limiting must not fail the turn
+    providers()
+    |> Enum.reduce_while({:error, :not_configured}, fn {prov, key}, _ ->
+      body =
+        Jason.encode!(%{
+          "model" => System.get_env("AUTOPOET_VOICE_MODEL") || prov.model,
+          "messages" => messages,
+          "temperature" => Keyword.get(opts, :temperature, 0.7),
+          "max_tokens" => Keyword.get(opts, :max_tokens, 1200)
+        })
+
+      case request(prov, key, body) do
+        {:ok, _} = ok -> {:halt, ok}
+        err -> {:cont, err}
+      end
+    end)
   end
 
   @doc """

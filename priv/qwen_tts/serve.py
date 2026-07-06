@@ -153,8 +153,8 @@ for line in sys.stdin:
         audio, sr = synth(0)
         if target > 0:
             best, best_d = audio, abs(_f0_median(audio) - target)
-            for attempt in range(1, 3):
-                if best_d <= target * 0.15:
+            for attempt in range(1, 2):
+                if best_d <= target * 0.20:
                     break
                 log(f"gate: take f0 off by {best_d:.0f}Hz (target {target:.0f}) — reroll {attempt}")
                 cand, sr = synth(attempt)

@@ -68,9 +68,12 @@ window.PlanBrain = (() => {
   }
 
   async function loop() {
-    let misses = 0;
+    let misses = 0, prefetch = null;
     while (running && board) {
-      const move = await postTurn();
+      // PIPELINE: a prefetched turn (started during the previous narration)
+      // lands with zero dead air; otherwise pay the call now
+      const move = prefetch ? await prefetch : await postTurn();
+      prefetch = null;
       if (!running) break;
       if (!move) {
         // a hiccup, not a script: note it and retry — the brain is the only
@@ -84,6 +87,9 @@ window.PlanBrain = (() => {
       }
       misses = 0;
 
+      // voice first: the say's clips start synthesizing IMMEDIATELY (the deck
+      // compile and everything else overlaps the synth, not the other way)
+      if (move.say && board.warm) board.warm(move.say);
       // a slide/complete move grows the deck first, then narrates over it
       if (move.md) {
         await board.slide(move.md);
@@ -91,6 +97,9 @@ window.PlanBrain = (() => {
         mountDeckNav();
       }
       state.history.push({ role: "assistant", content: move.say });
+      // bare slide moves auto-continue → fetch the NEXT turn while this one
+      // narrates; the LLM latency hides entirely behind the speech
+      if (move.move === "slide") prefetch = postTurn();
       // the FULL question stays readable above the input while it's open —
       // the spoken caption is transient, this pin is not
       if (move.move === "ask") pinQuestion(move.say);
@@ -103,6 +112,7 @@ window.PlanBrain = (() => {
         const pick = await showFork(move.options || []);
         state.history.push({ role: "user", content: "let's go with: " + pick.title });
         state.fork_done = true;
+        if (board && board.think) board.think(true);   // thought while the next turn runs
         if (pick.md) { await board.slide(pick.md); state.deck_titles.push(pick.title); mountDeckNav(); }
       } else if (move.move === "complete") {
         await finish(move);

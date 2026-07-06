@@ -2019,6 +2019,9 @@
       },
       caption: function (text) { if (mounted) captionShow("", escT(text)); },
       status: function (text) { if (mounted) capStatus(text); },
+      // the thinking beat — cloud + upward gaze while the brain works
+      // (perform() clears it automatically when the next line starts)
+      think: function (on) { if (mounted) (on !== false ? startThink() : stopThink()); },
       // ── the deck: the character authors reveal.js slides (the "pitch"); the
       //    accumulated markdown is the plan artifact. slide() appends + shows.
       slide: function (md) { return mounted ? deckAdd(md) : Promise.resolve(); },
