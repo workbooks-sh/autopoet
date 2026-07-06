@@ -95,6 +95,7 @@ window.Requisition = (() => {
       accent_pref: (host.querySelector('input[name="accent_pref"]:checked') || {}).value,
       remarks: host.querySelector("#rq-remarks").value.trim()
     };
+    try { sessionStorage.setItem("ap-form", JSON.stringify(form)); } catch (_) {}
     let identity = null;
     try {
       const r = await fetch("/onboard/requisition", {
@@ -111,20 +112,25 @@ window.Requisition = (() => {
       return fetch("/voice/tts/qwen/boot?model=" + model, { method: "POST",
         headers: { authorization: "Bearer " + TOKEN } });
     }).catch(() => {});
-    // the stamp lands, the sheet lifts off the grid, and the caller brings
-    // the character in — the sheet's exit IS the character's cue
-    stamp.className = "rq-stamp on ok";
-    stamp.textContent = identity && identity.name ? "APPROVED" : "FILED";
+    // pairing comes ONLY from the brain — if the office doesn't answer, the
+    // form stays and the requester retries. No canned character, ever.
     if (identity && identity.name) {
+      stamp.className = "rq-stamp on ok";
+      stamp.textContent = "APPROVED";
       const note = document.createElement("div");
       note.className = "rq-note";
       note.textContent = `assignment: ${identity.name} · voice: ${identity.voice}`;
       btn.replaceWith(note);
+      setTimeout(() => {
+        host.classList.add("rq-lift");               // the sheet flies off
+        setTimeout(() => { host.remove(); onResult && onResult(identity); }, 620);
+      }, 1200);
+    } else {
+      stamp.className = "rq-stamp on";
+      stamp.textContent = "OFFICE UNREACHABLE";
+      btn.disabled = false;
+      btn.textContent = "RESUBMIT REQUISITION →";
     }
-    setTimeout(() => {
-      host.classList.add("rq-lift");                 // the sheet flies off
-      setTimeout(() => { host.remove(); onResult && onResult(identity); }, 620);
-    }, identity && identity.name ? 1200 : 700);
   };
   return host;
   }

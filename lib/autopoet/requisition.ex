@@ -45,28 +45,36 @@ defmodule Autopoet.Requisition do
         |> Enum.zip(mds)
         |> Enum.map(fn {say, md} -> %{"say" => say, "md" => md} end)
 
-      {:ok, Map.put(kv, "slides", slides)}
+      persona = Autopoet.VoicePersonas.description(kv["voice"] || "") || ""
+
+      {:ok, kv |> Map.put("slides", slides) |> Map.put("persona_desc", persona)}
     end
   end
 
   # ── the pairing act ─────────────────────────────────────────────────────────
-  @doc "Pair from the requisition form. Returns {:ok, map} always (fallback inside)."
+  @doc """
+  Pair from the requisition form. EVERYTHING the character is and says comes
+  from the LLM — there is no canned fallback. No provider / no valid reply =
+  {:error, reason}; the client surfaces it and offers a retry.
+  """
   def pair(form) when is_map(form) do
     roster = roster_brief()
 
-    result =
-      if Autopoet.Providers.openrouter?() do
-        case ask_llm(form, roster) do
-          {:ok, identity} -> identity
-          _ -> fallback(form, roster)
-        end
-      else
-        fallback(form, roster)
-      end
+    cond do
+      not Autopoet.Providers.openrouter?() ->
+        {:error, :no_brain}
 
-    persist(result)
-    set_default_voice(result)
-    {:ok, result}
+      true ->
+        case ask_llm(form, roster) do
+          {:ok, identity} ->
+            persist(identity)
+            set_default_voice(identity)
+            {:ok, identity}
+
+          _ ->
+            {:error, :bad_pairing}
+        end
+    end
   end
 
   defp roster_brief do
@@ -106,24 +114,23 @@ defmodule Autopoet.Requisition do
     VOICE ROSTER (choose exactly one "voice" from these names):
     #{roster_txt}
 
-    THE DECK is how the autopoet shows what it understands and what it will do,
-    built ENTIRELY from the requester's marks — this is emergent, so every slide
-    reflects THEIR answers, not a template. Author 3 to 5 slides. Each slide is
-    reveal.js markdown (use `# Title`, `## Subhead`, `- bullets`). ONE slide
-    SHOULD contain a mermaid diagram of the plan as a fenced block:
-    ```mermaid
-    flowchart LR
-      you[you] --> ap[your autopoet] --> ship[what ships]
-    ```
-    Keep slides tight — a title and 2 to 4 bullets, or the diagram. Each slide
-    pairs with a `say`: <=30 words of narration the autopoet speaks over it.
+    DELIVERY — write the greeting and every slide's narration in this manner
+    (the exact voice you pick will refine it):
+    #{delivery_for("", form)}
+
+    The deck gets AUTHORED LIVE in the conversation that follows — do NOT draft
+    it here. You author exactly ONE slide: the COVER — a title card that opens
+    the working session (reveal.js markdown: a `# title` naming this pairing/
+    project in the requester's terms, and one subtitle line). The greeting sets
+    up that the two of you are about to draft the plan TOGETHER, and hands into
+    your first question.
 
     JSON shape:
     {"ap_name": "one lowercase word, quirky but dignified",
      "voice": "<roster name>",
-     "greeting": "<=25 words, in character, greets the requester by first name, introduces itself by name, says it drew up a plan",
+     "greeting": "<=28 words, in character, greets the requester by first name, introduces itself by name, says you'll draft the plan together right now",
      "blurb": "<=18 words, the department's dry assignment note for this pairing",
-     "slides": [{"say": "<=30 words of narration", "md": "# Slide title\\n\\n- point one\\n- point two"}, ...]}
+     "slides": [{"say": "<=20 words introducing the working session", "md": "# Cover title\\n\\n*one subtitle line*"}]}
     """
 
     with {:ok, %{content: content}} <-
@@ -164,45 +171,10 @@ defmodule Autopoet.Requisition do
     end
   end
 
-  # deterministic pairing — the onboarding never blocks on a provider
-  defp fallback(form, roster) do
-    first = form |> Map.get("name", "") |> to_string() |> String.split(" ") |> List.first() |> to_string()
-    who = if first == "", do: "you", else: first
-    areas = form |> Map.get("areas", []) |> List.wrap() |> Enum.take(4)
-    area_bullets = if areas == [], do: "- whatever you bring me", else: Enum.map_join(areas, "\n", &"- #{&1}")
-    flow_nodes = if areas == [], do: "ap --> work[your work]", else: Enum.map_join(Enum.with_index(areas), "\n  ", fn {a, i} -> "ap --> n#{i}[#{a}]" end)
-
-    slides = [
-      %{
-        say: "here's the shape of what we're doing together.",
-        md: "# the plan\n\n- you bring the words\n- i weave the system\n- it ships, and wakes up every morning"
-      },
-      %{
-        say: "you told the department where to point me — so that's where we start.",
-        md: "## where i'll weave first\n\n#{area_bullets}"
-      },
-      %{
-        say: "and here's how the pieces connect. this diagram grows as we talk.",
-        md: "## how it fits\n\n```mermaid\nflowchart LR\n  you[#{who}] --> ap[your autopoet]\n  #{flow_nodes}\n```"
-      }
-    ]
-
-    voice = if Enum.any?(roster, &(&1.name == "rosalind")), do: "rosalind", else: List.first(roster).name
-
-    build(
-      "quill",
-      voice,
-      "hi#{if first != "", do: " " <> String.downcase(first)} — i'm quill, your autopoet. the department matched us, and i already sketched a plan.",
-      "requisition approved. pairing: standard-issue poet, above-average curiosity.",
-      slides,
-      form,
-      roster
-    )
-  end
-
-  defp build(ap_name, voice, greeting, blurb, slides, _form, roster) do
+  defp build(ap_name, voice, greeting, blurb, slides, form, roster) do
     entry = Enum.find(roster, &(&1.name == voice))
     engine = if entry && entry.pinned, do: "qwen-clone", else: "qwen-design"
+    persona = (entry && entry.desc) || Autopoet.VoicePersonas.description(voice) || ""
 
     %{
       "name" => sanitize_name(ap_name),
@@ -210,8 +182,66 @@ defmodule Autopoet.Requisition do
       "engine" => engine,
       "greeting" => to_string(greeting || ""),
       "blurb" => to_string(blurb || ""),
+      # the cube's SHAPE is part of the character's identity (owner keeps color
+      # for now): angular voices get a blocky cube, soft ones round, else squircle
+      "shape" => shape_for(persona, form),
+      # DELIVERY: how this character talks — shapes both the pitch-deck narration
+      # and the live conversation brain (verbosity, technicality, intonation)
+      "delivery" => delivery_for(persona, form),
       "slides" => slides
     }
+  end
+
+  @doc false
+  def shape_for(persona, form) do
+    p = String.downcase(persona)
+    manner = to_string(form["manner"] || "")
+
+    cond do
+      manner == "blunt" or String.contains?(p, ["deep", "gravelly", "commander", "authoritative", "confident"]) ->
+        "blocky"
+
+      manner == "gentle" or String.contains?(p, ["warm", "sweet", "soft", "gentle", "friendly", "mellow"]) ->
+        "round"
+
+      true ->
+        "squircle"
+    end
+  end
+
+  @doc false
+  def delivery_for(persona, form) do
+    verbosity =
+      case form["verbosity"] do
+        "terse" -> "Keep it short and clipped — few words, no throat-clearing."
+        "storyteller" -> "Take your time; let sentences breathe and wander a little."
+        _ -> "Balanced length — neither clipped nor rambling."
+      end
+
+    tech =
+      if form |> Map.get("areas", []) |> List.wrap() |> Enum.any?(&String.contains?(to_string(&1), ["software", "building"])),
+        do: "Comfortable with technical language when it's the precise word.",
+        else: "Prefer plain language over jargon; explain like a smart friend."
+
+    humor =
+      case form["humor"] do
+        "mandatory" -> ~s(A dry joke is welcome; an occasional soft "haha" is fine.)
+        "minimal" -> "Play it straight; humor is rare."
+        _ -> "Light, dry wit when it fits."
+      end
+
+    tone =
+      cond do
+        String.contains?(String.downcase(persona), ["british", "luxury", "sterling", "eloquent"]) -> "Eloquent and composed."
+        String.contains?(String.downcase(persona), ["philosophical", "sage", "mellow"]) -> "Reflective, unhurried, teacherly."
+        String.contains?(String.downcase(persona), ["radio", "dj", "soulful", "smooth"]) -> "Easy, rhythmic, conversational."
+        true -> "Natural and grounded."
+      end
+
+    "#{tone} #{verbosity} #{tech} #{humor} " <>
+      "For natural delivery you MAY use — SPARINGLY, at most once every few lines — " <>
+      "an ellipsis for a pause, a soft filler (um, ah, ahem), or a light laugh (haha); " <>
+      "the voice engine renders them. Never overdo it."
   end
 
   defp sanitize_name(n) do
@@ -223,7 +253,7 @@ defmodule Autopoet.Requisition do
     File.mkdir_p!(Path.dirname(path("pairing")))
 
     kv =
-      for k <- ~w(name voice engine greeting blurb),
+      for k <- ~w(name voice engine greeting blurb shape delivery),
           do: "#{k} #{String.replace(identity[k] || "", "\n", " ")}"
 
     File.write!(path("pairing"), Enum.join(kv, "\n") <> "\n")

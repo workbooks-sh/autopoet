@@ -104,3 +104,51 @@
   #blab .bl-note{font:500 10.5px ui-monospace,monospace;color:#8a8f88;min-height:12px}
   #blab .bl-meter{height:5px;background:#eef0f2;border-radius:3px;overflow:hidden}
   #blab .bl-meter i{display:block;height:100%;width:0;background:#16161a}
+
+/* ── THE PLAN CONVERSATION — interjection bar, fork cards, chat, processing ── */
+.pm-bar{position:fixed;left:50%;transform:translateX(-50%);bottom:16px;z-index:66;
+  display:flex;align-items:center;gap:8px;width:min(560px,86vw);
+  background:#fff;border:1.6px solid #e2e6ec;border-radius:14px;padding:7px 8px 7px 14px;
+  box-shadow:0 6px 24px rgba(22,22,26,.10);animation:pm-enter-in .5s cubic-bezier(.34,1.5,.4,1) both}
+.pm-bar input{flex:1;border:0;outline:none;background:transparent;font:14px/1.4 ui-sans-serif,system-ui;color:#1c2230}
+.pm-send{width:34px;height:34px;flex:none;border:0;border-radius:10px;background:#16161a;color:#fff;
+  font-size:16px;cursor:pointer}
+.pm-send:hover{background:#2e2e34}
+/* fork — the one physical choice: three direction cards */
+.pm-fork{position:fixed;inset:0;z-index:70;display:grid;place-items:center;
+  background:rgba(250,250,248,.55);backdrop-filter:blur(3px);opacity:0;transition:opacity .3s ease}
+.pm-fork.on{opacity:1}
+.pm-fork.done{opacity:0;pointer-events:none}
+.pm-fork-cards{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;max-width:900px;padding:20px}
+.pm-card{width:240px;min-height:150px;text-align:left;background:#fff;border:1.6px solid #16161a;
+  border-radius:14px;padding:16px 16px 18px;cursor:pointer;display:flex;flex-direction:column;gap:8px;
+  box-shadow:4px 6px 0 rgba(22,22,26,.12);transition:transform .18s ease, box-shadow .18s ease;
+  animation:pm-card-in .5s cubic-bezier(.34,1.5,.4,1) both}
+.pm-card:nth-child(2){animation-delay:.07s}.pm-card:nth-child(3){animation-delay:.14s}
+.pm-card:hover{transform:translateY(-4px);box-shadow:6px 9px 0 rgba(22,22,26,.16)}
+.pm-card.picked{background:#16161a;color:#fff;transform:scale(1.03)}
+.pm-card-k{font:600 10px ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;color:#8a8f88}
+.pm-card.picked .pm-card-k{color:#c9cdd2}
+.pm-card-t{font:700 17px/1.2 ui-sans-serif,system-ui}
+.pm-card-m{font:13px/1.45 ui-sans-serif,system-ui;color:#5a6068}
+.pm-card.picked .pm-card-m{color:#e2e6ec}
+@keyframes pm-card-in{from{opacity:0;transform:translateY(14px) scale(.96)}}
+/* transient chat bubbles (what was just said, both sides) */
+.pm-chat{position:fixed;left:50%;transform:translateX(-50%);bottom:74px;z-index:63;
+  display:flex;flex-direction:column;gap:6px;align-items:center;width:min(560px,86vw);pointer-events:none}
+.pm-bub{max-width:90%;font:13px/1.4 ui-sans-serif,system-ui;padding:6px 12px;border-radius:12px;
+  transition:opacity .8s ease;opacity:.96}
+.pm-bub.you{align-self:flex-end;background:#16161a;color:#fff}
+.pm-bub.ap{align-self:flex-start;background:#eef0f2;color:#1c2230}
+.pm-bub.fade{opacity:0}
+/* processing → weaving the vault */
+.pm-proc{position:fixed;inset:0;z-index:72;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:14px;background:rgba(250,250,248,.9);opacity:0;transition:opacity .4s ease}
+.pm-proc.on{opacity:1}
+.pm-proc-cube{width:52px;height:52px;border:2.4px solid #16161a;border-radius:12px;
+  animation:pm-proc-spin 1.5s cubic-bezier(.6,0,.4,1) infinite}
+@keyframes pm-proc-spin{0%{transform:rotate(0) scale(1)}50%{transform:rotate(180deg) scale(.82)}100%{transform:rotate(360deg) scale(1)}}
+.pm-proc-txt{font:700 16px ui-sans-serif,system-ui;color:#1c2230}
+.pm-proc-sub{font:13px ui-sans-serif,system-ui;color:#8a8f88}
+.pm-dots3 i{animation:pm-blink 1.2s infinite both}.pm-dots3 i:nth-child(2){animation-delay:.2s}.pm-dots3 i:nth-child(3){animation-delay:.4s}
+@keyframes pm-blink{0%,60%,100%{opacity:.2}30%{opacity:1}}

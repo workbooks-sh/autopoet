@@ -691,8 +691,15 @@ defmodule Autopoet.Control do
           _ -> %{}
         end
 
-      {:ok, identity} = Autopoet.Requisition.pair(form)
-      conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(identity))
+      case Autopoet.Requisition.pair(form) do
+        {:ok, identity} ->
+          conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(identity))
+
+        {:error, reason} ->
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(503, Jason.encode!(%{error: reason}))
+      end
     end)
   end
 
@@ -704,6 +711,31 @@ defmodule Autopoet.Control do
       _ ->
         conn |> put_resp_content_type("application/json") |> send_resp(404, "{}")
     end
+  end
+
+  # ── the plan conversation: the autopoet talks while authoring the deck ──────
+  # one brain turn — client posts {form, pairing, history, fork_done,
+  # deck_titles}, gets back the next move (ask | slide | fork | complete)
+  post "/plan/turn" do
+    authed!(conn, fn conn ->
+      {:ok, body, conn} = read_body(conn, length: 200_000)
+
+      state =
+        case Jason.decode(body) do
+          {:ok, m} when is_map(m) -> m
+          _ -> %{}
+        end
+
+      case Autopoet.PlanBrain.turn(state) do
+        {:ok, move} ->
+          conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(move))
+
+        {:error, reason} ->
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(503, Jason.encode!(%{error: reason}))
+      end
+    end)
   end
 
   # ── the intake agent: builds the first world while the finale is on screen ──

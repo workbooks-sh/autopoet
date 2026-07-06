@@ -49,7 +49,7 @@
   var CSS = [
     "#vs-root { position:absolute; inset:0; z-index:6; opacity:0; transition:opacity .45s ease; }",
     "#vs-root.on { opacity:1; }",
-    "#vs-root .vs-paper { position:absolute; inset:0; background:var(--paper,#fff);",
+    ".vs-paper { position:absolute; inset:0; z-index:1; background:var(--paper,#fff);",
     "  background-image:linear-gradient(var(--grid,rgba(18,19,22,.07)) 1px, transparent 1px),",
     "  linear-gradient(90deg, var(--grid,rgba(18,19,22,.07)) 1px, transparent 1px);",
     "  background-size:24px 24px; }",
@@ -87,17 +87,23 @@
     "#vs-graph-bg .m-fade { animation:vs-mfade .5s ease-out both; }",
     "@keyframes vs-mfade { from { opacity:0; } to { opacity:1; } }",
     "#vs-stagebox { position:absolute; inset:0; display:grid; place-items:center; pointer-events:none; }",
-    "#vs-scene { width:132px; height:132px; pointer-events:auto; --toon:1.6px;",
-    "  filter:drop-shadow(var(--toon) 0 0.3px #121316) drop-shadow(calc(-1*var(--toon)) 0 0.3px #121316)",
-    "  drop-shadow(0 var(--toon) 0.3px #121316) drop-shadow(0 calc(-1*var(--toon)) 0.3px #121316)",
+    // outline follows the SAME theme var the graph nodes use (--face-outline:
+    // black in light, white in dark) — was hardcoded #121316 (wrong in dark)
+    "#vs-scene { width:132px; height:132px; pointer-events:auto; --toon:1.6px; --ol:var(--face-outline,#121316);",
+    "  filter:drop-shadow(var(--toon) 0 0.3px var(--ol)) drop-shadow(calc(-1*var(--toon)) 0 0.3px var(--ol))",
+    "  drop-shadow(0 var(--toon) 0.3px var(--ol)) drop-shadow(0 calc(-1*var(--toon)) 0.3px var(--ol))",
     "  drop-shadow(0 16px 26px rgba(18,19,22,.04));",
     "  transform:translate(var(--sx,0px), var(--sy,0px)) scale(var(--sc,1));",
     "  transition:transform .8s cubic-bezier(.3,1,.35,1); }",
     "#vs-cube { width:100%; height:100%; position:relative; transform-style:preserve-3d;",
     "  transform:rotateX(calc(var(--rx,0deg) + var(--nod,0deg) + var(--br,0deg))) rotateY(var(--ry,0deg)) rotateZ(var(--rz,0deg));",
     "  transition:transform .12s ease-out; cursor:pointer; }",
-    "#vs-cube .vs-layer { position:absolute; inset:0; border-radius:35px; }",
-    "#vs-cube .vs-face-layer { background:#fff; display:grid; place-items:center; }",
+    // shape honors data-ap-shape (squircle default), body follows --face-bg —
+    // a new user gets a squircle white cube with a theme-aware outline
+    "#vs-cube .vs-layer { position:absolute; inset:0; border-radius:32px; }",
+    ":root[data-ap-shape=\"round\"] #vs-cube .vs-layer { border-radius:50%; }",
+    ":root[data-ap-shape=\"blocky\"] #vs-cube .vs-layer { border-radius:9px; }",
+    "#vs-cube .vs-face-layer { background:var(--face-bg,#fff); display:grid; place-items:center; }",
     ".vs-face-layer svg { display:block; width:100%; height:100%; }",
     ".vs-hand { position:absolute; left:0; top:0; width:30px; height:40px; pointer-events:none;",
     "  opacity:var(--po,0); transform-origin:15px 20px;",
@@ -161,7 +167,20 @@
     "#callbar #vs-tbtn span { white-space:nowrap; }",
     // the D3 graph fades while the whiteboard is up
     "#stage.vs-whiteboard > svg#graph { opacity:0; transition:opacity .45s ease; }",
-    "#stage.vs-whiteboard #callcaption { display:none; }"
+    "#stage.vs-whiteboard #callcaption { display:none; }",
+    // ── BEAM-IN: while warming, the cube is FACELESS (works for the WebGL
+    //    #self-cube's .sc-face and the DOM fallback's .vs-face-layer) and a
+    //    loading bar sits beneath it. The spin + land motion are driven in JS
+    //    (via --ry/--sc, which the WebGL avatar reads) so ONE cube serves all.
+    ".vs-faceless .sc-face, .vs-faceless .vs-face-layer { opacity:0; transition:opacity .25s ease; }",
+    ".sc-face, .vs-face-layer { transition:opacity .35s ease; }",
+    "#vs-loadbar { position:absolute; left:50%; top:calc(50% + 92px); transform:translateX(-50%); width:104px;",
+    "  height:4px; border-radius:3px; background:rgba(18,19,22,.12); overflow:hidden; z-index:7; opacity:0;",
+    "  transition:opacity .3s ease; }",
+    "#vs-loadbar.on { opacity:1; }",
+    "#vs-loadbar i { display:block; height:100%; width:38%; border-radius:3px; background:var(--face-outline,#121316);",
+    "  animation:vs-loadslide 1.15s ease-in-out infinite; }",
+    "@keyframes vs-loadslide { 0% { transform:translateX(-120%);} 100% { transform:translateX(360%);} }"
   ].join("\n");
 
   function injectCSS() {
@@ -1730,8 +1749,10 @@
   function buildDOM() {
     root = document.createElement("div");
     root.id = "vs-root";
+    // the white grid paper shows for any STANDALONE stage (no graph behind it) —
+    // that includes onboarding, which adopts the real cube but has no live graph
     root.innerHTML =
-      (adopt ? '' : '<div class="vs-paper"></div>') +
+      (appHooks ? '' : '<div class="vs-paper"></div>') +
       '<div id="vs-graph-bg" aria-hidden="true"></div>' +
       (adopt ? '' :
       '<div id="vs-stagebox">' +
@@ -1750,11 +1771,13 @@
       '  <div class="ft"><input id="vs-drawer-in" placeholder="type to the autopoet…" spellcheck="false" aria-label="Message the autopoet"></div>' +
       '</div>';
     stageEl.appendChild(root);
-    // the whiteboard must paint BELOW the avatar (the performer walks in
-    // front of the board, never behind it) — pull it out of vs-root's
-    // stacking context and let z-index 3 < cube 5 < root 6 do the rest
+    // the whiteboard AND the paper must paint BELOW the avatar (the performer
+    // walks in front of the board, never behind it) — pull both out of
+    // vs-root's stacking context: paper 1 < board 3 < cube 5 < root 6
     var gbEsc = root.querySelector("#vs-graph-bg");
     if (gbEsc) stageEl.insertBefore(gbEsc, root);
+    var paperEsc = root.querySelector(".vs-paper");
+    if (paperEsc) stageEl.insertBefore(paperEsc, gbEsc || root);
 
     // fixed-position ants overlay lives at body level (viewport coordinates)
     overlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -1833,6 +1856,7 @@
   var appHooks = null;   // { selfSpot, hideWorld, showWorld, resync } from the real app
   var adopt = null;      // { scene, cube, prefix } — the app's own self-node cube
   var entranceSettle = 600;
+  var _spinRAF = null, _spinDeg = 0, _spinStop = false;   // beam/land spin state
   // ── THE STAGE — one entrance, two types ────────────────────────────────────
   //   type:"voice" — the full call: mic (Moonshine VAD), Kokoro TTS, the brain.
   //   type:"plan"  — the SAME stage + performer (adopted cube, hands, pointAt,
@@ -1880,15 +1904,18 @@
     bootKokoro();   // both types: plan speaks by default (tts opt-out)
 
     // HOLD MODE (onboarding): the grid comes up but the cube waits offstage
-    // while the requisition form is filled — board.enter() plays the entrance.
-    if (!adopt) stageEl.classList.add("vs-whiteboard");   // standalone owns its paper+grid
+    // while the requisition form is filled — board.beam()/land() do the rest.
+    // "standalone" = anything that isn't a live graph call (no appHooks): it
+    // owns the whiteboard grid, whether it adopts the real cube or not.
+    var standalone = !appHooks;
+    if (standalone) stageEl.classList.add("vs-whiteboard");
     if (opts.hold) {
       root.classList.add("on");
       if (adopt && appHooks) appHooks.hideWorld();
       stagePos = { x: 0, y: 0 };
       if (scene) scene.style.opacity = "0";               // cube waits for enter()
     } else {
-      // adopt → seamless release from the self node; standalone → cube pops in
+      // adopt+appHooks → release from the self node; else → cube pops in
       playEntrance();
     }
 
@@ -1911,6 +1938,77 @@
           if (!mounted) { res(); return; }
           playEntrance(res);
         });
+      },
+      // BEAM: the SAME cube (WebGL body) drops to center, faceless, and slowly
+      // spins (via --ry, which Avatar3D reads) while the voice warms — a loading
+      // bar sits beneath it. Component-agnostic: drives whatever cube is mounted.
+      beam: function () {
+        if (!mounted || !scene) return;
+        stagePos = { x: 0, y: 0 };
+        scene.classList.add("vs-free");           // centered, --sx/--sy/--sc drive it
+        scene.dataset.free = "1";
+        scene.classList.add("vs-faceless");       // no face while warming
+        scene.style.opacity = "1";
+        scene.style.transition = "none";
+        scene.style.setProperty("--sx", "0px");
+        scene.style.setProperty("--sy", "-46px");
+        scene.style.setProperty("--sc", "0.34");
+        void scene.offsetWidth;
+        scene.style.transition = "";
+        scene.style.setProperty("--sy", "0px");   // drop to center
+        scene.style.setProperty("--sc", "0.86");
+        // slow spin: keep raising --ry; Avatar3D lerps the body toward it
+        _spinDeg = 0;
+        (function spin() {
+          if (!mounted || _spinStop) return;
+          _spinDeg += 3.2;
+          cube.style.setProperty("--ry", _spinDeg.toFixed(1));
+          _spinRAF = requestAnimationFrame(spin);
+        })();
+        var lb = document.getElementById("vs-loadbar");
+        if (!lb) { lb = document.createElement("div"); lb.id = "vs-loadbar"; lb.innerHTML = "<i></i>"; stageEl.appendChild(lb); }
+        requestAnimationFrame(function () { lb.classList.add("on"); });
+      },
+      // LAND: the fast loopy finish + wham. A serious voice SNAPS (short, no
+      // overshoot); a lively one SPRINGS (a bouncy scale overshoot). The spin
+      // unwinds to front, the face wakes, it waves.
+      land: function (o) {
+        o = o || {};
+        return new Promise(function (res) {
+          if (!mounted || !scene) { res(); return; }
+          _spinStop = true; if (_spinRAF) cancelAnimationFrame(_spinRAF);
+          var lb = document.getElementById("vs-loadbar");
+          if (lb) { lb.classList.remove("on"); later(setTimeout(function () { if (lb.parentNode) lb.remove(); }, 320)); }
+          var dur = o.snap ? 460 : 900;
+          // "loopy motion back to where it is": unwind --ry to 0 (Avatar3D
+          // glides the body home fast), then settle at front — no backspin bug
+          cube.style.setProperty("--ry", "0");
+          scene.style.transition = "transform " + dur + "ms cubic-bezier(.3,1.5,.4,1)";
+          scene.classList.remove("vs-faceless");            // wake the face
+          setMouth("smirk");
+          // scale: snap straight to 1; spring overshoots then settles (the wham)
+          if (o.snap) {
+            scene.style.setProperty("--sc", "1");
+          } else {
+            scene.style.setProperty("--sc", "1.12");
+            later(setTimeout(function () { scene.style.transition = "transform .3s cubic-bezier(.4,0,.3,1)"; scene.style.setProperty("--sc", "1"); }, dur - 120));
+          }
+          later(setTimeout(function () {
+            _spinStop = false; _spinDeg = 0;
+            if (mounted && !playing) wave();
+            res();
+          }, dur + 60));
+        });
+      },
+      // warm the FIRST clip of a line and resolve when it's ready to play —
+      // ties the beam animation's length to real synth readiness
+      warmFirst: function (text) {
+        if (!tts) return Promise.resolve();
+        var vq = voiceQuery();
+        var parts = ttsTexts(text);
+        if (!parts.length) return Promise.resolve();
+        ttsTexts(text).forEach(function (t) { kokoroGen(t, vq); });   // warm the rest too
+        return Promise.resolve(kokoroGen(parts[0], vq)).catch(function () {});
       },
       say: function (text) {
         return new Promise(function (res) {
@@ -2002,6 +2100,8 @@
         if (rootRef && rootRef.parentNode) rootRef.parentNode.removeChild(rootRef);
         var gbEl = document.getElementById("vs-graph-bg");
         if (gbEl && gbEl.parentNode) gbEl.parentNode.removeChild(gbEl);
+        var ppEl = stageEl && stageEl.querySelector(".vs-paper");
+        if (ppEl && ppEl.parentNode) ppEl.parentNode.removeChild(ppEl);
         if (deckInst) { try { deckInst.destroy(); } catch (e) {} deckInst = null; }
         if (oRef && oRef.parentNode) oRef.parentNode.removeChild(oRef);
         if (adopted && handRefs) {
@@ -2047,6 +2147,15 @@
     } else {
       stageEl.classList.remove("vs-whiteboard");
       if (rootRef) rootRef.classList.remove("on");
+      // standalone that ADOPTED the real cube (onboarding): release our hold on
+      // it so the app can resume it (a reload usually follows, but be clean)
+      if (adopted && sceneRef) {
+        _spinStop = true; if (_spinRAF) cancelAnimationFrame(_spinRAF);
+        sceneRef.classList.remove("vs-faceless", "vs-free");
+        sceneRef.dataset.free = "0";
+        ["--sx", "--sy", "--sc"].forEach(function (v) { sceneRef.style.removeProperty(v); });
+        if (cube) cube.style.removeProperty("--ry");
+      }
       cleanup(500);
     }
   }

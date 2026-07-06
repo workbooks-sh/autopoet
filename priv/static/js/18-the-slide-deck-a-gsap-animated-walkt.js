@@ -565,16 +565,20 @@ async function showPlanMode(previewPairing) {
   document.getElementById("obquiz").style.display = "none";
   document.querySelector("#onboard .obinner").style.display = "none";
   try {
-    // ONBOARDING is its OWN stage — a standalone whiteboard (own grid, own
-    // cube), fully SEPARATE from the dashboard vault graph. No adopt hooks:
-    // the requisition form lands on this grid, then the character enters and
-    // performs its intro. (The live in-dashboard voice call still adopts the
-    // real self node — that path is untouched.)
+    // ONBOARDING uses the ONE avatar component — the SAME #self-cube (WebGL
+    // body + real toon outline) the dashboard and voice calls use, NOT a DOM
+    // stand-in. It's shown in STAGE MODE on a whiteboard (the vault graph is
+    // hidden) and freed from graph-tracking, so it's decoupled from the graph
+    // yet identical in body, outline, and soul. voice-stage ADOPTS it with the
+    // standalone beam/land entrance (no node-release — there's no graph node).
     await loadScript("/static/planmode.js");
-    hideOnboard();                    // the overlay yields to the whiteboard
+    await ensureSelfCube();
+    if (selfCube) selfCube.dataset.free = "1";   // graph stops tracking it
+    hideOnboard();
     const ok = PlanMode.start({
       pairing: previewPairing || null,   // lab preview skips the form
-      stage: { token: TOKEN, stage: document.getElementById("stage"), settleMs: 620 },
+      stage: { token: TOKEN, stage: document.getElementById("stage"), settleMs: 620,
+               adopt: { scene: selfCube, cube: selfCubeInner, prefix: "ap-" } },
       refreshIcons,
       onDone: obDone
     });
