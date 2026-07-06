@@ -63,3 +63,68 @@ server :voice do
     end
   end
 end
+
+## Dictation + engine control
+
+server :voice_ctl do
+  route "POST /voice/dictate", :dictate, auth: :public
+  route "POST /voice/dictate/live", :dictate_live, auth: :public
+  route "POST /voice/tts/qwen/boot", :qwen_boot, auth: :public
+  route "GET /voice/tts/qwen/status", :qwen_status, auth: :public
+  route "POST /speak", :speak, auth: :public
+  route "GET /voice/mode", :voice_mode, auth: :public
+
+  defp t(s), do: {200, "text/plain; charset=utf-8", s}
+
+  defp audio_ext(req) do
+    case Map.get(req.headers, "content-type", "") do
+      "audio/aiff" <> _ -> "aiff"
+      "audio/mp4" <> _ -> "mp4"
+      "audio/webm" <> _ -> "webm"
+      _ -> "wav"
+    end
+  end
+
+  def dictate(req) do
+    case Autopoet.Dictate.transcribe(to_string(req.raw_body || ""), audio_ext(req)) do
+      {:ok, transcript} -> t(transcript)
+      _ -> {204, %{}}
+    end
+  end
+
+  def dictate_live(req) do
+    case Autopoet.Dictate.partial(to_string(req.raw_body || "")) do
+      {:ok, transcript} -> t(transcript)
+      _ -> {204, %{}}
+    end
+  end
+
+  def qwen_boot(req) do
+    case req.query["model"] do
+      "design" -> Autopoet.QwenTts.switch(:design)
+      "custom" -> Autopoet.QwenTts.switch(:custom)
+      "base" -> Autopoet.QwenTts.switch(:base)
+      _ -> Autopoet.QwenTts.ensure(:custom)
+    end
+
+    %{ok: true}
+  end
+
+  def qwen_status(_req), do: t(Autopoet.QwenTts.status() <> "\n")
+
+  def speak(req) do
+    Autopoet.Voice.speak(to_string(req.raw_body || ""))
+    t("speaking\n")
+  end
+
+  def voice_mode(_req) do
+    mode =
+      cond do
+        Autopoet.VoiceBrain.available?() -> "stage"
+        Autopoet.GeminiLive.available?() -> "live"
+        true -> "local"
+      end
+
+    t(mode <> "\n")
+  end
+end
