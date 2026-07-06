@@ -446,3 +446,69 @@ server :vault_edit do
     end
   end
 end
+
+## Plan judge, profile, projects, cloud connect
+
+server :ops do
+  route "POST /plan/judge", :plan_judge, auth: :public
+  route "POST /profile/set", :profile_set, auth: :public
+  route "GET /projects", :projects_list, auth: :public
+  route "GET /projects/:slug/status", :project_status, auth: :public
+  route "POST /cloud/connect/:toolkit", :cloud_connect, auth: :public
+  route "POST /cloud/deploy", :cloud_deploy, auth: :public
+
+  def plan_judge(req) do
+    case Autopoet.PlanBrain.judge(if(is_map(req.body), do: req.body, else: %{})) do
+      {:ok, scores} -> scores
+      _ -> {503, %{error: "judge unavailable"}}
+    end
+  end
+
+  def profile_set(req) do
+    case Autopoet.Profile.put(req.query["key"], req.query["value"]) do
+      :ok -> {200, "text/plain; charset=utf-8", "ok\n"}
+      _ -> {200, "text/plain; charset=utf-8", "refused: bad answer\n"}
+    end
+  end
+
+  def projects_list(_req) do
+    body =
+      case Autopoet.Projects.list() do
+        [] -> "no projects\n"
+        ps -> Enum.map_join(ps, "\n", fn {slug, p} -> "#{slug} #{p.status} archetype=#{p.archetype}" end) <> "\n"
+      end
+
+    {200, "text/plain; charset=utf-8", body}
+  end
+
+  def project_status(req) do
+    slug = req.params["slug"] || req.params[:slug]
+
+    case Autopoet.Projects.get(slug) do
+      nil ->
+        {200, "text/plain; charset=utf-8", "unknown project\n"}
+
+      _p ->
+        hb = Path.join(Autopoet.Projects.artifacts_dir(slug), "state.txt")
+        state = case File.read(hb) do {:ok, t} -> t; _ -> "(no heartbeat yet)\n" end
+        {200, "text/plain; charset=utf-8", state}
+    end
+  end
+
+  def cloud_connect(req) do
+    toolkit = req.params["toolkit"] || req.params[:toolkit]
+
+    case Autopoet.Composio.connect(toolkit) do
+      {:ok, %{redirect_url: url}} -> {200, "text/plain; charset=utf-8", url}
+      _ -> {503, %{error: "composio not configured"}}
+    end
+  end
+
+  def cloud_deploy(_req) do
+    case Autopoet.Cloud.post("/api/cloud/provision", %{}) do
+      {:ok, body} -> body
+      {:error, {code, b}} when is_integer(code) and is_map(b) -> {code, b}
+      _ -> {502, %{error: "provision failed"}}
+    end
+  end
+end
