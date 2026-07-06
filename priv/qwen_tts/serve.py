@@ -9,7 +9,7 @@ Protocol (line-oriented, stdout is SACRED — logs go to stderr):
 Model: Qwen3-TTS-12Hz-1.7B-CustomVoice 4-bit (MLX) — the spike winner:
 1.83x realtime on M-series, correct-length speech (0.6B-4bit is collapsed).
 """
-import json, sys, time, tempfile, os
+import json, sys, time, tempfile, os, zlib, wave, struct
 
 import numpy as np
 
@@ -31,6 +31,55 @@ log(f"loaded in {time.time()-t0:.1f}s")
 print(json.dumps({"ready": True, "model": MODEL}), flush=True)
 
 import soundfile as sf
+import mlx.core as mx
+
+# ── SPEAKER GATE (clone lane) ────────────────────────────────────────────
+# ICL cloning re-rolls delivery per generation (temp 0.9 default); measured
+# median-f0 of takes from ONE ref wandered 148-250 Hz — audibly "different
+# people". Gate: a take must land within ±12% of the REF's median f0 or we
+# re-roll (deterministic seed per attempt, ≤3 tries, keep the closest).
+# Seeds are stable hashes (crc32 — python hash() is process-salted), so the
+# same voice+text yields the SAME take across sessions and processes.
+
+def _f0_median(w, sr=24000):
+    w = np.asarray(w, dtype=np.float32)
+    f0s, fl = [], int(sr * 0.04)
+    for i in range(0, len(w) - fl, fl):
+        fr = w[i:i + fl]
+        if np.sqrt((fr ** 2).mean()) < 0.02:
+            continue
+        fr = fr - fr.mean()
+        ac = np.correlate(fr, fr, "full")[fl - 1:]
+        lo, hi = sr // 400, sr // 70
+        if hi >= len(ac):
+            continue
+        pk = lo + int(np.argmax(ac[lo:hi]))
+        if ac[pk] > 0.3 * ac[0]:
+            f0s.append(sr / pk)
+    return float(np.median(f0s)) if f0s else 0.0
+
+_ref_f0_cache = {}
+
+def ref_f0(path):
+    try:
+        mt = os.path.getmtime(path)
+        hit = _ref_f0_cache.get(path)
+        if hit and hit[0] == mt:
+            return hit[1]
+        wf = wave.open(path, "rb")
+        srr = wf.getframerate()
+        raw = np.array(struct.unpack(f"<{wf.getnframes()}h",
+                                     wf.readframes(wf.getnframes())),
+                       dtype=np.float32) / 32768
+        wf.close()
+        f0 = _f0_median(raw, srr)
+        _ref_f0_cache[path] = (mt, f0)
+        return f0
+    except Exception:
+        return 0.0
+
+def seed_for(*parts):
+    return zlib.crc32("\x1f".join(str(p) for p in parts).encode()) % (2 ** 31)
 
 for line in sys.stdin:
     line = line.strip()
@@ -69,12 +118,29 @@ for line in sys.stdin:
         # the expected length so a ramble truncates instead of running away.
         expected_s = max(1.6, len(text) / 12.0)
         kwargs["max_tokens"] = int(expected_s * 12.5 * 2.5) + 24
-        chunks = []
-        sr = 24000
-        for seg in model.generate(**kwargs):
-            chunks.append(np.array(seg.audio))
-            sr = getattr(seg, "sample_rate", sr) or sr
-        audio = np.concatenate(chunks) if chunks else np.zeros(1, dtype=np.float32)
+        def synth(attempt):
+            mx.random.seed(seed_for(kwargs.get("ref_audio") or kwargs.get("voice")
+                                    or kwargs.get("instruct") or "", text, attempt))
+            chunks, srr = [], 24000
+            for seg in model.generate(**kwargs):
+                chunks.append(np.array(seg.audio))
+                srr = getattr(seg, "sample_rate", srr) or srr
+            return (np.concatenate(chunks) if chunks
+                    else np.zeros(1, dtype=np.float32)), srr
+
+        target = ref_f0(kwargs["ref_audio"]) if kwargs.get("ref_audio") else 0.0
+        audio, sr = synth(0)
+        if target > 0:
+            best, best_d = audio, abs(_f0_median(audio) - target)
+            for attempt in range(1, 3):
+                if best_d <= target * 0.12:
+                    break
+                log(f"gate: take f0 off by {best_d:.0f}Hz (target {target:.0f}) — reroll {attempt}")
+                cand, sr = synth(attempt)
+                d = abs(_f0_median(cand) - target)
+                if d < best_d:
+                    best, best_d = cand, d
+            audio = best
         # edge-trim: drop leading/trailing near-silence (keep 120ms of pad)
         if len(audio) > sr // 2:
             win = sr // 50

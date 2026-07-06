@@ -23,3 +23,16 @@ if t in s:
 PYEOF
 fi
 "$V/bin/python" -c "import mlx_audio, soundfile; print('qwen-tts venv ready')"
+
+# ICL rep-penalty: mlx-audio floors it at 1.5; official Qwen3-TTS uses 1.05
+# everywhere (checkpoint generation_config). The floor perturbs codec tokens →
+# audible timbre drift in clone mode. Honor the caller instead.
+python3 - << 'PYEOF'
+import mlx_audio.tts.models.qwen3_tts.qwen3_tts as q
+f = q.__file__
+s = open(f).read()
+old = "icl_rep_penalty = max(repetition_penalty, 1.5)"
+if old in s:
+    open(f, "w").write(s.replace(old, "icl_rep_penalty = repetition_penalty  # official 1.05; see setup.sh"))
+    print("patched ICL rep penalty")
+PYEOF
