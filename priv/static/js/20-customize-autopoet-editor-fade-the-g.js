@@ -77,9 +77,10 @@ document.getElementById("foot-settings").onclick = e => {
   document.querySelector('#footpop [data-act="reonboard"]').onclick = () =>
     authedPost("/auth/onboarding/reset").then(() => location.reload());
   document.querySelector('#footpop [data-act="planmode"]').onclick = () => { closeFootPop(); showPlanMode(); };
-  document.querySelector('#footpop [data-act="blab"]').onclick = () => {
+  document.querySelector('#footpop [data-act="blab"]').onclick = async () => {
     closeFootPop();
-    toast("behavior lab lives in plan mode now — open plan mode (dev), then the 🎛 button");
+    await showPlanMode();
+    setTimeout(() => window.BehaviorLab && BehaviorLab.toggle(), 1600);
   };
 };
 

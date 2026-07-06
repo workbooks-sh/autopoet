@@ -1099,13 +1099,15 @@ defmodule Autopoet.Control do
 
   # all voice traits (the behavior lab's per-voice parameters)
   get "/voices/traits.json" do
+    pinned = Autopoet.VoiceRoster.pinned()
+
     all =
-      for name <- Autopoet.VoicePersonas.names() ++ Autopoet.VoiceRoster.pinned(),
+      for name <- Autopoet.VoicePersonas.names() ++ pinned,
           t = Autopoet.VoiceRoster.traits(name),
           t != nil,
           File.exists?(Path.join(Autopoet.VoiceRoster.takes_dir(), name <> ".wav")),
           into: %{},
-          do: {name, t}
+          do: {name, Map.put(t, "kind", if(name in pinned, do: "pinned", else: "designed"))}
 
     conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(all))
   end
@@ -1453,7 +1455,10 @@ defmodule Autopoet.Control do
     path = Path.join([:code.priv_dir(:autopoet), "static", "js", Path.basename(name)])
 
     if File.exists?(path) and String.ends_with?(name, ".js") do
-      conn |> put_resp_content_type("application/javascript") |> send_resp(200, File.read!(path))
+      conn
+      |> put_resp_content_type("application/javascript")
+      |> put_resp_header("cache-control", "no-store")
+      |> send_resp(200, File.read!(path))
     else
       send_resp(conn, 404, "no such script\n")
     end
@@ -1463,7 +1468,10 @@ defmodule Autopoet.Control do
     path = Path.join([:code.priv_dir(:autopoet), "static", "css", Path.basename(name)])
 
     if File.exists?(path) and String.ends_with?(name, ".css") do
-      conn |> put_resp_content_type("text/css") |> send_resp(200, File.read!(path))
+      conn
+      |> put_resp_content_type("text/css")
+      |> put_resp_header("cache-control", "no-store")
+      |> send_resp(200, File.read!(path))
     else
       send_resp(conn, 404, "no such stylesheet\n")
     end

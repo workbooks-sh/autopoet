@@ -24,7 +24,7 @@ window.BehaviorLab = (() => {
 
   async function toggle() {
     if (panel) return close();
-    if (!verbs) return;
+    if (!verbs) { window.toast && toast("open plan mode first — the lab rides its stage"); return; }
     if (!traits) traits = await (await fetch("/voices/traits.json")).json();
     panel = document.createElement("div");
     panel.id = "blab";
@@ -57,9 +57,19 @@ window.BehaviorLab = (() => {
 
     panel.querySelector("#bl-x").onclick = close;
     panel.querySelector("#bl-use").onclick = () => {
-      verbs.setVoice({ engine: "qwen-design", persona: sel.value });
-      panel.querySelector("#bl-note").textContent =
-        `session voice → ${sel.value} (design engine warming if needed)`;
+      const kind = (traits[sel.value] || {}).kind;
+      verbs.setVoice(kind === "pinned"
+        ? { engine: "qwen-clone", voice: sel.value }      // clones SYNTHESIZE every line
+        : { engine: "qwen-design", persona: sel.value });
+      const note = panel.querySelector("#bl-note");
+      note.textContent = `session voice → ${sel.value} · engine warming…`;
+      (function poll() {
+        fetch("/voice/tts/qwen/status").then(r => r.text()).then(st => {
+          if (!panel) return;
+          if (st.trim() === "ready") note.textContent = `session voice → ${sel.value} ✓ ready — replay a line`;
+          else setTimeout(poll, 2000);
+        }).catch(() => {});
+      })();
     };
     panel.querySelector("#bl-take").onclick = () => verbs.playTake(`/voices/take/${sel.value}.wav`);
     panel.querySelectorAll(".bl-fire button").forEach(b => b.onclick = () => fire(b.dataset.f));

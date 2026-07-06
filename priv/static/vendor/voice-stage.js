@@ -1142,7 +1142,7 @@
     return p;
   }
   function kokoroGenRaw(text) {
-    if (kokoroMode === "server") {
+    if (kokoroMode === "server" || ttsVoice) {   // a voice override ALWAYS rides the server
       var q;
       if (ttsVoice && ttsVoice.engine === "qwen-design") {
         q = "engine=qwen-design&persona=" + encodeURIComponent(ttsVoice.persona || "narrator");
@@ -1852,7 +1852,7 @@
       setTTS: function (on) { tts = !!on; if (tts) bootKokoro(); return tts; },
       ttsOn: function () { return tts; },
       ready: function () { return kokoro; },
-      warm: function (text) { if (kokoro && tts) ttsTexts(text).forEach(kokoroGen); },
+      warm: function (text) { if ((kokoro || ttsVoice) && tts) ttsTexts(text).forEach(kokoroGen); },
       wave: function () { if (mounted) wave(); },
       nod: function (amp) {
         if (!mounted) return;
