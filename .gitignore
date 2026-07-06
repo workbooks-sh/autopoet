@@ -46,3 +46,6 @@ app/home/static/
 
 # native NIF build artifact (rebuilt from c_src/ by elixir_make on macOS desktop)
 /priv/*.so
+
+# desktop packaging artifacts — the assembled .app/.dmg (scripts/package-macos.sh)
+/dist/

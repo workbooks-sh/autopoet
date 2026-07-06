@@ -84,10 +84,12 @@ defmodule Autopoet.Spine do
     if cloud?() do
       []
     else
-      # Qwen3-TTS is the product engine. Kokoro is booted ONLY when the dev toggle
-      # asks for it (WB_VOICE=kokoro or data/voice-engine) — a comparison lens, never
-      # the default.
-      base = [Autopoet.Stt, Autopoet.Voice, Autopoet.QwenTts, Autopoet.Affect]
+      # Kokoro-82M (BEAM-native ONNX) is the SHIPPED voice engine. Qwen3-TTS is NOT
+      # started in the release — its python sidecar (data/qwen-tts-venv) and MLX weights
+      # don't ship, so `Autopoet.QwenTts` is deliberately absent here. The module stays
+      # compiled, so any stray caller resolves to its graceful "off" status and falls
+      # back to Kokoro. (For a dev A/B, add `Autopoet.QwenTts` back to `base`.)
+      base = [Autopoet.Stt, Autopoet.Voice, Autopoet.Affect]
       base = if Autopoet.VoiceEngine.kokoro?(), do: [Autopoet.Kokoro | base], else: base
 
       Enum.filter(base, fn mod ->

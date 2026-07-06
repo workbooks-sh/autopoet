@@ -13,7 +13,8 @@ defmodule Autopoet.Cloud do
   after you authenticate, the cloud mints a `wbk_` PAT and redirects to our localhost callback. We store
   that PAT and use it as a Bearer token for `/api/cloud/*` (provision, machine lifecycle) and
   `/api/platform/*` (account, usage). The target cloud is configurable — `WORKBOOKS_CLOUD_URL` (or
-  `config :autopoet, :cloud_url`), defaulting to the local dev server for now.
+  `config :autopoet, :cloud_url`), defaulting to the PRODUCTION cloud (`https://app.workbooks.sh`).
+  A release must not export `WORKBOOKS_CLOUD_URL` (that override is for pointing dev at a local nexus).
   """
   # the DEPLOYED cloud (not localhost) — the device-flow login lives here and
   # honors ?device=&cb=. Env-overridable (WORKBOOKS_CLOUD_URL) for local dev.

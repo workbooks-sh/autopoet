@@ -118,7 +118,7 @@ defmodule Autopoet.VoiceEngine do
   Kokoro voice, label = flag + timbre descriptor. Sorted by id so accents group.
   """
   def catalog do
-    dir = Path.join([Autopoet.Discovery.home(), "data", "models", "kokoro", "voices"])
+    dir = Path.join([Autopoet.Discovery.models_dir(), "kokoro", "voices"])
 
     case File.ls(dir) do
       {:ok, files} ->

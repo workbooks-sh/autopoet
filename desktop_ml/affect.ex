@@ -65,7 +65,7 @@ defmodule Autopoet.Affect do
 
   # ── engine (pure — testable without the GenServer) ─────────────────────────
 
-  def dir, do: Path.join([File.cwd!(), "data", "models", "affect"])
+  def dir, do: Path.join(Autopoet.Discovery.models_dir(), "affect")
 
   def load_dir(dir) do
     model = Path.join(dir, "model_quantized.onnx")

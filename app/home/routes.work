@@ -1066,7 +1066,59 @@ server :auth_flows do
         _ -> nil
       end
 
-    %{compute: compute, inference: (if is_binary(Autopoet.Keys.openrouter()), do: "local", else: "cloud"), signed_in: Autopoet.Cloud.signed_in?()}
+    openrouter? = is_binary(Autopoet.Keys.openrouter())
+    signed_in? = Autopoet.Cloud.signed_in?()
+
+    base = %{
+      compute: compute,
+      inference: (if openrouter?, do: "local", else: "cloud"),
+      openrouter: openrouter?,
+      signed_in: signed_in?
+    }
+
+    # Signed in → fold the cloud ACCOUNT state (machines + billing) into the status so
+    # onboarding can (a) show "your autopoet already has a home" (nxConfirm reads
+    # status.nexuses/subscription) and (b) SKIP the token/credit ask when AI is already
+    # available. Best-effort: a slow/unreachable control plane degrades to `base`.
+    if signed_in?, do: Map.merge(base, cloud_account_power()), else: base
+  end
+
+  # The signed-in account's machines + billing, shaped for the onboarding screens.
+  # `powered` is the one truth the token step reads: a BYO OpenRouter key, OR a cloud
+  # credit balance, OR an active subscription, OR a provisioned machine — any of these
+  # means "AI is already on the account; don't ask for tokens." Reads run in parallel
+  # and every failure path collapses to an empty map (never blocks the paint).
+  defp cloud_account_power do
+    [nexuses_r, credits_r, sub_r] =
+      ["/api/platform/nexuses", "/api/platform/credits", "/api/platform/billing/subscription"]
+      |> Enum.map(fn path -> Task.async(fn -> Autopoet.Cloud.get(path) end) end)
+      |> Task.await_many(8000)
+
+    nexuses =
+      case nexuses_r do
+        {:ok, %{"nexuses" => list}} when is_list(list) -> list
+        {:ok, list} when is_list(list) -> list
+        _ -> []
+      end
+
+    credits = case credits_r do {:ok, %{} = m} -> m; _ -> %{} end
+    subscription = case sub_r do {:ok, %{} = m} -> m; _ -> %{} end
+
+    balance = credits["balance"] || credits["amount"] || credits["credits"] || 0
+    sub_active? = subscription["active"] == true or subscription["status"] in ["active", "trialing"]
+    powered = balance > 0 or sub_active? or nexuses != []
+
+    %{
+      nexuses: nexuses,
+      credits: credits,
+      subscription: (if map_size(subscription) > 0, do: subscription, else: nil),
+      balance: balance,
+      powered: powered
+    }
+  rescue
+    _ -> %{}
+  catch
+    :exit, _ -> %{}
   end
 end
 

@@ -1529,7 +1529,8 @@ client :performer do
   // stage entry — a voice must never change mid-conversation. Qwen boots
   // fire-and-forget; if it isn't ready by the first line, kokoro owns the
   // whole session and qwen waits for the next one.
-  var ttsEngine = "qwen";   // THE engine. Kokoro is permanently retired (owner).
+  var ttsEngine = "kokoro"; // shipped engine (Qwen sidecar isn't in the release);
+                            // lockEngine still reconciles against /voices/default.json.
   var ttsVoice = null;      // session voice: {engine:"qwen-clone", voice} | {engine:"qwen-design", persona}
   function lockEngine() {
     // the session speaks with the app's DEFAULT voice. Kokoro (the default engine)
@@ -7353,11 +7354,15 @@ async function showPlanMode(previewPairing) {
   // the DESIGNER — which lives INSIDE plan mode on the grid with the real cube
   // (opts.designer), never the dashboard. Mark it so the try-block below mounts
   // plan mode in designer mode.
-  let kokoro = false;
-  if (!previewPairing) {
-    try { kokoro = (await fetch("/voice/engine").then(r => r.json())).engine === "kokoro"; } catch (_) {}
-    if (kokoro) await warmVoice();
-  }
+  //
+  // RELEASE GATE: this build ships Kokoro only, so onboarding is ALWAYS the
+  // designer — the AP-7 "PERSONALITY REQUISITION" (the signable contract sheet,
+  // window.Requisition) is the Qwen/legacy path and is NOT shipped yet. We force
+  // the designer path rather than reading /voice/engine so a failed probe can
+  // never fall through to the contract form. (A lab preview still passes its own
+  // pairing and skips the form.)
+  let kokoro = !previewPairing;
+  if (kokoro) await warmVoice();
 
   try {
     // ONBOARDING uses the ONE avatar component — the SAME #self-cube (WebGL
@@ -7833,12 +7838,32 @@ function showInference(computeHint) {
     setPowered(r.ok, r.ok ? "your key is in — any OpenRouter model" : "couldn't save that key — try again");
   };
 
-  // already thinking? — read the prefetched status (fresh fetch only as fallback)
+  // ALREADY POWERED? — if the signed-in account already carries AI (a BYO OpenRouter
+  // key, cloud credits, an active subscription, or a provisioned machine), the token
+  // ask is irrelevant: collapse the buy/key lanes to one confirmation and let them
+  // continue. `powered`/`balance`/`credits`/`subscription` come from /power/status,
+  // which folds in the cloud account (see routes.work power_status).
   const statusP = window._powerPrefetch
     ? window._powerPrefetch.then(v => v && v[0])
     : fetch("/power/status").then(r => r.json());
   statusP.then(p => {
-    if (p && p.inference) setPowered(true, p.openrouter ? "your key is connected" : "Workbooks AI is live");
+    if (!p) return;
+    if (p.openrouter) { setPowered(true, "your key is connected"); return; }
+    if (p.powered) {
+      const bal = p.balance || (p.credits && (p.credits.balance || p.credits.amount || p.credits.credits)) || 0;
+      const line = bal > 0 ? "Workbooks AI credits are already in your account"
+        : p.subscription ? "your plan already includes AI through the gateway"
+        : "your machine already thinks through the gateway";
+      stack.innerHTML = `
+        <div class="nx-option open">
+          <div class="nx-body" style="padding:14px 16px">
+            <p class="nx-line"><i data-lucide="check"></i> ${line}</p>
+            <p class="obtext" style="margin:.5em 0 0">nothing to add — just continue.</p>
+          </div>
+        </div>`;
+      setPowered(true, "AI is already on your account");
+      refreshIcons();
+    }
   }).catch(() => {});
 
   refreshIcons();

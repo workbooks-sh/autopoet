@@ -18,8 +18,20 @@ defmodule Autopoet.Discovery do
 
   def token, do: :persistent_term.get({__MODULE__, :token})
 
+  # The WRITABLE data home — the seeded world, the cloud token, session, ctl, and
+  # power-compute all live under here. DECOUPLED from the read-only SURFACE root: a
+  # packaged `.app` sets `AUTOPOET_DATA` to a per-user dir
+  # (`~/Library/Application Support/Autopoet`) while `AUTOPOET_HOME` stays the read-only
+  # `app/home` surface inside the bundle. Dev/`run.sh` set only `AUTOPOET_HOME`, so
+  # `home()` is the project dir exactly as before.
   def home,
-    do: System.get_env("AUTOPOET_HOME") || Application.get_env(:autopoet, :home) || File.cwd!()
+    do:
+      System.get_env("AUTOPOET_DATA") || System.get_env("AUTOPOET_HOME") ||
+        Application.get_env(:autopoet, :home) || File.cwd!()
+
+  @doc "Root of the bundled ML weights — `AUTOPOET_MODELS` in a packaged `.app`, else `<home>/data/models`."
+  def models_dir, do: System.get_env("AUTOPOET_MODELS") || Path.join([home(), "data", "models"])
+
   def path, do: Path.join([home(), "data", "ctl"])
 
   @impl true
