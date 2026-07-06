@@ -21,27 +21,67 @@ BASE = "http://127.0.0.1:4477"
 HOME = __file__.rsplit("/", 2)[0]
 TOKEN = open(f"{HOME}/data/ctl").read().split()[1]
 
-FORM = {
-    "name": "Mara Ellison",
-    "areas": ["running a business", "writing & research"],
-    "manner": "gentle", "energy": "calm", "humor": "dry",
-    "verbosity": "balanced", "voice_pref": "warm", "accent_pref": "no preference",
-    "remarks": "i run a small ceramics studio; computers are not my thing",
+# personas exercise different temperaments/domains — pick with --persona=<key>
+PERSONAS = {
+    "ceramics": {
+        "form": {
+            "name": "Mara Ellison", "areas": ["running a business", "writing & research"],
+            "manner": "gentle", "energy": "calm", "humor": "dry", "verbosity": "balanced",
+            "voice_pref": "warm", "accent_pref": "no preference",
+            "remarks": "i run a small ceramics studio; computers are not my thing",
+        },
+        "answers": [
+            "i make ceramics and sell at weekend markets. good with my hands, hopeless at computers.",
+            "i want people to find my work online and order pieces without me doing tech stuff.",
+            "instagram matters most — that's where my buyers are. and a simple order form.",
+            "i photograph every piece on my phone already, usually in batches.",
+            "i fire the kiln on fridays, so new work lands weekly.",
+            "keep it simple. i'd rather have one thing working than five half-done.",
+            "yes, exactly that.", "sounds right — you decide the details.",
+            "that covers it, honestly.", "no, i think you have everything.",
+        ],
+    },
+    "founder": {
+        "form": {
+            "name": "Dev Okonkwo", "areas": ["building software", "running a business"],
+            "manner": "blunt", "energy": "spirited", "humor": "mandatory", "verbosity": "terse",
+            "voice_pref": "deep", "accent_pref": "no preference",
+            "remarks": "technical founder, shipping a dev-tools startup, hate fluff",
+        },
+        "answers": [
+            "i'm a solo technical founder. rust and typescript. shipping a CLI for infra teams.",
+            "i want a growth engine — docs, changelog, a waitlist that converts. all automated.",
+            "github stars and hacker news are my channels. and a launch email list.",
+            "i push releases daily, tag them in git.",
+            "docs live in markdown in the repo already.",
+            "just make it fast and make it mine. no corporate voice.",
+            "yeah, tie it to the git tags.", "you pick the stack, i trust you.",
+            "good, that's the shape of it.", "nope, ship it.",
+        ],
+    },
+    "teacher": {
+        "form": {
+            "name": "Priya Raman", "areas": ["learning things", "personal operations"],
+            "manner": "direct", "energy": "steady", "humor": "minimal", "verbosity": "storyteller",
+            "voice_pref": "bright", "accent_pref": "no preference",
+            "remarks": "high-school science teacher, want to organize my lessons and reach students",
+        },
+        "answers": [
+            "i teach high-school physics. i want my lessons and labs organized and shareable.",
+            "i'd love students to access materials and quizzes without me emailing PDFs constantly.",
+            "google classroom is what the school uses. and i make slides in keynote.",
+            "i write everything in google docs first.",
+            "new unit every two weeks, roughly.",
+            "i want it clear and reliable — students get confused easily.",
+            "yes, sync with classroom.", "you decide the layout, you know best.",
+            "that's really helpful, thank you.", "no, that's everything.",
+        ],
+    },
 }
-
-# the scripted owner — a plausible human, answers in order as asked
-ANSWERS = [
-    "i make ceramics and sell at weekend markets. good with my hands, hopeless at computers.",
-    "i want people to find my work online and order pieces without me doing tech stuff.",
-    "instagram matters most — that's where my buyers are. and a simple order form.",
-    "i photograph every piece on my phone already, usually in batches.",
-    "i fire the kiln on fridays, so new work lands weekly.",
-    "keep it simple. i'd rather have one thing working than five half-done.",
-    "yes, exactly that.",
-    "sounds right — you decide the details.",
-    "that covers it, honestly.",
-    "no, i think you have everything.",
-]
+_pk = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--persona=")), "ceramics")
+FORM = PERSONAS[_pk]["form"]
+ANSWERS = PERSONAS[_pk]["answers"]
+print(f"══ persona: {_pk} ══")
 MAX_TURNS = 30   # eval-harness safety stop, not a product limit
 
 

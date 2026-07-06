@@ -55,12 +55,17 @@ defmodule Autopoet.PlanBrain do
     prompt = [%{"role" => "system", "content" => system_prompt(state, fork_done, exchanges)} | trim(history)]
     titles = state["deck_titles"] |> List.wrap() |> Enum.map(&String.downcase(to_string(&1)))
 
-    # three attempts, each fully guarded so a bad reply is a RETRY not a crash:
-    #   1. fast lane (Cerebras)   2. planner (openrouter)   3. planner + repair
-    # nudge. A parse/validate failure never 503s unless all three miss.
+    # PLANNER-PRIMARY: gemma-class fast models hold persona + strict JSON
+    # unreliably (the teacher persona failed the eval ~2/3 of runs — fragment
+    # questions, dropped character). The planner (gemini-3.5-flash) is
+    # consistent, and its extra ~1s hides behind the current line's narration
+    # (the client prefetches the next turn) and the TTS synth that paces the
+    # session. So: planner first for QUALITY, the fast lane only as a fallback
+    # if the planner is down, then a repair nudge.
+    #   each attempt is fully guarded — a bad reply is a RETRY, never a 503.
     attempts = [
-      fn -> completion(prompt) end,
       fn -> planner(prompt) end,
+      fn -> completion(prompt) end,
       fn -> planner(prompt ++ [@repair]) end
     ]
 
@@ -174,13 +179,24 @@ defmodule Autopoet.PlanBrain do
     {"move":"slide","say":"...","title":"...","md":"# Title\\n\\n- point\\n- point"}
     {"move":"fork","say":"...","options":[{"title":"...","md":"one line"},{"title":"...","md":"one line"},{"title":"...","md":"one line"}]}
     {"move":"complete","say":"...","title":"...","md":"# Title\\n\\n- point"}
-    Rules: say <= 32 words, in character. md is reveal.js markdown; a slide MAY
-    carry a ```mermaid fenced diagram. Titles are short. Never fork twice.
-    NEVER repeat or re-draft a slide already in SLIDES SO FAR — every new slide
-    covers NEW ground; if nothing new needs a card this turn, ask without md.
-    NEVER re-ask something already answered or deflected. If the owner defers
-    ("you decide", "keep it simple"), make the call yourself, state it briefly,
-    and move to the NEXT topic.
+
+    HARD RULES:
+    - Every "say" is a COMPLETE, natural sentence in your character's voice —
+      speak like a person, NEVER a bare form-field fragment ("What features?",
+      "How often?", "Next, data storage?"). Honor the DELIVERY spec above.
+    - say <= 32 words, in character. md is reveal.js markdown; a slide MAY carry
+      a ```mermaid fenced diagram. Titles are short. Never fork twice.
+    - NEVER repeat or re-draft a slide already in SLIDES SO FAR — every new slide
+      covers NEW ground; if nothing new needs a card, ask without md.
+    - NEVER re-ask something already answered or deflected. If the owner defers
+      ("you decide", "keep it simple", "ship it"), make the call yourself, state
+      it in one sentence, and move to the NEXT topic.
+    - NEVER emit a placeholder or filler slide ("Metric: Other", "TBD"). If you
+      lack the detail, decide sensibly or leave it out.
+    - COMPLETE when the deck covers mission, direction, deliverables,
+      integrations, and cadence — OR when the owner's last two replies were mere
+      confirmations/deferrals. Do not pad the session; a tight 6-slide plan beats
+      a bloated one. End with a clean summary slide.
     """
   end
 
