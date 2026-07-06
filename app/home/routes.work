@@ -1053,3 +1053,30 @@ server :ops7 do
     end
   end
 end
+
+## Shadow companion — the BEAM-native learned analysis (Scholar + minGRU)
+
+The nexus's own learned lenses over the captured behavioral corpus, wired live so
+they run on every nexus (desktop + cloud) and never fall to dead-code cleanup:
+Scholar/GMM tabular clustering (`Autopoet.Shadow.Profile`), the self-training minGRU
+sequence model (`Autopoet.Shadow.Sequence`), and the Markov higher-order gate
+(`Autopoet.Shadow.Trace`). Pure Nx — no Python, no hardware.
+
+server :shadow do
+  route "GET /shadow/companion", :companion, auth: :public
+  route "GET /shadow/sequence", :sequence, auth: :public
+
+  def companion(req) do
+    level = if req.query["level"] == "doc", do: :doc, else: :kind
+    Autopoet.Shadow.Companion.analyze(level: level, max_steps: 600)
+  end
+
+  def sequence(req) do
+    signals =
+      Autopoet.Shadow.Trace.dir()
+      |> Autopoet.Shadow.Trace.events()
+      |> Autopoet.Shadow.Trace.signals(if(req.query["level"] == "doc", do: :doc, else: :kind))
+
+    Autopoet.Shadow.Sequence.analyze(signals, max_steps: 600)
+  end
+end

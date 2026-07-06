@@ -7,10 +7,12 @@ defmodule Autopoet.Shadow.Profile do
   the behavioral types from the data — deterministic spine vs decision/branch — so
   the boundary is learned and scales as the corpus grows.
 
-  Lives in `desktop_ml/` (compiled desktop/dev only, where Scholar+Nx are present;
-  the cloud brain never runs offline profiling). Read `Trace`, build features,
-  cluster, interpret. Companion to the sequence layer (minGRU/entropy-monitor),
-  not a replacement — this reasons over DERIVED tabular features, not raw order.
+  Nexus-native: pure Scholar/Nx (no Python, no mic/speaker, no weight files), so the
+  SAME clustering runs on the local desktop nexus AND the workbooks.sh cloud nexus —
+  wired live through `Autopoet.Shadow.Companion` (`GET /shadow/companion`). Read
+  `Trace`, build features, cluster, interpret. The TABULAR companion to the learned
+  SEQUENCE model (`Autopoet.Shadow.Sequence`, a minGRU) — this reasons over DERIVED
+  per-locus features; the sequence model reasons over raw ORDER.
 
   Point it at the captured corpus and it returns the learned behavioural bands;
   the clustering sharpens as the corpus grows. A learned band supersedes the
