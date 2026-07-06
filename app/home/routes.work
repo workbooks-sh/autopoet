@@ -648,3 +648,82 @@ server :ops2 do
     if q == "", do: t("usage: research?q=<question>\n"), else: (Autopoet.Limbs.research(q); t("researching: #{q}\n"))
   end
 end
+
+## Chat send, requisition, diagram, deck, toolkits
+
+server :ops3 do
+  route "POST /chat/send", :chat_send, auth: :public
+  route "POST /onboard/requisition", :requisition, auth: :public
+  route "POST /voice/d2", :voice_d2, auth: :public
+  route "GET /voice/deck", :voice_deck, auth: :public
+  route "GET /voice/moods", :voice_moods, auth: :public
+  route "GET /cloud/toolkits", :cloud_toolkits, auth: :public
+  route "GET /voices/take/:name", :voices_take, auth: :public
+  route "POST /voices/trait", :voices_trait, auth: :public
+
+  defp t(s), do: {200, "text/plain; charset=utf-8", s}
+  defp home_file(parts), do: Path.join([Autopoet.Discovery.home() | parts])
+
+  def chat_send(req) do
+    case Autopoet.Chat.send(req.query["id"], to_string(req.raw_body || "")) do
+      {:ok, reply} -> t(reply)
+      {:error, r} -> {502, %{error: "chat failed: #{inspect(r)}"}}
+    end
+  end
+
+  def requisition(req) do
+    case Autopoet.Requisition.pair(if(is_map(req.body), do: req.body, else: %{})) do
+      {:ok, identity} -> identity
+      {:error, r} -> {503, %{error: to_string(r)}}
+    end
+  end
+
+  def voice_d2(req) do
+    src = to_string(req.raw_body || "")
+    base = Path.join(System.tmp_dir!(), "apd2-#{System.unique_integer([:positive])}")
+    d2file = base <> ".d2"
+    svg = base <> ".svg"
+
+    try do
+      File.write!(d2file, src)
+
+      case System.cmd("d2", ["--theme=0", "--pad=12", d2file, svg], stderr_to_stdout: true) do
+        {_, 0} -> {200, "image/svg+xml", File.read!(svg)}
+        {err, _} -> {422, %{error: String.slice(to_string(err), 0, 200)}}
+      end
+    after
+      File.rm(d2file)
+      File.rm(svg)
+    end
+  end
+
+  def voice_deck(_req), do: t(File.read(home_file(["data", "decks", "current.md"])) |> elem(1) |> to_string())
+  def voice_moods(_req), do: t(File.read(home_file(["data", "voice-moods.txt"])) |> elem(1) |> to_string())
+
+  def cloud_toolkits(req) do
+    opts = [limit: req.query["limit"] || "40"] ++ (case req.query["search"] do s when is_binary(s) and s != "" -> [search: s]; _ -> [] end)
+
+    case Autopoet.Composio.toolkits(opts) do
+      {:ok, b} -> b
+      _ -> %{"items" => []}
+    end
+  end
+
+  def voices_take(req) do
+    name = req.params["name"] || req.params[:name]
+    path = Path.join(Autopoet.VoiceRoster.takes_dir(), Path.basename(to_string(name)))
+
+    if File.exists?(path) and String.ends_with?(to_string(name), ".wav") do
+      {200, "audio/wav", File.read!(path)}
+    else
+      {404, %{error: "no such take"}}
+    end
+  end
+
+  def voices_trait(req) do
+    case Autopoet.VoiceRoster.set_trait(req.query["name"] || "", req.query["key"] || "", req.query["value"] || "") do
+      :ok -> t("ok\n")
+      _ -> {422, %{error: "bad trait"}}
+    end
+  end
+end
