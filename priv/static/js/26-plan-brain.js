@@ -46,13 +46,10 @@ window.PlanBrain = (() => {
     bar.innerHTML = `
       <div id="pm-qpin"></div>
       <div class="pm-bar-row">
-        <input id="pm-say" placeholder="type, or hold space to talk…" autocomplete="off" spellcheck="false">
+        <input id="pm-say" placeholder="type your answer…" autocomplete="off" spellcheck="false">
         <button id="pm-send" class="pm-send" title="send">→</button>
       </div>
-      <div class="pm-ptt" id="pm-ptt">
-        <span class="pm-ptt-lead">hold</span><kbd class="pm-key">space</kbd>
-        <span class="pm-ptt-verb" id="pm-ptt-verb">to talk</span>
-      </div>`;
+      <div class="pm-ptt" id="pm-ptt"></div>`;
     document.body.appendChild(bar);
     const input = bar.querySelector("#pm-say");
     const fire = () => {
@@ -63,49 +60,97 @@ window.PlanBrain = (() => {
     };
     bar.querySelector("#pm-send").onclick = fire;
     input.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); fire(); } });
-    // the keycap verb tracks whether holding will INTERRUPT or just talk
-    const verb = bar.querySelector("#pm-ptt-verb");
-    setInterval(() => {
-      if (!bar || !board) return;
-      verb.textContent = board.isSpeaking && board.isSpeaking() ? "to interrupt" : "to talk";
-    }, 300);
     wirePTT(input);
-    // NOT autofocused — space is push-to-talk by default; click the field to type
+    renderKeycap();
+    // NOT autofocused — space is push-to-talk once mic is enabled; click to type
   }
 
-  // ── push-to-talk: hold SPACE (when not typing) → record + live transcribe;
-  //    release → send. Holding while the agent speaks interrupts it. ──
-  let pttHeld = false;
+  // ── push-to-talk state machine — SINGLE source of truth, infallible ──
+  //   micState: "unknown"|"prompt"|"granted"|"denied"  ·  recording: bool
+  const ptt = { mic: "unknown", recording: false };
+  let _pttHandlers = null, _keycapT = null;
+
+  async function refreshMic() {
+    if (!board) return;
+    const s = board.micState ? await board.micState() : "prompt";
+    if (ptt.mic !== s) { ptt.mic = s; renderKeycap(); }
+  }
+
+  // the keycap: enable-badge until mic is granted, then HOLD [space] to talk
+  function renderKeycap() {
+    const el = bar && bar.querySelector("#pm-ptt");
+    if (!el) return;
+    if (ptt.mic === "granted") {
+      const verb = ptt.recording ? "release to send" : (board && board.isSpeaking && board.isSpeaking() ? "to interrupt" : "to talk");
+      el.innerHTML = `<span class="pm-ptt-lead">hold</span><kbd class="pm-key">space</kbd><span class="pm-ptt-verb">${verb}</span>`;
+      el.classList.remove("pm-ptt-enable");
+      el.onclick = null;
+    } else if (ptt.mic === "denied") {
+      el.innerHTML = `<span class="pm-ptt-blocked">🎙 mic blocked — allow it in system settings, or just type</span>`;
+      el.classList.remove("pm-ptt-enable");
+      el.onclick = null;
+    } else {
+      el.innerHTML = `<button class="pm-enable-mic">🎙 enable voice</button><span class="pm-ptt-lead" style="margin-left:8px">to hold-space talk</span>`;
+      el.classList.add("pm-ptt-enable");
+      el.onclick = async () => {
+        const ok = board && board.enableMic ? await board.enableMic() : false;
+        ptt.mic = ok ? "granted" : "denied";
+        renderKeycap();
+      };
+    }
+  }
+
   function wirePTT(input) {
-    const bubbleLive = t => {
-      let el = document.getElementById("pm-live");
-      if (!el) { el = document.createElement("div"); el.id = "pm-live"; el.className = "pm-bub you pm-live"; ensureChat().appendChild(el); }
-      el.textContent = t;
-    };
-    const onDown = async e => {
-      if (e.code !== "Space" || e.repeat || pttHeld) return;
-      if (document.activeElement === input) return;   // typing → space is a space
-      e.preventDefault();
-      pttHeld = true;
+    // live partials land IN THE INPUT (owner: not a bubble, not above — the input)
+    const live = t => { if (ptt.recording) { input.value = t; input.classList.add("pm-live-in"); } };
+
+    async function start() {
+      if (ptt.recording || ptt.mic !== "granted") return;
+      ptt.recording = true;
       bar.classList.add("ptt-live");
-      const ok = await board.pttStart(bubbleLive);
-      if (!ok) { pttHeld = false; bar.classList.remove("ptt-live"); }
-    };
-    const onUp = async e => {
-      if (e.code !== "Space" || !pttHeld) return;
-      e.preventDefault();
-      pttHeld = false;
+      renderKeycap();
+      const ok = await board.pttStart(live);
+      if (!ok) { ptt.recording = false; bar.classList.remove("ptt-live"); ptt.mic = "denied"; renderKeycap(); }
+    }
+    async function stop() {
+      if (!ptt.recording) return;
+      ptt.recording = false;
       bar.classList.remove("ptt-live");
-      const live = document.getElementById("pm-live");
-      if (live) live.remove();
-      const text = await board.pttStop();
+      renderKeycap();
+      input.classList.remove("pm-live-in");
+      const final = await board.pttStop();
+      const text = (final || input.value || "").trim();
+      input.value = "";
       if (text) send(text);
+    }
+
+    const onDown = e => {
+      if (e.code !== "Space" || e.repeat) return;
+      if (document.activeElement === input) return;   // typing → space is a space
+      if (ptt.mic !== "granted") return;              // not enabled → space does nothing
+      e.preventDefault();
+      start();
     };
+    const onUp = e => {
+      if (e.code !== "Space") return;
+      if (!ptt.recording) return;
+      e.preventDefault();
+      stop();
+    };
+    // FAILSAFE: any focus loss / visibility change while holding → force-stop,
+    // so the recorder can never get stuck on (the keyup might never arrive)
+    const bail = () => { if (ptt.recording) stop(); };
+
     window.addEventListener("keydown", onDown, true);
     window.addEventListener("keyup", onUp, true);
-    _pttHandlers = { onDown, onUp };
+    window.addEventListener("blur", bail);
+    document.addEventListener("visibilitychange", () => { if (document.hidden) bail(); });
+    _pttHandlers = { onDown, onUp, bail };
+
+    // poll mic state + keep the keycap verb (talk/interrupt) live
+    refreshMic();
+    _keycapT = setInterval(() => { if (ptt.mic === "granted" && !ptt.recording) renderKeycap(); }, 400);
   }
-  let _pttHandlers = null;
 
   // owner speaks → into history; if the brain was waiting on an answer, release
   function send(text) {
@@ -290,8 +335,11 @@ window.PlanBrain = (() => {
     if (_pttHandlers) {
       window.removeEventListener("keydown", _pttHandlers.onDown, true);
       window.removeEventListener("keyup", _pttHandlers.onUp, true);
+      window.removeEventListener("blur", _pttHandlers.bail);
       _pttHandlers = null;
     }
+    clearInterval(_keycapT); _keycapT = null;
+    if (ptt.recording && board && board.pttStop) { board.pttStop(); ptt.recording = false; }
     [bar, deckNav, document.getElementById("pm-chat")].forEach(el => el && el.remove());
     bar = null; deckNav = null;
     document.querySelectorAll(".pm-fork,.pm-proc").forEach(el => el.remove());

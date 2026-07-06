@@ -1974,7 +1974,12 @@
     fetch("/voice/dictate/live", { method: "POST",
       headers: { authorization: "Bearer " + TOKEN, "content-type": "audio/wav" }, body: blob })
       .then(function (r) { return r.status === 200 ? r.text() : ""; })
-      .then(function (t) { pttPartialBusy = false; t = (t || "").trim(); if (t && pttOnPartial) pttOnPartial(t); })
+      .then(function (t) {
+        pttPartialBusy = false; t = (t || "").trim();
+        if (!t || !pttRec) return;
+        if (pttOnPartial) pttOnPartial(t);   // live text → the input field
+        reactToUser(t, true);                // LIVE emotion: react as they speak
+      })
       .catch(function () { pttPartialBusy = false; });
   }
   async function pttStart(onPartial) {
@@ -1983,17 +1988,20 @@
     pttOnPartial = onPartial || null;
     try { await pttEnsure(); } catch (e) { return false; }
     pttFrames = []; pttRec = true;
-    setBrows("raised");
+    // listening posture — attentive, eyes toward the owner (bottom of screen)
+    setBrows("raised"); setMouth("neutral");
+    setAttention({ x: (typeof window !== "undefined" ? window.innerWidth : 800) / 2, y: (typeof window !== "undefined" ? window.innerHeight : 600) }, 20000, 1.3);
     clearInterval(pttPartialT);
-    pttPartialT = later(setInterval(pttPartial, 550));
+    pttPartialT = later(setInterval(pttPartial, 500));
     return true;
   }
   async function pttStop() {
+    if (!pttRec) return "";          // idempotent — a stray keyup can't double-fire
     pttRec = false;
     clearInterval(pttPartialT);
     setBrows("none");
     var buf = pttMerge(); pttFrames = [];
-    if (!buf.length || buf.length < (pttCtx ? pttCtx.sampleRate * 0.25 : 4000)) return "";  // too short
+    if (!buf.length || buf.length < (pttCtx ? pttCtx.sampleRate * 0.2 : 3200)) return "";  // too short
     var blob = wavFromRaw({ audio: buf, sampling_rate: pttCtx.sampleRate });
     try {
       var r = await fetch("/voice/dictate", { method: "POST",
@@ -2001,6 +2009,22 @@
       var text = (await r.text()).trim();
       return (r.ok && text && !/^refused:/.test(text)) ? text : "";
     } catch (e) { return ""; }
+  }
+  var _micGranted = false;
+  async function micState() {
+    if (_micGranted) return "granted";
+    try {
+      if (navigator.permissions && navigator.permissions.query) {
+        var st = await navigator.permissions.query({ name: "microphone" });
+        if (st.state === "granted") _micGranted = true;
+        return st.state;   // granted | prompt | denied
+      }
+    } catch (e) {}
+    return "prompt";
+  }
+  async function enableMic() {
+    try { await pttEnsure(); _micGranted = true; return true; }
+    catch (e) { return false; }
   }
 
   // ────────────────────────── mount / unmount ──────────────────────────
@@ -2304,9 +2328,12 @@
       // (perform() clears it automatically when the next line starts)
       think: function (on) { if (mounted) (on !== false ? startThink() : stopThink()); },
       // push-to-talk: pttStart(onPartial) begins recording (interrupts the
-      // agent); pttStop() resolves the final Moonshine transcript.
+      // agent) with LIVE emotional reactions; pttStop() resolves the final
+      // Moonshine transcript. micState()/enableMic() gate the first-run prompt.
       pttStart: function (onPartial) { return mounted ? pttStart(onPartial) : Promise.resolve(false); },
       pttStop: function () { return mounted ? pttStop() : Promise.resolve(""); },
+      micState: function () { return micState(); },
+      enableMic: function () { return enableMic(); },
       isSpeaking: function () { return !!playing; },
       // ── the deck: the character authors reveal.js slides (the "pitch"); the
       //    accumulated markdown is the plan artifact. slide() appends + shows.

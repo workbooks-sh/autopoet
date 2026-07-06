@@ -176,3 +176,10 @@ body.pm-convo #vs-caption { display:none !important; }
 .pm-bar.ptt-live .pm-ptt-verb { color:#16161a; }
 @keyframes pm-ptt-pulse { 50% { transform:translateY(-1px); } }
 .pm-bub.pm-live { opacity:.85; font-style:italic; }
+/* mic-permission badge (first run) + live-transcript-in-input state */
+.pm-enable-mic { font:700 11px ui-monospace,monospace; letter-spacing:.04em; text-transform:uppercase;
+  padding:6px 13px; border:1.4px solid #16161a; border-radius:9px; background:#16161a; color:#fff; cursor:pointer; }
+.pm-enable-mic:hover { background:#2e2e34; }
+.pm-ptt.pm-ptt-enable { padding-top:10px; }
+.pm-ptt-blocked { font:600 11px ui-monospace,monospace; color:#b0663a; }
+#pm-say.pm-live-in { color:#16161a; font-style:italic; }
