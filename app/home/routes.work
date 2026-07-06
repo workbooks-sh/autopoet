@@ -920,8 +920,15 @@ end
 server :realtime do
   route "GET /voice/live", :voice_live, auth: :public
   route "POST /auth/cloud/open", :cloud_open, auth: :public
-  route "GET /auth/cloud/callback", :cloud_callback, auth: :public
-  route "POST /auth/signup", :signup, auth: :public
+  # The device-flow return hop lives OUTSIDE `/auth/*` on purpose: the nexus runtime
+  # RESERVES `/auth/:provider/callback` for its OWN native-auth IdP (Nexus.Server's
+  # built-in Plug routes match before workbook routes), so `/auth/cloud/callback`
+  # was silently intercepted → provider "cloud" unknown → 401, and the browser's
+  # token never reached us. `/cloud/callback` is app-owned (like /cloud/status.json).
+  route "GET /cloud/callback", :cloud_callback, auth: :public
+  # Same reservation hazard: `POST /auth/signup` collides with Nexus.Auth.Native.signup
+  # (which wants an email → 422). This app's name-carry signup lives under onboarding.
+  route "POST /auth/onboarding/signup", :signup, auth: :public
   route "POST /auth/cloud/signout", :cloud_signout, auth: :public
   route "POST /auth/cloud/disconnect", :cloud_disconnect, auth: :public
 
@@ -929,7 +936,7 @@ server :realtime do
   def voice_live(_req), do: {:ws, Autopoet.VoiceSock, %{}}
 
   def cloud_open(_req) do
-    cb = "http://127.0.0.1:#{Autopoet.Application.port()}/auth/cloud/callback"
+    cb = "http://127.0.0.1:#{Autopoet.Application.port()}/cloud/callback"
     url = Autopoet.Cloud.base_url() <> "/login/?device=autopoet&cb=" <> URI.encode_www_form(cb)
     spawn(fn -> System.cmd("open", [url]) end)
     %{ok: true}

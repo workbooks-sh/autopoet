@@ -799,7 +799,7 @@ client :performer do
     // adopted cube renders hands in WebGL (avatar3d) — the div is then just an
     // invisible controller (position/rotation vars + pose), not the artwork
     if (adopt && window.Avatar3D) { h.innerHTML = ""; return; }
-    h.innerHTML = poseSVG(POSE_SHAPES[pose]);   // standalone: stamped-union SVG art
+    h.innerHTML = poseSVG(POSE_SHAPES[pose] || POSE_SHAPES.open);   // stamped-union SVG art (baked-only poses degrade to the open mitten on this webview path)
   }
   function setHand(h, vars) { Object.keys(vars).forEach(function (k) { h.style.setProperty("--" + k, vars[k]); }); }
   function placeHand(side, ang, rotDeg, pose) {
@@ -917,6 +917,26 @@ client :performer do
     placeHand("l", 172 * D, 230, "open");
     gesture("--rz", [-3, 3, 0], 200);
     hold(1200);
+  }
+  // ── pose-hold gestures ─────────────────────────────────────────────────────
+  // Raise the right hand in one of the baked poses, hold, drop. ONE table keeps
+  // the brain's directive vocabulary (voice_brain.ex), the fireDir dispatch, and
+  // the avatar3d pose meshes in sync. Unknown poses degrade to the "open" SVG
+  // mitten on the webview fallback (setPose). rot defaults to a slight outward tilt.
+  var GEST_POSE = {
+    peace: { pose: "peace" }, rock: { pose: "rock" }, fist: { pose: "fist", hs: 1.12 },
+    ily:   { pose: "ily" },   three: { pose: "three" }, five: { pose: "five" },
+    palm:  { pose: "palm", rot: 0 }, chill: { pose: "relaxed", rot: -18 }
+  };
+  function poseHold(cfg, ms) {
+    if (!hands || !cfg) return;
+    hideHands();
+    placeHand("r", -SEC, cfg.rot == null ? 8 : cfg.rot, cfg.pose);
+    if (cfg.hs) {
+      setHand(hands.r, { hs: cfg.hs });
+      later(setTimeout(function () { setHand(hands.r, { hs: 1 }); }, 240));
+    }
+    hold(ms || 1500);
   }
 
   // ────────────────────────── D2 graph layer ──────────────────────────
@@ -1496,14 +1516,16 @@ client :performer do
   var ttsEngine = "qwen";   // THE engine. Kokoro is permanently retired (owner).
   var ttsVoice = null;      // session voice: {engine:"qwen-clone", voice} | {engine:"qwen-design", persona}
   function lockEngine() {
-    // the session speaks with the app's DEFAULT voice — boot its model and
-    // wait briefly so the FIRST line is the right voice (silent visemes cover
-    // any residual warm-up; there is no fallback voice by design)
+    // the session speaks with the app's DEFAULT voice. Kokoro (the default engine)
+    // is BEAM-native — nothing to boot. Only the qwen backup lane warms a model
+    // and waits briefly so the FIRST line is the right voice (silent visemes cover
+    // any residual warm-up).
     return fetch("/voices/default.json").then(function (r) { return r.json(); })
       .then(function (d) {
-        var model = "custom";
+        var model = null;
         if (d && d.engine === "qwen-clone") { ttsVoice = { engine: "qwen-clone", voice: d.name }; model = "base"; }
         else if (d && d.engine === "qwen-design") { ttsVoice = { engine: "qwen-design", persona: d.name }; model = "design"; }
+        if (!model) return;   // Kokoro / default → speak via the server default, no sidecar boot
         fetch("/voice/tts/qwen/boot?model=" + model, { method: "POST",
           headers: { authorization: "Bearer " + TOKEN } }).catch(function () {});
         return new Promise(function (res) {
@@ -1941,6 +1963,7 @@ client :performer do
       else if (d === "wave2") wave(true);
       else if (d === "thumbsup") thumbsUp();
       else if (d === "shrug") { shrug(); setBrows("raised"); later(setTimeout(function () { setBrows("none"); }, 1300)); }
+      else if (GEST_POSE[d]) poseHold(GEST_POSE[d]);
       else if (d === "nod") nod();
     }
 
@@ -2726,6 +2749,9 @@ client :performer do
         gesture("--nod", [6 * a + 3, -2 * a, 4 * a + 1, 0], 130);
       },
       thumbsUp: function () { if (mounted) thumbsUp(); },
+      // raise the right hand in ANY baked pose by name (point/open/thumb/fist/
+      // peace/two/spread/rock/ily/palm/three/five/relaxed); ms = optional hold
+      pose: function (name, ms) { if (mounted) poseHold({ pose: name }, ms); },
       // ── behavior-lane puppet verbs (the playground + pose engine drive these) ──
       playTake: function (url) {
         if (!mounted) return Promise.resolve();
@@ -2917,12 +2943,23 @@ client :avatar_body do
 // #ap-* mouth/viseme/parallax machinery untouched); we just glue its overlay
 // offset to the body's rotation. Ortho camera keeps the brand's flat look.
 import * as THREE from "/static/vendor/three.module.min.js";
+import { GLTFLoader } from "/static/vendor/GLTFLoader.mjs";
 
 const SIZE = 132;          // cube edge in px == world units
 const R = 35;              // squircle corner radius
 const INK = 0x121316;
 const CANVAS = 340;        // oversized so hands + outline never clip
 const OUT = 2.6;           // outline thickness (world units at scale 1)
+
+// ── baked hand assets ──────────────────────────────────────────────────────
+// A real modelled hand set ("Hands_Cartoon_Collection"), cleaned + baked by
+// vendor/bake-hands.py (recentered, one uniform scale, subdivided, palm-facing,
+// gestures named). The GLB + loader load by URL from /static/vendor, like three.
+const HANDS_URL = "/static/vendor/hands.glb";
+const HAND_POSES = ["point", "open", "thumb", "fist", "peace", "two", "spread",
+                    "rock", "ily", "palm", "three", "five", "relaxed"];
+const HAND_OUT = 2.4;      // hand outline thickness ≈ the body's OUT so the toon line
+                           // weight matches; the baked mesh is subdivided to stay clean.
 
 function roundedRectShape(w, h, r) {
   const s = new THREE.Shape(), x = -w / 2, y = -h / 2;
@@ -3152,6 +3189,40 @@ function buildHandPose(pose, mirror) {
   return g;
 }
 
+// ── baked hands (from HANDS_URL) ────────────────────────────────────────────
+// Mirror a right hand to a proper left: negate X on positions + normals AND
+// reverse the triangle winding (a plain scale.x=-1 would invert the winding, so
+// backface-cull hides the front and the inverted-hull outline inverts).
+function mirrorGeometry(geo) {
+  const g = geo.clone();
+  const p = g.attributes.position, n = g.attributes.normal;
+  for (let i = 0; i < p.count; i++) { p.setX(i, -p.getX(i)); if (n) n.setX(i, -n.getX(i)); }
+  p.needsUpdate = true; if (n) n.needsUpdate = true;
+  const idx = g.index;
+  if (idx) { const a = idx.array; for (let i = 0; i < a.length; i += 3) { const t = a[i + 1]; a[i + 1] = a[i + 2]; a[i + 2] = t; } idx.needsUpdate = true; }
+  return g;
+}
+// One pose group: the same matcap body + inverted-hull outline the cube uses,
+// centered on its own bbox so it anchors and rotates like the capsule poses did.
+function buildBakedPose(srcMesh, mirror) {
+  const geo = mirror ? mirrorGeometry(srcMesh.geometry) : srcMesh.geometry.clone();
+  geo.computeBoundingBox();
+  const c = new THREE.Vector3(); geo.boundingBox.getCenter(c);
+  geo.translate(-c.x, -c.y, -c.z);
+  const body = new THREE.Mesh(geo, bodyMaterial());
+  const g = new THREE.Group();
+  g.add(hullOf(body, HAND_OUT));
+  g.add(body);
+  g.visible = false;
+  return g;
+}
+function disposePoseGroup(g) {
+  g.traverse(o => {
+    if (o.geometry) o.geometry.dispose();
+    if (o.material) { _bodyMats.delete(o.material); _outlineMats.delete(o.material); o.material.dispose(); }
+  });
+}
+
 export function mount(container, cubeEl) {
   // renderer: transparent, oversized, centered on the container
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -3200,6 +3271,27 @@ export function mount(container, cubeEl) {
 
   let disposed = false;
   const faceEl = container.querySelector(".sc-face");
+
+  // swap the capsule placeholders for the baked hand meshes once the GLB arrives.
+  // Same matcap + inverted-hull shaders; on ANY failure the capsules just stay,
+  // so this is pure progressive enhancement — the avatar never regresses.
+  new GLTFLoader().load(HANDS_URL, gltf => {
+    if (disposed) return;
+    const byName = {};
+    gltf.scene.traverse(o => { if (o.isMesh) byName[o.name] = o; });
+    for (const side of ["r", "l"]) {
+      const h = handRigs[side];
+      for (const p in h.poses) { h.holder.remove(h.poses[p]); disposePoseGroup(h.poses[p]); }
+      h.poses = {};
+      for (const name of HAND_POSES) {
+        const src = byName[name];
+        if (!src) continue;
+        const pg = buildBakedPose(src, side === "l");
+        h.poses[name] = pg;
+        h.holder.add(pg);
+      }
+    }
+  }, undefined, () => { /* GLB unavailable → keep the procedural capsules */ });
 
   // SMOOTHING: the drivers step the CSS vars discretely (gestures ~130ms,
   // breathing ~90ms). The old CSS cube had `transition: transform .12s` to
@@ -3252,7 +3344,12 @@ export function mount(container, cubeEl) {
       h.holder.position.set(hc.x - SIZE / 2, SIZE / 2 - hc.y, 76);
       h.holder.rotation.z = -hc.rot * D;
       h.holder.scale.setScalar(Math.max(0.001, hc.s));
-      const pose = ctrl.dataset.pose || "point";
+      // pick the requested pose; if it isn't available (baked set still loading,
+      // or a name only the capsules lack), fall back so a hand always shows.
+      const want = ctrl.dataset.pose || "point";
+      const pose = h.poses[want] ? want
+                 : h.poses.point ? "point"
+                 : (Object.keys(h.poses)[0] || null);
       for (const p in h.poses) h.poses[p].visible = (p === pose);
     }
 
@@ -6489,7 +6586,7 @@ function obStep(n) {
     const go = () => {
       const name = input.value.trim();
       if (!name) { input.focus(); return; }
-      authedPost("/auth/signup?name=" + encodeURIComponent(name)).then(() => obStep(3));
+      authedPost("/auth/onboarding/signup?name=" + encodeURIComponent(name)).then(() => obStep(3));
     };
     document.getElementById("ob-next").onclick = go;
     input.addEventListener("keydown", e => { if (e.key === "Enter") go(); });
@@ -7242,7 +7339,7 @@ async function showPlanMode(previewPairing) {
   // plan mode in designer mode.
   let kokoro = false;
   if (!previewPairing) {
-    try { kokoro = (await fetch("/voice/engine").then(r => r.text())).trim() === "kokoro"; } catch (_) {}
+    try { kokoro = (await fetch("/voice/engine").then(r => r.json())).engine === "kokoro"; } catch (_) {}
     if (kokoro) await warmVoice();
   }
 
@@ -8753,7 +8850,7 @@ function apPreview(text, btn) {
   }
   if (_apPrevAudio) { try { _apPrevAudio.pause(); } catch (_) {} document.querySelectorAll(".ct-play").forEach(b => b.innerHTML = `<i data-lucide="play"></i>`); }
   setIcon("loader");
-  fetch(`/voice/tts?engine=qwen-clone&voice=${AP_VOICES[_apVoice]}`, {
+  fetch(`/voice/tts?voice=${AP_VOICES[_apVoice]}`, {   // default engine (Kokoro) — the picked AP_VOICES id is a Kokoro preset
     method: "POST", headers: { authorization: "Bearer " + TOKEN, "content-type": "text/plain" }, body: text
   }).then(r => r.ok ? r.arrayBuffer() : null).then(buf => {
     if (!buf) { setIcon("play"); return; }
@@ -8876,8 +8973,7 @@ document.getElementById("foot-settings").onclick = e => {
     <button class="fp-item" data-act="cloud"><i data-lucide="cloud"></i>workbooks cloud…</button>
     <div class="fp-sep"></div>
     <button class="fp-item" data-act="reonboard"><i data-lucide="rotate-ccw"></i>restart onboarding</button>
-    <button class="fp-item" data-act="planmode"><i data-lucide="map"></i>plan mode (dev)</button>
-    <button class="fp-item" data-act="blab"><i data-lucide="drama"></i>behavior lab (dev)</button>`);
+    <button class="fp-item" data-act="planmode"><i data-lucide="map"></i>plan mode (dev)</button>`);
   document.querySelectorAll("#footpop .fp-seg button").forEach(b => b.onclick = () => {
     applyTheme(b.dataset.theme);
     document.querySelectorAll("#footpop .fp-seg button").forEach(x => x.classList.toggle("sel", x === b));
@@ -8889,11 +8985,6 @@ document.getElementById("foot-settings").onclick = e => {
   document.querySelector('#footpop [data-act="reonboard"]').onclick = () =>
     authedPost("/auth/onboarding/reset").then(() => location.reload());
   document.querySelector('#footpop [data-act="planmode"]').onclick = () => { closeFootPop(); showPlanMode(); };
-  document.querySelector('#footpop [data-act="blab"]').onclick = async () => {
-    closeFootPop();
-    await showPlanMode();
-    setTimeout(() => window.BehaviorLab && BehaviorLab.toggle(), 1600);
-  };
 };
 
 // ── Workbooks Cloud management panel (sign-in status · deploy · machine status) ──────────────────
