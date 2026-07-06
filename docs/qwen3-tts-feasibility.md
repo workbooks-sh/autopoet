@@ -53,7 +53,7 @@ Local premium voice SHIPPED on the Ortex-free MLX sidecar lane:
   `engine=qwen-design&design=…`) — voices from text descriptions, local
 - engine LOCKED per stage session (qwen if ready at entry, else kokoro) — never mid-convo swaps
 
-## NEXT MILESTONE — pin personas via design→clone
+## MILESTONE DONE (2026-07-05) — personas pinned via design→clone
 
 The VoiceDesign guidance's recommended pipeline: design a voice → keep the
 winning preview clip → reuse it as a CLONE prompt (the Base model's 3-second
@@ -63,6 +63,16 @@ designs its voice once in plan mode, the owner approves the clip, and the
 clone pin makes it permanent identity. Prompt discipline (encoded in
 Autopoet.VoicePersonas): identity → pitch/pace/timbre → emotion → "suitable
 for…" anchor, 15–40 words, concrete adjectives, iterate one dimension at a time.
+
+SHIPPED + owner-verified ("this worked WAY better"): the design lane INVENTS a
+speaker every generation — per-sentence identity drift is inherent there, not
+fixable by sampling. Consistency = the clone lane. Pipeline (mechanized): each
+accepted voice's ~30s roster TAKE (takes are long; clone REFS stay short) is
+cropped at a silence boundary (7–12s), transcribed by our own STT (ref_text =
+crop verbatim; fix respell mishears like "autopilot" → "auto poet"), pinned as
+data/voices/<name>.wav+txt. ALL 14 accepted voices pinned; the lab routes
+kind:pinned through qwen-clone automatically. Default voice: qwen-clone
+rosalind. If clone anchoring ever wanders: 8-bit Base, then a longer crop.
 
 ## CLONE-FROM-ANYWHERE (proven 2026-07-05)
 
