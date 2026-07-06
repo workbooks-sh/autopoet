@@ -153,6 +153,31 @@ for line in sys.stdin:
             return (np.concatenate(chunks) if chunks
                     else np.zeros(1, dtype=np.float32)), srr
 
+        # ── STREAMING PATH: emit audio chunks AS they decode (sub-second first
+        # audio). No f0 gate (rerolling would defeat streaming; the pinned
+        # calibrated seed passes reliably). Each chunk → its own wav; a final
+        # "done" line closes the stream. Same generator as the batch path.
+        if req.get("stream"):
+            ref = kwargs.get("ref_audio")
+            pin = pinned_seed(ref) if ref else None
+            mx.random.seed(pin if pin is not None else
+                           seed_for(ref or kwargs.get("voice") or kwargs.get("instruct") or "", text, 0))
+            seq, total = 0, 0
+            for seg in model.generate(**gkw):
+                a = np.asarray(seg.audio, dtype=np.float32)
+                srr = getattr(seg, "sample_rate", 24000) or 24000
+                if a.size < 4:
+                    continue
+                cpath = os.path.join(tempfile.gettempdir(), f"qtts-{os.getpid()}-{rid}-{seq}.wav")
+                sf.write(cpath, a, srr, subtype="PCM_16")
+                print(json.dumps({"id": rid, "seq": seq, "path": cpath, "sr": srr}), flush=True)
+                seq += 1
+                total += a.size
+            print(json.dumps({"id": rid, "done": True, "chunks": seq,
+                              "ms": int((time.time() - t) * 1000),
+                              "dur": round(total / 24000, 2)}), flush=True)
+            continue
+
         target = 0.0
         if kwargs.get("ref_audio"):
             # gate v2: prefer the calibrated clone-output median (<name>.f0) —

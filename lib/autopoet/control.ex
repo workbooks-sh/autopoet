@@ -1124,7 +1124,9 @@ defmodule Autopoet.Control do
             end
         end
 
-      result =
+      # resolve the synth request map + readiness for the chosen engine — shared
+      # by the streaming and batch paths (streaming just forwards chunks live)
+      req_or_err =
         cond do
           engine == "qwen-clone" ->
             if Autopoet.QwenTts.model() != :base or not Autopoet.QwenTts.ready?() do
@@ -1136,7 +1138,7 @@ defmodule Autopoet.Control do
               reftxt = Path.join(vdir, Path.basename(name || "") <> ".txt")
 
               if File.exists?(ref) and File.exists?(reftxt),
-                do: Autopoet.QwenTts.clone(body, ref, String.trim(File.read!(reftxt))),
+                do: {:req, %{text: body, ref_audio: ref, ref_text: String.trim(File.read!(reftxt))}},
                 else: {:error, :no_such_pinned_voice}
             end
 
@@ -1149,27 +1151,70 @@ defmodule Autopoet.Control do
                 q["design"] || q["instruct"] ||
                   Autopoet.VoicePersonas.description(name || Autopoet.VoicePersonas.default())
 
-              Autopoet.QwenTts.speak(body, nil, desc)
+              {:req, %{text: body, instruct: desc}}
             end
 
           true ->
-            # bare qwen (no default configured): the CustomVoice preset
             if Autopoet.QwenTts.ready?(),
-              do: Autopoet.QwenTts.speak(body, q["voice"] || "Ryan", q["instruct"]),
+              do: {:req, %{text: body, voice: q["voice"] || "Ryan", instruct: q["instruct"]}},
               else: (Autopoet.QwenTts.ensure(:custom) && {:error, :engine_loading})
         end
 
-      case result do
-        {:ok, wav} ->
-          conn |> put_resp_content_type("audio/wav") |> send_resp(200, wav)
+      cond do
+        # STREAMING: chunk-framed audio/wav as the sidecar decodes (sub-second
+        # first audio). Framing per chunk: 4-byte big-endian length + wav bytes.
+        q["stream"] == "1" and match?({:req, _}, req_or_err) ->
+          {:req, req} = req_or_err
+          Autopoet.QwenTts.stream(req, self())
 
-        {:error, :engine_loading} ->
+          conn =
+            conn
+            |> put_resp_content_type("application/octet-stream")
+            |> put_resp_header("cache-control", "no-store")
+            |> send_chunked(200)
+
+          stream_chunks(conn)
+
+        match?({:req, _}, req_or_err) ->
+          {:req, req} = req_or_err
+
+          result =
+            case req do
+              %{ref_audio: r, ref_text: rt} -> Autopoet.QwenTts.clone(req.text, r, rt)
+              %{instruct: i, voice: v} -> Autopoet.QwenTts.speak(req.text, v, i)
+              %{instruct: i} -> Autopoet.QwenTts.speak(req.text, nil, i)
+            end
+
+          case result do
+            {:ok, wav} -> conn |> put_resp_content_type("audio/wav") |> send_resp(200, wav)
+            {:error, reason} -> send_resp(conn, 422, "speak failed: #{inspect(reason)}\n")
+          end
+
+        match?({:error, :engine_loading}, req_or_err) ->
           send_resp(conn, 503, "voice engine loading\n")
 
-        {:error, reason} ->
+        true ->
+          {:error, reason} = req_or_err
           send_resp(conn, 422, "speak failed: #{inspect(reason)}\n")
       end
     end)
+  end
+
+  # forward {:tts_chunk}/{:tts_done} from QwenTts.stream as length-prefixed
+  # HTTP chunks until the stream closes (or a safety timeout)
+  defp stream_chunks(conn) do
+    receive do
+      {:tts_chunk, _id, wav, _seq} ->
+        case chunk(conn, <<byte_size(wav)::32, wav::binary>>) do
+          {:ok, conn} -> stream_chunks(conn)
+          _ -> conn
+        end
+
+      {:tts_done, _id, _dur} ->
+        conn
+    after
+      60_000 -> conn
+    end
   end
 
   # the DEFAULT session voice — what the autopoet speaks with everywhere.

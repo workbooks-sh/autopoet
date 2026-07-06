@@ -16,12 +16,12 @@ window.PlanMode = (() => {
   // comes from the LLM: the greeting/cover from the pairing officer, the rest
   // from /plan/turn.
   function scriptFromPairing(p) {
-    const slides = (p.slides || [])
-      .filter(st => st.say && st.md)
-      .map(st => ({ say: st.say, slide: st.md }));
+    // ONE spoken intro: the greeting. The cover slide appears silently DURING
+    // it (no separate cover narration — that was a redundant second 'let's
+    // begin'). Then straight to the brain's first real question.
+    const cover = (p.slides || []).find(st => st.md);
     return [
-      { say: p.greeting, gesture: "wave" },
-      ...slides,
+      { say: p.greeting, slide: cover ? cover.md : null, gesture: "wave" },
       { handoff: true }
     ];
   }
@@ -181,7 +181,10 @@ window.PlanMode = (() => {
   function camApply(animate) {
     const bg = bgEl(); if (!bg) return;
     bg.style.transition = animate ? "transform .5s cubic-bezier(.4,0,.2,1)" : "none";
-    bg.style.transform = `translate(${cam.x}px,${cam.y}px) scale(${cam.k})`;
+    // KEEP the deck's own centering (its CSS is translate(-50%,-50%) off
+    // left:50%/top:40%) — the pan/zoom composes ON TOP of it, else the deck
+    // anchors its top-left at center and spills off-screen (the corner bug)
+    bg.style.transform = `translate(-50%,-50%) translate(${cam.x}px,${cam.y}px) scale(${cam.k})`;
   }
   function camReset(animate) { cam.x = 0; cam.y = 0; cam.k = 1; camApply(animate); }
   function wireCamera() {

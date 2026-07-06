@@ -159,3 +159,6 @@
   padding:10px 14px 9px;border-bottom:1px solid #eef0f2;border-radius:14px 14px 0 0;
   background:#fafbfc}
 #pm-qpin.on{display:block;animation:pm-enter-in .4s cubic-bezier(.34,1.5,.4,1) both}
+/* during the conversation the pinned question + deck + voice carry the text —
+   the transient floating caption is redundant and overlapped the pinned bar */
+body.pm-convo #vs-caption { display:none !important; }

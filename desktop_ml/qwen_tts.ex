@@ -83,6 +83,17 @@ defmodule Autopoet.QwenTts do
     :exit, _ -> {:error, :timeout}
   end
 
+  @doc """
+  STREAMING synth: `req` is the same map speak/clone build (text + voice or
+  ref_audio/ref_text or instruct). `to_pid` receives, in order:
+    {:tts_chunk, id, wav_binary, seq}   — one per ~1s of audio, as it decodes
+    {:tts_done, id, dur | nil}          — stream closed (nil dur = worker died)
+  Returns :ok immediately. First chunk lands ~1s in (vs ~3s for the full clip).
+  """
+  def stream(req, to_pid) when is_map(req) and is_pid(to_pid) do
+    GenServer.cast(__MODULE__, {:stream, Map.put(req, :stream, true), to_pid})
+  end
+
   # ── server ───────────────────────────────────────────────────────────────
   #
   # state:
@@ -96,7 +107,7 @@ defmodule Autopoet.QwenTts do
     # WARM AT LAUNCH: the default voice's model loads with the app, not when
     # the first line needs it (owner: latency must not include model boots)
     send(self(), :boot_default)
-    {:ok, %{workers: %{}, assigns: %{}, waiting: %{}, seq: 0, model: :custom, gens: 0}}
+    {:ok, %{workers: %{}, assigns: %{}, waiting: %{}, streams: %{}, seq: 0, model: :custom, gens: 0}}
   end
 
   @impl true
@@ -123,6 +134,23 @@ defmodule Autopoet.QwenTts do
 
         {:noreply,
          %{s | seq: id, waiting: Map.put(s.waiting, id, from), assigns: Map.put(s.assigns, id, port)}}
+    end
+  end
+
+  def handle_cast({:stream, req, to_pid}, s) do
+    s = boot(s, s.model)
+
+    case least_busy(s) do
+      nil ->
+        send(to_pid, {:tts_done, 0, nil})
+        {:noreply, s}
+
+      port ->
+        id = s.seq + 1
+        Port.command(port, Jason.encode!(Map.put(req, :id, id)) <> "\n")
+
+        {:noreply,
+         %{s | seq: id, streams: Map.put(s.streams, id, to_pid), assigns: Map.put(s.assigns, id, port)}}
     end
   end
 
@@ -198,7 +226,17 @@ defmodule Autopoet.QwenTts do
           end
         end)
 
-      {:noreply, %{s | workers: Map.delete(s.workers, port), assigns: Map.new(live), waiting: waiting}}
+      # streaming callers on the dead worker: close their stream (play what landed)
+      streams =
+        Enum.reduce(dead, s.streams, fn {id, _}, acc ->
+          case Map.pop(acc, id) do
+            {nil, rest} -> rest
+            {pid, rest} -> send(pid, {:tts_done, id, nil}) && rest
+          end
+        end)
+
+      {:noreply,
+       %{s | workers: Map.delete(s.workers, port), assigns: Map.new(live), waiting: waiting, streams: streams}}
     else
       {:noreply, s}
     end
@@ -268,6 +306,32 @@ defmodule Autopoet.QwenTts do
           do: Autopoet.Log.puts("qwen-tts: ready (#{m})")
 
         put_in(s.workers[port].ready, true)
+
+      # ── streaming: a chunk, then a done marker ──
+      {:ok, %{"id" => id, "seq" => seq, "path" => path}} ->
+        case s.streams[id] do
+          nil ->
+            s
+
+          to_pid ->
+            case File.read(path) do
+              {:ok, wav} -> File.rm(path); send(to_pid, {:tts_chunk, id, wav, seq})
+              _ -> :ok
+            end
+
+            s
+        end
+
+      {:ok, %{"id" => id, "done" => true} = r} ->
+        case Map.pop(s.streams, id) do
+          {nil, _} ->
+            s
+
+          {to_pid, streams} ->
+            send(to_pid, {:tts_done, id, r["dur"]})
+            Logger.debug("qwen-tts: stream #{r["chunks"]} chunks in #{r["ms"]}ms")
+            maybe_recycle(%{s | streams: streams, assigns: Map.delete(s.assigns, id), gens: s.gens + 1})
+        end
 
       {:ok, %{"id" => id, "path" => path} = r} ->
         s = %{s | gens: s.gens + 1, assigns: Map.delete(s.assigns, id)}

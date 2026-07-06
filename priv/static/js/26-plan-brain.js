@@ -10,6 +10,10 @@ window.PlanBrain = (() => {
 
   async function take(b, o, pairing) {
     board = b; opts = o || {};
+    // the conversation owns the text now: the deck shows content, the pinned
+    // bar shows the open question, the voice speaks. The transient floating
+    // caption is redundant here (it overlapped the pinned question) — hide it.
+    document.body.classList.add("pm-convo");
     const titles = ((pairing && pairing.slides) || []).map(s => (s.md.match(/^#+\s*(.+)$/m) || [])[1] || "");
     state = {
       form: (pairing && pairing.form) || safeForm(),
@@ -215,6 +219,7 @@ window.PlanBrain = (() => {
 
   function teardown() {
     running = false;
+    document.body.classList.remove("pm-convo");
     [bar, deckNav, document.getElementById("pm-chat")].forEach(el => el && el.remove());
     bar = null; deckNav = null;
     document.querySelectorAll(".pm-fork,.pm-proc").forEach(el => el.remove());

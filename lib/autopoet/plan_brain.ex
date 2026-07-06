@@ -164,10 +164,16 @@ defmodule Autopoet.PlanBrain do
           "YOU MUST now emit a \"fork\": three DISTINCT directions this project could go, " <>
             "each a title card + one-line md, drawn from what they told you. Do not ask another question."
 
+        not fork_done and exchanges == 0 ->
+          "This is your FIRST question. You ALREADY greeted them and showed the cover slide — do " <>
+            "NOT greet again, do NOT say 'nice to meet you' or 'let's begin'. Open with your short " <>
+            "reaction then dive STRAIGHT into one specific, open question about their actual work " <>
+            "(what they do, the real problem to solve). No slide this turn — just the question."
+
         not fork_done ->
-          "You're still getting their vibe. Ask ONE open-ended question (background, what they " <>
-            "do, what they want this to become). If something they said already deserves a slide, " <>
-            "your ask MAY carry one (md + title) — draft as you learn. Do not fork yet."
+          "You're still getting their vibe. Ask ONE open-ended question that builds on what they " <>
+            "just said. If something they said already deserves a slide, your ask MAY carry one " <>
+            "(md + title). Do not fork yet, do not re-introduce yourself."
 
         true ->
           "The direction is chosen. This is an ONGOING DRAFTING SESSION: you build the deck IN " <>
