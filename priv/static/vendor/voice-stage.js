@@ -835,6 +835,10 @@
     deckSlides.push(s);
     showBoard("deck");
     deckShow(deckSlides.length - 1);   // reveal the new slide immediately (text)
+    // the agent POINTS at the slide it just put up — the same hand-to-DOM
+    // gesture the voice stage uses for graph nodes (pointAt takes any element)
+    var head = s.querySelector("h1, h2, h3") || s;
+    later(setTimeout(function () { if (mounted && boardMode === "deck") pointAt(head, 2800); }, 450));
     await renderMermaidIn(s);          // its diagram fills in a beat later
   }
   function deckShow(n) {
@@ -2085,6 +2089,22 @@
         if (!mounted) return;
         var t = pieces.nodes[name] || pieces.edges[name];
         if (t) pointAt(t, ms || 2600);
+      },
+      // point the hand at ANY DOM element or CSS selector on the stage — the
+      // deck's current slide, a specific bullet, a heading. Same gesture the
+      // graph-node pointing uses (pointAt is element-based).
+      pointEl: function (sel, ms) {
+        if (!mounted) return;
+        var el = typeof sel === "string"
+          ? (deckSlides[deckCur] && deckSlides[deckCur].querySelector(sel)) || document.querySelector(sel)
+          : sel;
+        if (el) pointAt(el, ms || 2600);
+      },
+      pointSlide: function (ms) {
+        if (mounted && deckSlides[deckCur]) {
+          var h = deckSlides[deckCur].querySelector("h1, h2, h3") || deckSlides[deckCur];
+          pointAt(h, ms || 2600);
+        }
       },
       // held-cube entrance: adopt → float in from the self-node footprint;
       // standalone → pop in at center. Resolves once arrived + waved.
