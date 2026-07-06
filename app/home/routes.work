@@ -198,3 +198,72 @@ server :app_misc do
     %{ok: true}
   end
 end
+
+## Window, chat, proposals, cloud status
+
+server :app_ctl do
+  route "GET /health", :health, auth: :public
+  route "POST /win/:action", :win, auth: :public
+  route "GET /chat/transcript", :chat_transcript, auth: :public
+  route "POST /proposal/:id/accept", :proposal_accept, auth: :public
+  route "POST /proposal/:id/reject", :proposal_reject, auth: :public
+  route "GET /cloud/status.json", :cloud_status, auth: :public
+  route "GET /cloud/machine.json", :cloud_machine, auth: :public
+
+  def health(_req), do: {200, "text/plain; charset=utf-8", "ok"}
+
+  def win(req) do
+    action = req.params["action"] || req.params[:action]
+    Autopoet.Window.control(String.to_existing_atom(to_string(action)))
+    {200, "text/plain; charset=utf-8", "ok\n"}
+  end
+
+  def chat_transcript(req) do
+    case Autopoet.Chat.transcript(req.query["id"] || "") do
+      {:ok, body} -> {200, "text/plain; charset=utf-8", body}
+      _ -> {404, %{error: "no such chat"}}
+    end
+  end
+
+  def proposal_accept(req) do
+    id = req.params["id"] || req.params[:id]
+
+    case Autopoet.Proposals.accept(id, Autopoet.Notes.dir()) do
+      :ok ->
+        for {rel, _} <- Autopoet.Proposals.changes(id) do
+          with {:ok, content} <- File.read(Path.join(Autopoet.Notes.dir(), rel)),
+               do: Autopoet.Notes.write(rel, content)
+        end
+
+        %{ok: true}
+
+      _ ->
+        {404, %{error: "no such proposal"}}
+    end
+  end
+
+  def proposal_reject(req) do
+    Autopoet.Proposals.reject(req.params["id"] || req.params[:id])
+    %{ok: true}
+  end
+
+  def cloud_status(_req) do
+    signed = Autopoet.Cloud.signed_in?()
+    acct = signed && Autopoet.Cloud.account()
+
+    %{
+      signed_in: signed,
+      account: acct && %{email: acct.email, org: acct.org, role: acct.role},
+      tools: Autopoet.Composio.configured?()
+    }
+  end
+
+  def cloud_machine(_req) do
+    case Autopoet.Cloud.get("/api/cloud/machine") do
+      {:ok, b} -> b
+      {:error, {_code, b}} when is_map(b) -> b
+      {:error, :not_signed_in} -> %{"error" => "not signed in"}
+      _ -> %{"error" => "unavailable"}
+    end
+  end
+end
