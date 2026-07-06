@@ -269,3 +269,180 @@ server :app_ctl do
     end
   end
 end
+
+## Auth + power (cloud proxy)
+
+server :power do
+  route "POST /auth/signin", :signin, auth: :public
+  route "POST /auth/oauth/:provider", :oauth, auth: :public
+  route "POST /auth/connect/:provider", :connect, auth: :public
+  route "POST /auth/disconnect/:provider", :disconnect, auth: :public
+  route "GET /auth/providers.json", :providers, auth: :public
+  route "POST /auth/signout", :signout, auth: :public
+  route "GET /power/cloud/nexuses", :cloud_nexuses, auth: :public
+  route "GET /power/cloud/tiers", :cloud_tiers, auth: :public
+  route "GET /power/cloud/summary", :cloud_summary, auth: :public
+  route "POST /power/cloud/checkout", :cloud_checkout, auth: :public
+  route "POST /power/cloud/credits", :cloud_credits, auth: :public
+  route "POST /power/compute", :power_compute, auth: :public
+
+  defp prov(req), do: req.params["provider"] || req.params[:provider]
+  defp txt(s), do: {200, "text/plain; charset=utf-8", s}
+
+  defp cloud_proxy(method, path, body) do
+    result = if method == :get, do: Autopoet.Cloud.get(path), else: Autopoet.Cloud.post(path, body)
+
+    case result do
+      {:ok, b} -> b
+      {:error, {code, b}} when is_integer(code) and is_map(b) -> {code, b}
+      {:error, :not_signed_in} -> {401, %{error: "not signed in"}}
+      _ -> {502, %{error: "cloud unavailable"}}
+    end
+  end
+
+  def signin(req) do
+    case Autopoet.Auth.signin(req.query) do
+      {:error, reason} -> txt("refused: #{inspect(reason)}\n")
+      _ -> txt("app\n")
+    end
+  end
+
+  def oauth(req) do
+    case Autopoet.Auth.oauth(prov(req), req.query) do
+      {:error, reason} -> txt("refused: #{inspect(reason)}\n")
+      %{onboarded: true} -> txt("app\n")
+      _ -> txt("onboarding\n")
+    end
+  end
+
+  def connect(req) do
+    case Autopoet.Auth.connect(prov(req)) do
+      {:error, reason} -> txt("refused: #{inspect(reason)}\n")
+      _ -> txt("ok\n")
+    end
+  end
+
+  def disconnect(req) do
+    Autopoet.Connections.delete(prov(req))
+    Autopoet.Auth.disconnect(prov(req))
+    txt("ok\n")
+  end
+
+  def providers(_req), do: %{configured: Autopoet.Auth.OAuth.configured(), connected: Autopoet.Connections.all()}
+  def signout(_req), do: (Autopoet.Auth.signout(); txt("out\n"))
+
+  def cloud_nexuses(_req), do: cloud_proxy(:get, "/api/platform/nexuses", nil)
+  def cloud_tiers(_req), do: cloud_proxy(:get, "/api/platform/tiers", nil)
+
+  def cloud_summary(_req) do
+    %{
+      credits: (case cloud_proxy(:get, "/api/platform/credits", nil) do %{} = m -> m; _ -> %{} end),
+      subscription: (case cloud_proxy(:get, "/api/platform/billing/subscription", nil) do %{} = m -> m; _ -> %{} end)
+    }
+  end
+
+  def cloud_checkout(req), do: cloud_proxy(:post, "/api/platform/billing/checkout", req.body)
+  def cloud_credits(req), do: cloud_proxy(:post, "/api/platform/billing/credits", req.body)
+
+  def power_compute(req) do
+    choice = to_string(req.raw_body || "") |> String.trim() |> String.slice(0, 120)
+
+    if choice == "" do
+      {422, %{error: "compute choice required"}}
+    else
+      File.write!(Path.join([Autopoet.Discovery.home(), "data", "power-compute"]), choice)
+      %{ok: true, compute: choice}
+    end
+  end
+end
+
+## Vault edits + voice brain + proposals
+
+server :vault_edit do
+  route "POST /notes/new", :notes_new, auth: :public
+  route "POST /notes/delete", :notes_delete, auth: :public
+  route "POST /notes/rename", :notes_rename, auth: :public
+  route "POST /notes/reorder", :notes_reorder, auth: :public
+  route "POST /notes/meta", :notes_meta, auth: :public
+  route "POST /body/undo", :body_undo, auth: :public
+  route "POST /body/redo", :body_redo, auth: :public
+  route "GET /body/undostate.json", :body_undostate, auth: :public
+  route "GET /body/history.json", :body_history, auth: :public
+  route "POST /voice/brain", :voice_brain, auth: :public
+  route "GET /proposals", :proposals, auth: :public
+  route "GET /cloud/connections.json", :cloud_connections, auth: :public
+
+  defp tags(s), do: (s || "") |> String.split(",", trim: true) |> Enum.map(&String.trim/1)
+  defp meta_of(q), do: %{"type" => q["type"], "icon" => q["icon"], "tags" => tags(q["tags"])}
+  defp undo_state, do: %{undo: Autopoet.Body.can_undo?(), redo: Autopoet.Body.can_redo?()}
+
+  def notes_new(req) do
+    q = req.query
+    Autopoet.Notes.create(q["path"], q["type"], meta_of(q))
+    {200, "text/plain; charset=utf-8", "created\n"}
+  end
+
+  def notes_delete(req) do
+    case Autopoet.Notes.delete(req.query["path"]) do
+      :ok -> {200, "text/plain; charset=utf-8", "deleted\n"}
+      {:error, r} -> {200, "text/plain; charset=utf-8", "refused: #{inspect(r)}\n"}
+    end
+  end
+
+  def notes_rename(req) do
+    case Autopoet.Notes.rename(req.query["from"], req.query["to"]) do
+      :ok -> {200, "text/plain; charset=utf-8", "renamed\n"}
+      {:error, r} -> {200, "text/plain; charset=utf-8", "refused: #{inspect(r)}\n"}
+    end
+  end
+
+  def notes_reorder(req) do
+    names = String.split(req.query["names"] || "", "\n", trim: true)
+    Autopoet.Notes.reorder(req.query["dir"] || "", names)
+    {200, "text/plain; charset=utf-8", "reordered\n"}
+  end
+
+  def notes_meta(req) do
+    Autopoet.Notes.set_meta(req.query["path"], meta_of(req.query))
+    {200, "text/plain; charset=utf-8", "ok\n"}
+  end
+
+  def body_undo(req) do
+    Autopoet.Body.undo(req.query["id"] || :latest)
+    undo_state()
+  end
+
+  def body_redo(_req) do
+    Autopoet.Body.redo()
+    undo_state()
+  end
+
+  def body_undostate(_req), do: undo_state()
+  def body_history(_req), do: {200, "application/json", Jason.encode!(Autopoet.Body.history())}
+
+  def voice_brain(req) do
+    with %{"history" => history} when is_list(history) <- (req.body || %{}),
+         {:ok, reply} <- Autopoet.VoiceBrain.reply(history) do
+      %{reply: reply}
+    else
+      _ -> {400, %{error: "bad request"}}
+    end
+  end
+
+  def proposals(_req) do
+    body =
+      case Autopoet.Proposals.list() do
+        [] -> "no proposals\n"
+        ps -> Enum.map_join(ps, "\n", fn {id, status} -> "#{id} #{status}" end) <> "\n"
+      end
+
+    {200, "text/plain; charset=utf-8", body}
+  end
+
+  def cloud_connections(_req) do
+    case Autopoet.Composio.connections() do
+      {:ok, b} -> b
+      _ -> %{"items" => []}
+    end
+  end
+end
