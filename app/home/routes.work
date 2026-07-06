@@ -1,0 +1,62 @@
+# App routes — the vault, the body, the avatar
+
+The HTTP surface for the workspace + editor + avatar, migrated from the legacy
+`Autopoet.Control` Plug into idiomatic `server`-block routes the nexus serves.
+Handlers are `req`-style: `req.query`/`req.body`/`req.raw_body` in, a JSON map or
+`{status, content_type, bytes}` out. On this trusted desktop nexus the routes are
+`:public` (one operator); the cloud tenant layers auth on top.
+
+server :vault do
+  route "GET /notes/tree.json", :notes_tree, auth: :public
+  route "GET /notes/file", :notes_file, auth: :public
+  route "POST /notes/save", :notes_save, auth: :public
+  route "GET /body/file", :body_file, auth: :public
+  route "POST /body/save", :body_save, auth: :public
+  route "GET /avatar/mouths.json", :avatar_mouths, auth: :public
+  route "GET /micons.json", :micons, auth: :public
+
+  def notes_tree(_req), do: Autopoet.Notes.tree()
+
+  def notes_file(req) do
+    case Autopoet.Notes.read(req.query["path"] || "") do
+      {:ok, content} -> {200, "text/plain; charset=utf-8", content}
+      _ -> {404, %{error: "no such note"}}
+    end
+  end
+
+  def notes_save(req) do
+    Autopoet.Notes.write(req.query["path"], to_string(req.raw_body || ""))
+    %{ok: true}
+  end
+
+  def body_file(req) do
+    case Autopoet.Body.read(req.query["path"] || "") do
+      {:ok, content} -> {200, "text/plain; charset=utf-8", content}
+      _ -> {404, %{error: "no such file"}}
+    end
+  end
+
+  def body_save(req) do
+    path = req.query["path"]
+    Autopoet.Body.write(path, to_string(req.raw_body || ""))
+    Autopoet.Log.puts("body: human edited #{path} directly")
+    %{ok: true}
+  end
+
+  def avatar_mouths(_req), do: Autopoet.Avatar.mouths()
+
+  def micons(_req) do
+    dir = Path.join([Autopoet.Discovery.home(), "app", "home", "static", "micons"])
+
+    names =
+      case File.ls(dir) do
+        {:ok, files} ->
+          files |> Enum.filter(&String.ends_with?(&1, ".svg")) |> Enum.map(&String.trim_trailing(&1, ".svg")) |> Enum.sort()
+
+        _ ->
+          []
+      end
+
+    %{icons: names}
+  end
+end
