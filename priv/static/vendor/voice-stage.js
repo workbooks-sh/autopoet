@@ -305,6 +305,7 @@
     Object.keys(c).forEach(function (k) { if (c[k] > n) { n = c[k]; best = k; } });
     return best;
   }
+  var liveEnergy = 0;   // 0..1, updated by the mouth loop while audio plays
   function startMouthLoop() {
     audioDriven = true;
     if (mouthRaf) return;
@@ -314,6 +315,9 @@
       if (!mounted || !playing) { cancelAnimationFrame(mouthRaf); mouthRaf = null; return; }
       if (!clipNow) return;
       analyser.getByteTimeDomainData(data);
+      var __s = 0;
+      for (var __i = 0; __i < data.length; __i++) { var __d = (data[__i] - 128) / 128; __s += __d * __d; }
+      liveEnergy = clipNow ? Math.min(1, Math.sqrt(__s / data.length) * 4) : 0;
       var s = 0;
       for (var i = 0; i < data.length; i++) { var v = (data[i] - 128) / 128; s += v * v; }
       var rms = Math.sqrt(s / data.length);
@@ -1062,6 +1066,7 @@
   // fire-and-forget; if it isn't ready by the first line, kokoro owns the
   // whole session and qwen waits for the next one.
   var ttsEngine = null;
+  var ttsVoice = null;   // dev/session override: {engine:"qwen-design", persona:"noir"} etc
   function lockEngine() {
     fetch("/voice/tts/qwen/boot", { method: "POST",
       headers: { authorization: "Bearer " + TOKEN } }).catch(function () {});
@@ -1130,16 +1135,24 @@
     return sText;
   }
   function kokoroGen(text) {
-    if (genCache.has(text)) return genCache.get(text);
+    var key = JSON.stringify([ttsVoice, ttsEngine, VOICE_ID]) + "|" + text;
+    if (genCache.has(key)) return genCache.get(key);
     var p = kokoroGenRaw(text);
-    genCache.set(text, p);
+    genCache.set(key, p);
     return p;
   }
   function kokoroGenRaw(text) {
     if (kokoroMode === "server") {
-      var vparam = ttsEngine === "qwen" ? "Ryan" : VOICE_ID;
-      return fetch("/voice/tts?voice=" + encodeURIComponent(vparam) +
-                   (ttsEngine ? "&engine=" + ttsEngine : ""), {
+      var q;
+      if (ttsVoice && ttsVoice.engine === "qwen-design") {
+        q = "engine=qwen-design&persona=" + encodeURIComponent(ttsVoice.persona || "narrator");
+      } else if (ttsVoice && ttsVoice.engine === "qwen-clone") {
+        q = "engine=qwen-clone&voice=" + encodeURIComponent(ttsVoice.voice || "");
+      } else {
+        var vparam = ttsEngine === "qwen" ? "Ryan" : VOICE_ID;
+        q = "voice=" + encodeURIComponent(vparam) + (ttsEngine ? "&engine=" + ttsEngine : "");
+      }
+      return fetch("/voice/tts?" + q, {
         method: "POST",
         headers: { authorization: "Bearer " + TOKEN, "content-type": "text/plain" },
         body: text.replace(/\[[^\]]+\]\s*/g, "")   // never SAY a stray bracket tag
@@ -1841,8 +1854,46 @@
       ready: function () { return kokoro; },
       warm: function (text) { if (kokoro && tts) ttsTexts(text).forEach(kokoroGen); },
       wave: function () { if (mounted) wave(); },
-      nod: function () { if (mounted) nod(); },
+      nod: function (amp) {
+        if (!mounted) return;
+        var a = amp == null ? 1 : amp;
+        gesture("--nod", [6 * a + 3, -2 * a, 4 * a + 1, 0], 130);
+      },
       thumbsUp: function () { if (mounted) thumbsUp(); },
+      // ── behavior-lane puppet verbs (the playground + pose engine drive these) ──
+      playTake: function (url) {
+        if (!mounted) return Promise.resolve();
+        ensureAudio();
+        return fetch(url).then(function (r) { return r.arrayBuffer(); })
+          .then(function (ab) { return actx.decodeAudioData(ab); })
+          .then(function (buf) {
+            return new Promise(function (res) {
+              playClip({ buffer: buf, duration: buf.duration }, res);
+              startMouthLoop();
+            });
+          });
+      },
+      setVoice: function (spec) {
+        ttsVoice = spec || null;
+        genCache.clear();
+        var model = spec && spec.engine === "qwen-clone" ? "base"
+                  : spec && spec.engine === "qwen-design" ? "design" : null;
+        if (model) fetch("/voice/tts/qwen/boot?model=" + model, { method: "POST",
+          headers: { authorization: "Bearer " + TOKEN } }).catch(function () {});
+        return ttsVoice;
+      },
+      getVoice: function () { return ttsVoice; },
+      energy: function () { return liveEnergy; },
+      speaking: function () { return clipNow != null; },
+      eyes: function (open) { if (mounted) setEyes(!!open); },
+      tilt: function (deg, ms) {
+        if (!mounted) return;
+        cube.style.setProperty("--rz", deg + "deg");
+        later(setTimeout(function () { if (cube) cube.style.setProperty("--rz", "0deg"); }, ms || 900));
+      },
+      mood: function (k) { if (mounted && MOODS[k]) { mood = MOODS[k][0]; setMouth(MOODS[k][0]); setBrows(MOODS[k][1]); } },
+      lookAt: function (x, y, ms) { if (mounted) setAttention({ x: x, y: y }, ms || 1200, 2); },
+      moveBy: function (dx, dy) { if (mounted) moveTo(stagePos.x + dx, stagePos.y + dy); },
       exit: exit
     };
   }

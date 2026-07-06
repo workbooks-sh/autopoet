@@ -64,7 +64,8 @@ document.getElementById("foot-settings").onclick = e => {
     <button class="fp-item" data-act="cloud"><i data-lucide="cloud"></i>workbooks cloud…</button>
     <div class="fp-sep"></div>
     <button class="fp-item" data-act="reonboard"><i data-lucide="rotate-ccw"></i>restart onboarding</button>
-    <button class="fp-item" data-act="planmode"><i data-lucide="map"></i>plan mode (dev)</button>`);
+    <button class="fp-item" data-act="planmode"><i data-lucide="map"></i>plan mode (dev)</button>
+    <button class="fp-item" data-act="blab"><i data-lucide="drama"></i>behavior lab (dev)</button>`);
   document.querySelectorAll("#footpop .fp-seg button").forEach(b => b.onclick = () => {
     applyTheme(b.dataset.theme);
     document.querySelectorAll("#footpop .fp-seg button").forEach(x => x.classList.toggle("sel", x === b));
@@ -76,6 +77,10 @@ document.getElementById("foot-settings").onclick = e => {
   document.querySelector('#footpop [data-act="reonboard"]').onclick = () =>
     authedPost("/auth/onboarding/reset").then(() => location.reload());
   document.querySelector('#footpop [data-act="planmode"]').onclick = () => { closeFootPop(); showPlanMode(); };
+  document.querySelector('#footpop [data-act="blab"]').onclick = () => {
+    closeFootPop();
+    toast("behavior lab lives in plan mode now — open plan mode (dev), then the 🎛 button");
+  };
 };
 
 // ── Workbooks Cloud management panel (sign-in status · deploy · machine status) ──────────────────

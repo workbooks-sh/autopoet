@@ -69,6 +69,7 @@ build.sched -> build.weave: wakes
         <span class="pm-tools">
           <button id="pm-sound" class="pm-ico" title="voice on/off"><i data-lucide="volume-2"></i></button>
           <button id="pm-recenter" class="pm-ico" title="recenter the board"><i data-lucide="crosshair"></i></button>
+          <button id="pm-dev" class="pm-ico" title="behavior lab (dev)"><i data-lucide="sliders-horizontal"></i></button>
           <button id="pm-back" class="pm-btn ghost">← back</button>
         </span>
         <span class="pm-dots" id="pm-dots"></span>
@@ -87,6 +88,9 @@ build.sched -> build.weave: wakes
     };
     // recenter: snap the board's pan/zoom home
     widget.querySelector("#pm-recenter").onclick = () => camReset(true);
+    // dev tools: the behavior lab rides THIS stage's verbs (voice switch + sliders)
+    if (window.BehaviorLab) { BehaviorLab.attach(board); }
+    widget.querySelector("#pm-dev").onclick = () => window.BehaviorLab && BehaviorLab.toggle();
     wireCamera();
     opts.refreshIcons && opts.refreshIcons();
 

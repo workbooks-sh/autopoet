@@ -69,3 +69,20 @@
   .obck { position:absolute; top:10px; right:10px; display:none; color:var(--green); }
   .obck svg { width:16px; height:16px; }
   .obcard.on .obck { display:block; }
+  /* behavior lab panel (dev) */
+  #blab{position:fixed;right:16px;top:56px;z-index:66;width:250px;background:#fff;border:1.6px solid #e2e6ec;
+    border-radius:14px;padding:13px 14px;box-shadow:0 12px 40px rgba(20,30,50,.16);
+    font:11px ui-monospace,monospace;color:#1c2230;display:flex;flex-direction:column;gap:8px}
+  #blab .bl-hd{display:flex;justify-content:space-between;align-items:center;font-size:12px}
+  #blab .bl-hd button{border:0;background:none;cursor:pointer;font-size:13px;color:#8a8f88}
+  #blab select{appearance:none;-webkit-appearance:none;font:600 11.5px ui-monospace,monospace;
+    padding:6px 10px;border:1.4px solid #d6dbe2;border-radius:9px;background:#fff;cursor:pointer}
+  #blab .bl-row{display:flex;gap:6px;flex-wrap:wrap}
+  #blab .bl-row button{flex:1;font:600 10.5px ui-monospace,monospace;padding:6px 8px;border-radius:8px;
+    border:1px solid #d6dbe2;background:#fff;cursor:pointer;white-space:nowrap}
+  #blab .bl-row button:hover{background:#16161a;color:#fff}
+  #blab .bl-tr{display:flex;align-items:center;gap:6px;color:#6a6f68}
+  #blab .bl-tr span{width:104px;flex:none}
+  #blab .bl-tr input{flex:1;accent-color:#16161a;height:12px}
+  #blab .bl-meter{height:5px;background:#eef0f2;border-radius:3px;overflow:hidden}
+  #blab .bl-meter i{display:block;height:100%;width:0;background:#16161a}

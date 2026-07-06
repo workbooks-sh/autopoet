@@ -1097,12 +1097,17 @@ defmodule Autopoet.Control do
     end)
   end
 
-  # the pose-engine playground — feel a voice's motion vector before phase 2
-  get "/voices/playground" do
-    conn
-    |> put_resp_content_type("text/html")
-    |> put_resp_header("cache-control", "no-store")
-    |> send_resp(200, Autopoet.VoicePlayground.html())
+  # all voice traits (the behavior lab's per-voice parameters)
+  get "/voices/traits.json" do
+    all =
+      for name <- Autopoet.VoicePersonas.names() ++ Autopoet.VoiceRoster.pinned(),
+          t = Autopoet.VoiceRoster.traits(name),
+          t != nil,
+          File.exists?(Path.join(Autopoet.VoiceRoster.takes_dir(), name <> ".wav")),
+          into: %{},
+          do: {name, t}
+
+    conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(all))
   end
 
   # ── the voice roster: persistent verdicts + takes, served BY the app ──────
