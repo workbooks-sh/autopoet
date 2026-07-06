@@ -18,13 +18,15 @@ defmodule Autopoet.VoiceBrain do
   D2 blocks), which the voice widget plays — voice, face, hands, diagram.
   """
 
-  # providers in preference order — both OpenAI-compatible chat completions.
-  # Cerebras (Z.ai GLM-4.6) is the current pick — stronger reasoning + instruction
-  # following than gemma for the onboarding brain; Groq stays as the fallback.
+  # providers in preference order — both OpenAI-compatible chat completions,
+  # reached THROUGH the Workbooks Cloud gateway (pass-through auth) when it is
+  # configured, else the vendor's direct endpoint. Cerebras (Z.ai GLM-4.7) is the
+  # current pick — stronger reasoning + instruction following for the onboarding
+  # brain; Groq stays as the fast fallback.
   @providers [
-    %{secret: "CEREBRAS_API_KEY", host: "api.cerebras.ai",
-      url: ~c"https://api.cerebras.ai/v1/chat/completions", model: "zai-glm-4.6"},
-    %{secret: "GROQ_API_KEY", host: "api.groq.com",
+    %{secret: "CEREBRAS_API_KEY", slug: "cerebras", host: "api.cerebras.ai",
+      url: ~c"https://api.cerebras.ai/v1/chat/completions", model: "zai-glm-4.7"},
+    %{secret: "GROQ_API_KEY", slug: "groq", host: "api.groq.com",
       url: ~c"https://api.groq.com/openai/v1/chat/completions", model: "llama-3.3-70b-versatile"}
   ]
 
@@ -57,6 +59,40 @@ defmodule Autopoet.VoiceBrain do
       end
   end
 
+  # Resolve the request target for a provider: through the Workbooks Cloud gateway
+  # when configured (the model id becomes `<slug>/<model>` and the gateway token
+  # rides `cf-aig-authorization`), else the vendor's direct endpoint. One front
+  # door for the voice lane too.
+  defp route(p) do
+    model = System.get_env("AUTOPOET_VOICE_MODEL") || p.model
+
+    if Autopoet.Providers.gateway?() do
+      %{
+        url: String.to_charlist(Nexus.Secrets.get("CF_AIG_URL")),
+        host: "gateway.ai.cloudflare.com",
+        model: p.slug <> "/" <> model,
+        extra: [{~c"cf-aig-authorization", String.to_charlist("Bearer " <> Nexus.Secrets.get("CF_AIG_TOKEN"))}]
+      }
+    else
+      %{url: p.url, host: p.host, model: model, extra: []}
+    end
+  end
+
+  defp req_headers(key, extra),
+    do: [{~c"authorization", String.to_charlist("Bearer " <> key)}, {~c"content-type", ~c"application/json"}] ++ extra
+
+  defp http_opts(host, timeout) do
+    [
+      ssl: [
+        verify: :verify_peer,
+        cacerts: :public_key.cacerts_get(),
+        server_name_indication: String.to_charlist(host),
+        customize_hostname_check: [match_fun: :public_key.pkix_verify_hostname_match_fun(:https)]
+      ],
+      timeout: timeout
+    ]
+  end
+
   @doc """
   One conversational turn. `history` = [%{"role" => "user"|"assistant", "content" => text}]
   (most recent last, caller-trimmed). Returns {:ok, reply_text} | {:error, reason}.
@@ -67,17 +103,18 @@ defmodule Autopoet.VoiceBrain do
         {:error, :not_configured}
 
       {prov, key} ->
+        r = route(prov)
         messages = [%{"role" => "system", "content" => system_prompt()} | Enum.take(history, -16)]
 
         body =
           Jason.encode!(%{
-            "model" => System.get_env("AUTOPOET_VOICE_MODEL") || prov.model,
+            "model" => r.model,
             "messages" => messages,
             "temperature" => 0.7,
             "max_tokens" => 1200
           })
 
-        request(prov, key, body)
+        request(r, key, body)
     end
   end
 
@@ -92,15 +129,17 @@ defmodule Autopoet.VoiceBrain do
     # the first — one provider rate-limiting must not fail the turn
     providers()
     |> Enum.reduce_while({:error, :not_configured}, fn {prov, key}, _ ->
+      r = route(prov)
+
       body =
         Jason.encode!(%{
-          "model" => System.get_env("AUTOPOET_VOICE_MODEL") || prov.model,
+          "model" => r.model,
           "messages" => messages,
           "temperature" => Keyword.get(opts, :temperature, 0.7),
           "max_tokens" => Keyword.get(opts, :max_tokens, 1200)
         })
 
-      case request(prov, key, body) do
+      case request(r, key, body) do
         {:ok, _} = ok -> {:halt, ok}
         err -> {:cont, err}
       end
@@ -120,54 +159,25 @@ defmodule Autopoet.VoiceBrain do
         {:error, :not_configured}
 
       {prov, key} ->
+        r = route(prov)
         messages = [%{"role" => "system", "content" => system_prompt()} | Enum.take(history, -16)]
 
         body =
           Jason.encode!(%{
-            "model" => System.get_env("AUTOPOET_VOICE_MODEL") || prov.model,
+            "model" => r.model,
             "messages" => messages,
             "temperature" => 0.7,
             "max_tokens" => 1200,
             "stream" => true
           })
 
-        headers = [
-          {~c"authorization", String.to_charlist("Bearer " <> key)},
-          {~c"content-type", ~c"application/json"}
-        ]
-
-        http_opts = [
-          ssl: [
-            verify: :verify_peer,
-            cacerts: :public_key.cacerts_get(),
-            server_name_indication: String.to_charlist(prov.host),
-            customize_hostname_check: [match_fun: :public_key.pkix_verify_hostname_match_fun(:https)]
-          ],
-          timeout: 60_000
-        ]
-
-        :httpc.request(:post, {prov.url, headers, ~c"application/json", body}, http_opts,
+        :httpc.request(:post, {r.url, req_headers(key, r.extra), ~c"application/json", body}, http_opts(r.host, 60_000),
           sync: false, stream: :self, body_format: :binary)
     end
   end
 
-  defp request(prov, key, body) do
-    headers = [
-      {~c"authorization", String.to_charlist("Bearer " <> key)},
-      {~c"content-type", ~c"application/json"}
-    ]
-
-    http_opts = [
-      ssl: [
-        verify: :verify_peer,
-        cacerts: :public_key.cacerts_get(),
-        server_name_indication: String.to_charlist(prov.host),
-        customize_hostname_check: [match_fun: :public_key.pkix_verify_hostname_match_fun(:https)]
-      ],
-      timeout: 30_000
-    ]
-
-    case :httpc.request(:post, {prov.url, headers, ~c"application/json", body}, http_opts, body_format: :binary) do
+  defp request(r, key, body) do
+    case :httpc.request(:post, {r.url, req_headers(key, r.extra), ~c"application/json", body}, http_opts(r.host, 30_000), body_format: :binary) do
       {:ok, {{_, 200, _}, _, resp}} ->
         case Jason.decode(resp) do
           {:ok, %{"choices" => [%{"message" => %{"content" => text}} | _]}} when is_binary(text) ->

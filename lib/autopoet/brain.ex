@@ -2,19 +2,19 @@ defmodule Autopoet.Brain do
   @moduledoc """
   The proposal-only brain — the injectable `proposer` for `Nexus.Autopoet.Worker`.
 
-  Two-model flow with PROGRESSIVE DISCLOSURE:
-    1. The PLANNER (OpenRouter, `AUTOPOET_PLANNER_MODEL`, default Gemini 3.5
-       Flash) sees a token-minimal format primer + a one-line-per-page index of
-       the guide (`Autopoet.Guide`). If it needs depth it replies with
-       `NEED: <page>` lines; the pages load into ONE second planning round.
-    2. The DRAFTER (Mercury 2 / Inception; OpenRouter fallback) writes complete
-       file blocks, riding on the plan AND whatever guide pages the planner
-       consulted. No Groq anywhere, by decree.
+  ONE AGENT, ONE MODEL. A single model (`Autopoet.Providers` → Workbooks Cloud,
+  `openai/gpt-5.2`) both plans and authors — there is no separate drafter. It
+  still uses PROGRESSIVE DISCLOSURE:
+    1. It sees a token-minimal format primer + a one-line-per-page index of the
+       guide (`Autopoet.Guide`). If it needs depth it replies with `NEED: <page>`
+       lines; those pages load into ONE second planning round.
+    2. It then authors complete file blocks, riding on that plan and whatever
+       guide pages it consulted — same model, no hand-off.
 
   v3 discipline unchanged: every result is recorded as a PENDING proposal; nothing
   merges except `Autopoet.Proposals.accept/2` (human), which re-runs the Eval gate.
 
-  Tests inject `:brain_llm` (`fn prompt -> {:ok, text} end`, drives BOTH stages);
+  Tests inject `:brain_llm` (`fn prompt -> {:ok, text} end`, drives both rounds);
   `:brain_live` is false in test — the suite never touches the network.
   """
 
@@ -182,8 +182,7 @@ defmodule Autopoet.Brain do
       fun = Application.get_env(:autopoet, :brain_llm) ->
         fn _role, prompt -> fun.(prompt) end
 
-      Application.get_env(:autopoet, :brain_live, true) and
-          (Autopoet.Providers.openrouter?() or Autopoet.Providers.mercury?()) ->
+      Application.get_env(:autopoet, :brain_live, true) and Autopoet.Providers.openrouter?() ->
         &live_complete/2
 
       true ->
@@ -191,32 +190,14 @@ defmodule Autopoet.Brain do
     end
   end
 
-  defp live_complete(:plan, prompt) do
-    {planner, name} =
-      if Autopoet.Providers.openrouter?(),
-        do: {&Autopoet.Providers.openrouter/2, Autopoet.Providers.planner_model()},
-        else: {nil, nil}
+  # ONE model for BOTH rounds (plan then author) — the single agent through
+  # Workbooks Cloud. The `role` only shapes the budget/temperature, not the model.
+  defp live_complete(role, prompt) do
+    {max_tokens, temp} = if role == :draft, do: {3000, 0.1}, else: {800, 0.2}
 
-    with false <- is_nil(planner),
-         {:ok, %{content: p}} when is_binary(p) <-
-           planner.([%{role: "user", content: prompt}], max_tokens: 800, temperature: 0.2) do
-      Autopoet.Log.puts("brain: #{name} plan ok (#{byte_size(p)}B)")
-      {:ok, p}
-    else
-      true -> {:error, :no_planner}
-      other -> other
-    end
-  end
-
-  defp live_complete(:draft, prompt) do
-    {drafter, name} =
-      if Autopoet.Providers.mercury?(),
-        do: {&Autopoet.Providers.mercury/2, "mercury"},
-        else: {&Autopoet.Providers.openrouter/2, Autopoet.Providers.planner_model()}
-
-    case drafter.([%{role: "user", content: prompt}], max_tokens: 3000, temperature: 0.1) do
+    case Autopoet.Providers.complete([%{role: "user", content: prompt}], max_tokens: max_tokens, temperature: temp) do
       {:ok, %{content: text}} when is_binary(text) ->
-        Autopoet.Log.puts("brain: #{name} draft ok (#{byte_size(text)}B)")
+        Autopoet.Log.puts("brain: #{Autopoet.Providers.agent_model()} #{role} ok (#{byte_size(text)}B)")
         {:ok, text}
 
       other ->

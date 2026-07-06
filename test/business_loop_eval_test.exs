@@ -129,10 +129,10 @@ defmodule Autopoet.BusinessLoopEvalTest do
     IO.puts("  ✓ EVAL business/goodhart — drifted sim alarms (gap #{recon.sim_optimism_gap}); faithful sim silent")
   end
 
-  test "S-ANTICOLLUSION: the sim uses a model distinct from the brain's planner" do
+  test "S-ANTICOLLUSION: the sim uses a model distinct from the brain's agent model" do
     sim = Application.get_env(:autopoet, :sim_model, "meta-llama/llama-3.3-70b-instruct")
-    brain = Autopoet.Providers.planner_model()
+    brain = Autopoet.Providers.agent_model()
     refute sim == brain, "S-ANTICOLLUSION: sim-human must not share the brain's model (it would grade its own writing)"
-    IO.puts("  ✓ EVAL business/anti-collusion — sim model #{sim} ≠ brain planner #{brain}")
+    IO.puts("  ✓ EVAL business/anti-collusion — sim model #{sim} ≠ brain agent #{brain}")
   end
 end

@@ -39,26 +39,25 @@ end
 
 defmodule Autopoet.Providers do
   @moduledoc """
-  The ONLY providers in play (no Groq, by decree), both through the `Nexus.Llm`
-  money boundary, OpenAI-compatible with per-call base_url/key/model.
+  Workbooks Cloud — the ONE model front door. Every LLM call the autopoet makes
+  rides the Workbooks Cloudflare **AI Gateway** (the `workbooks` gateway:
+  `CF_AIG_URL` + `CF_AIG_TOKEN`), which fronts the upstream vendors we happen to
+  use. The gateway is the provider; the vendor is an implementation detail behind
+  it — one billing/observability/caching front door for everything.
 
-  GATEWAY-FIRST (owner decree, 2026-07-04): production traffic routes through
-  the Workbooks Cloudflare AI Gateway — the same `CF_AIG_URL` + `CF_AIG_TOKEN`
-  seam Nexus.Llm already speaks (compat endpoint, `{provider}/{model}` ids).
-  When the gateway is configured, the planner/limb lane rides it; the DIRECT
-  provider URLs below are the eval/dev fallback only.
+  ONE AGENT, ONE MODEL. The old two-model pipeline — a Gemini planner + a
+  Mercury/Inception DRAFTER — is retired. There is a single agent model
+  (`openai/gpt-5.2`, "Go 5.2"), a multimodal SUB model for limbs/browsing
+  (`xiaomi/mimo-v2.5`), and the fast voice/plan lane (Cerebras, in
+  `Autopoet.VoiceBrain`) — all three reached THROUGH the gateway.
 
-    * **OpenRouter** — the PLANNER (`AUTOPOET_PLANNER_MODEL`, default
-      `google/gemini-3.5-flash`) and the LIMB bodies (declared per-limb in
-      limbs.work, e.g. `xiaomi/mimo-v2.5`, riding Nexus.Llm's OpenRouter default).
-    * **Mercury 2 / Inception** — the DRAFTER (diffusion model writes full files;
-      typeaway-proven). OpenRouter is the drafting fallback. Drafter stays
-      direct until its gateway route is verified live against wb-dogfood.
+  Auth is PASS-THROUGH: the upstream vendor key rides `authorization`, the gateway
+  token rides `cf-aig-authorization`. With no gateway configured it falls back to
+  the vendor's direct endpoint, so dev without the gateway still works. Both paths
+  cross the `Nexus.Llm` money boundary (gate + meter) — no call skips it.
   """
-  @inception_url "https://api.inceptionlabs.ai/v1/chat/completions"
-  @openrouter_url "https://openrouter.ai/api/v1/chat/completions"
-  @mercury_model "mercury-2"
-  @default_planner_model "google/gemini-3.5-flash"
+  @agent_model "z-ai/glm-5.2"         # the ONE brain model (GLM-5.2, "Go 5.2")
+  @sub_model "xiaomi/mimo-v2.5"       # the multimodal sub / browsing / limb model
 
   # `brain_live: false` (test config) is the MASTER kill for live providers:
   # keys sitting in a developer's shell env must never turn the suite live —
@@ -66,36 +65,30 @@ defmodule Autopoet.Providers do
   # tripped the watchdog's VM halt mid-suite). Tests inject :brain_llm instead.
   def live?, do: Application.get_env(:autopoet, :brain_live, true)
 
-  def mercury?(), do: live?() and is_binary(Autopoet.Keys.inception())
-  def openrouter?(), do: live?() and is_binary(Autopoet.Keys.openrouter())
+  @doc "The single agent model — `AUTOPOET_MODEL` overrides (per-call `opts[:model]` still wins)."
+  def agent_model,
+    do: System.get_env("AUTOPOET_MODEL") || System.get_env("AUTOPOET_PLANNER_MODEL") || @agent_model
 
-  def planner_model,
-    do: System.get_env("AUTOPOET_PLANNER_MODEL") || @default_planner_model
+  @doc "The multimodal sub / browsing / limb model."
+  def sub_model, do: @sub_model
 
-  @doc "Is the Workbooks Cloudflare AI Gateway configured? (production posture)"
+  # kept name for the ~30 call sites; means "the Workbooks Cloud lane is reachable".
+  def openrouter?(), do: live?() and (gateway?() or is_binary(Autopoet.Keys.openrouter()))
+
+  @doc "Is the Workbooks Cloud gateway configured? (production posture)"
   def gateway?, do: Nexus.Secrets.has?("CF_AIG_URL") and Nexus.Secrets.has?("CF_AIG_TOKEN")
 
-  def mercury(messages, opts \\ []),
-    do: call(@inception_url, Autopoet.Keys.inception(), @mercury_model, messages, opts)
+  @doc """
+  A completion through Workbooks Cloud. Picks the model (default the single agent
+  model) and hands off to `Nexus.Llm`, which owns the gateway routing: with the
+  gateway configured every call rides the `workbooks` front door to the OpenRouter
+  upstream (pass-through auth, model auto-prefixed); without it, direct OpenRouter.
+  `openrouter/2` is the historical name for this ONE seam — kept for the call sites.
+  """
+  def openrouter(messages, opts \\ []), do: complete(messages, opts)
 
-  def openrouter(messages, opts \\ []) do
-    if gateway?() do
-      call(
-        Nexus.Secrets.get("CF_AIG_URL"),
-        Nexus.Secrets.get("CF_AIG_TOKEN"),
-        "openrouter/" <> planner_model(),
-        messages,
-        opts
-      )
-    else
-      call(@openrouter_url, Autopoet.Keys.openrouter(), planner_model(), messages, opts)
-    end
-  end
-
-  defp call(url, key, model, messages, opts) do
-    Nexus.Llm.complete(
-      messages,
-      Keyword.merge([base_url: url, api_key: key, model: model, tenant: nil], opts)
-    )
+  def complete(messages, opts \\ []) do
+    model = opts[:model] || agent_model()
+    Nexus.Llm.complete(messages, Keyword.merge(opts, model: model, api_key: Autopoet.Keys.openrouter(), tenant: nil))
   end
 end

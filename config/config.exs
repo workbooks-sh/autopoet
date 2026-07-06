@@ -6,6 +6,15 @@ if config_env() != :test do
   config :nexus, store_adapter: Nexus.Store.Sqlite
 end
 
+# WORKBOOKS CLOUD — one front door for EVERY model call. When the AI Gateway is
+# configured (CF_AIG_URL + CF_AIG_TOKEN, from Secrets), `Nexus.Llm` routes ALL
+# traffic — the brain, limbs, agents, embeds — through the `workbooks` gateway to
+# the OpenRouter upstream (pass-through auth), model ids prefixed automatically.
+# No gateway keys → this is inert and calls fall back to the direct base_url.
+config :nexus, Nexus.Llm,
+  gateway_upstream: "openrouter",
+  api_key_env: "OPENROUTER_API_KEY"
+
 if config_env() == :test do
   config :autopoet,
     headless: true,

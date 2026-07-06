@@ -283,8 +283,7 @@ defmodule Autopoet.Intake do
     # dispatched at intake is REAL agent work whose spend rides Nexus.Llm, not
     # the harness's brain-wrapped cost meter (found live: the long rehearsal's
     # intake ignited a shopkeeper limb outside the spend cap)
-    if Application.get_env(:autopoet, :ignition, true) and
-         (Autopoet.Providers.openrouter?() or Autopoet.Providers.mercury?()) do
+    if Application.get_env(:autopoet, :ignition, true) and Autopoet.Providers.openrouter?() do
       first = hd(plan.agents)
 
       Autopoet.Limbs.dispatch(
@@ -324,7 +323,7 @@ defmodule Autopoet.Intake do
         :skip
 
       list ->
-        if Autopoet.Providers.openrouter?() or Autopoet.Providers.mercury?() do
+        if Autopoet.Providers.openrouter?() do
           for {provider, picks} <- list do
             Autopoet.Limbs.dispatch(
               "intake_scout",
