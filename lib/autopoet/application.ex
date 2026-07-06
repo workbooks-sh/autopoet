@@ -46,13 +46,12 @@ defmodule Autopoet.Application do
           Autopoet.Shadow.Hebb,
           Autopoet.Shadow.Surprise,
           Autopoet.Shadow.Outcomes,
-          # P0 — Autopoet runs ON the nexus: Nexus.Server owns the MAIN port (the
-          # window points here) and serves the `.work` app surface (app/home —
-          # client islands + server blocks) at `/`. Legacy Control drops to port+1
-          # (NOT deleted) to serve the routes not yet migrated; P1 moves those into
-          # server blocks, then Control retires entirely.
+          # Autopoet runs ON the nexus: Nexus.Server owns the port the window
+          # points at and serves the `.work` app surface (app/home — client
+          # islands + server blocks) at `/`. All 166 routes migrated to server
+          # blocks (P1), so the legacy `Autopoet.Control` Plug + its Bandit are
+          # RETIRED — the runtime owns HTTP now.
           {Nexus.Server, root: Path.join([Autopoet.Discovery.home(), "app", "home"]), port: port},
-          {Bandit, plug: Autopoet.Control, ip: io, port: port + 1},
           {Autopoet.Discovery, port}
         ] ++ [Autopoet.Desks] ++ desk() ++ window()
 
