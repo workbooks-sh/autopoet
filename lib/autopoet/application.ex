@@ -23,7 +23,26 @@ defmodule Autopoet.Application do
     # dep here (its own Application doesn't boot Config), so we boot it ourselves.
     Nexus.Config.boot()
     port = port()
-    root = Path.join([Autopoet.Discovery.home(), "app", "home"])
+    # The `.work` app SURFACE (app/home) is CODE — it ships with the install, a
+    # DIFFERENT root from the BODY/data home (`Discovery.home()`, which tests isolate
+    # to `_build/test_home` and which holds the user's workspace, not the app source).
+    # Derive it from the install dir: `AUTOPOET_HOME` (run.sh sets it to the project
+    # dir) or the cwd. Using `Discovery.home()` here silently broke `mix test`, where
+    # body ≠ install and `<body>/app/home` does not exist → nothing compiles → the
+    # spine goes undefined.
+    root = Path.join([app_root(), "app", "home"])
+
+    # Compile the `.work` BEAM tier NOW — before the supervision tree — so every
+    # server-block module the app supervises, `Autopoet.Spine` first among them, is a
+    # LOADED module by the time its child slot starts. This is the robust, env-
+    # independent guarantee: it does not depend on Nexus.Server's own bringup firing
+    # (and completing — bringup rescues its own crashes) at the right moment. It
+    # matters most under `mix test`, where the app boots without a fully-primed
+    # serving context; without this the tree dies on `Autopoet.Spine undefined`.
+    # Nexus.Server (child 1) re-runs bringup to register routes/workers — a second
+    # pass that redefines the same modules (a handful of harmless warnings, gone once
+    # P6 deletes the `.ex` twins).
+    Nexus.Compile.workbook(root)
 
     # v0-nexus tree — three top-level boundaries; the fat domain child list now
     # lives in the `.work`-authored `Autopoet.Spine` (app/home/backend/spine.work):
@@ -31,13 +50,9 @@ defmodule Autopoet.Application do
     #   1. Nexus.Server — owns HTTP on the port the window points at, serves the
     #      `.work` app surface (app/home) at `/`. All ~166 routes are server blocks
     #      (P1); Autopoet.Control + its Bandit are RETIRED — the runtime owns HTTP.
-    #      Its `start_link` runs `bringup` SYNCHRONOUSLY — compiling every `.work`
-    #      BEAM unit (the spine + all 57 backend modules) — before it returns, so by
-    #      the time child 2 starts, `Autopoet.Spine` is a loaded module. Ordered FIRST
-    #      for exactly this reason; no separate pre-compile pass is needed.
     #   2. Autopoet.Spine — the app's own domain/brain processes (P2). Handed as an
     #      explicit map spec (start: mfa, no upfront `child_spec/1`) so the Supervisor
-    #      never touches the module before Nexus.Server's bringup has defined it.
+    #      never touches the module until its slot starts (after the pre-compile above).
     #   3. Autopoet.Window — the desktop kill-switch (closing it halts the BEAM).
     children =
       [
@@ -112,6 +127,12 @@ defmodule Autopoet.Application do
   # The domain child list (log/history/shadow/desktop-I/O/discovery/desks) now lives in
   # the `.work`-authored `Autopoet.Spine` (app/home/backend/spine.work) — this module is
   # just the OTP bootstrap + one-shot world seeds.
+
+  # The install dir that holds the `.work` app surface (`app/home`) — CODE, not the
+  # user's body/data home. run.sh exports AUTOPOET_HOME=$PWD (the project/release
+  # dir); `mix test` sets neither, so it falls back to the cwd (the project root).
+  # Distinct from `Discovery.home()` (the body home, isolated per-run in tests).
+  def app_root, do: System.get_env("AUTOPOET_HOME") || File.cwd!()
 
   @doc "Is this the cloud profile (a vendored Fly machine), not the desktop?"
   def cloud?, do: System.get_env("AUTOPOET_TARGET") == "cloud"

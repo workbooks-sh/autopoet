@@ -7,7 +7,7 @@ defmodule Autopoet.Eval.LiveRunner do
       eval/live-runs/<stamp>/<task>.md — the review ritual has material.
     * the ONLY live surface is the brain's completions: we wrap `:brain_llm`
       around the real provider call, so prompt assembly, routing, gates, and
-      artifact checks are all the production path — but limbs/ignition stay
+      artifact checks are all the production path — but agents/ignition stay
       DEAD (no unmonitored fan-out, no surprise spend).
     * spend is capped structurally: max_tokens per call, tasks run one at a
       time, the run stops early if `max_error_streak` tasks fail in a row.
@@ -29,7 +29,7 @@ defmodule Autopoet.Eval.LiveRunner do
 
     p = Personas.named(persona_name)
 
-    # metered surface ONLY: ignition limbs spend outside the brain wrap
+    # metered surface ONLY: ignition agents spend outside the brain wrap
     Application.put_env(:autopoet, :ignition, false)
 
     # seed the persona world through the real intake (deterministic lane)

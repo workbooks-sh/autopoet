@@ -45,13 +45,13 @@ defmodule Autopoet.RequestsTest do
   test "an AGENT-side request (bare bus event, the ungated bash verb path) reaches the queue" do
     Nexus.Events.emit(%{
       kind: "self_edit.requested",
-      target: "research_limb",
+      target: "researcher",
       change: "search verb returned malformed results twice",
-      dedup_key: "research_limb::search-malformed",
+      dedup_key: "researcher::search-malformed",
       tags: []
     })
 
     Process.sleep(150)
-    assert Enum.any?(Autopoet.Requests.pending(), &(&1.target == "research_limb"))
+    assert Enum.any?(Autopoet.Requests.pending(), &(&1.target == "researcher"))
   end
 end

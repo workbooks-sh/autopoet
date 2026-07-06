@@ -1,13 +1,13 @@
 defmodule Autopoet.WorldGraphTest do
   use ExUnit.Case
 
-  test "the world graph centers the self, includes docs/limbs, and every link resolves" do
+  test "the world graph centers the self, includes docs/agents, and every link resolves" do
     %{nodes: nodes, links: links} = Autopoet.WorldGraph.payload()
     ids = MapSet.new(nodes, & &1.id)
 
     assert "self" in ids
     assert Enum.any?(nodes, &(&1.type == "doc"))
-    assert Enum.any?(nodes, &(&1.type == "limb"))
+    assert Enum.any?(nodes, &(&1.type == "agent"))
     assert Enum.all?(nodes, &is_binary(&1.detail))
 
     for l <- links do

@@ -48,7 +48,11 @@ defmodule Autopoet.Spine do
         Autopoet.Log,
         Autopoet.History,
         Autopoet.Auth,
-        Autopoet.Profile
+        Autopoet.Profile,
+        # The money wall (balance/caps/runway) — pure BEAM state, so it runs on BOTH
+        # profiles (desktop + cloud), started before the desks/market that draw on it.
+        # (Restored here after P0 dropped it when Nexus.Server replaced Control's Bandit.)
+        Autopoet.Treasury
       ] ++
         desktop_io() ++
         [

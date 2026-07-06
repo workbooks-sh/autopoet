@@ -31,7 +31,7 @@ defmodule Autopoet.Eval.Rehearsal do
     dir = Path.join("eval/live-runs", stamp)
     File.mkdir_p!(dir)
 
-    # metered surface ONLY: ignition limbs spend outside the brain wrap
+    # metered surface ONLY: ignition agents spend outside the brain wrap
     Application.put_env(:autopoet, :ignition, false)
 
     p = Personas.named("shop-seller")
@@ -52,7 +52,7 @@ defmodule Autopoet.Eval.Rehearsal do
     Autopoet.Requests.drain()
 
     # the live completer, transcribed per cycle (same wrap as the live tier —
-    # ONLY the brain goes live; limbs/ignition stay dead)
+    # ONLY the brain goes live; agents/ignition stay dead)
     cost_counter = :counters.new(1, [])
     calls_counter = :counters.new(1, [])
     # instrument: prompt bytes (context-growth trend — the number that decides
