@@ -512,3 +512,60 @@ server :ops do
     end
   end
 end
+
+## Dev control + voice status
+
+server :dev do
+  route "POST /arm", :arm, auth: :public
+  route "POST /disarm", :disarm, auth: :public
+  route "POST /cycle", :cycle, auth: :public
+  route "POST /kill", :kill, auth: :public
+  route "POST /close", :close, auth: :public
+  route "GET /voice/status", :voice_status, auth: :public
+  route "GET /voice/sync.json", :voice_sync, auth: :public
+  route "GET /voices/roster", :voices_roster, auth: :public
+  route "POST /power/openrouter", :openrouter, auth: :public
+
+  def arm(req) do
+    every = req.query["every"] || "15m"
+    Nexus.Autopoet.Worker.arm(every)
+    {200, "text/plain; charset=utf-8", "armed every #{every}\n"}
+  end
+
+  def disarm(_req) do
+    Nexus.Autopoet.Worker.disarm()
+    {200, "text/plain; charset=utf-8", "disarmed\n"}
+  end
+
+  def cycle(_req) do
+    report = Autopoet.Brain.cycle()
+    {200, "text/plain; charset=utf-8", "cycle: sensed #{report.sensed}, results #{inspect(Enum.map(report.results, & &1.action))}\n"}
+  end
+
+  def kill(_req) do
+    spawn(fn -> Process.sleep(150); :init.stop() end)
+    {200, "text/plain; charset=utf-8", "halting\n"}
+  end
+
+  def close(_req) do
+    case Process.whereis(Autopoet.Window) do
+      nil -> {200, "text/plain; charset=utf-8", "no window (headless)\n"}
+      _ -> Autopoet.Window.control(:close); {200, "text/plain; charset=utf-8", "closing\n"}
+    end
+  end
+
+  def voice_status(_req), do: {200, "text/plain; charset=utf-8", to_string(Autopoet.Voice.status()) <> "\n"}
+  def voice_sync(_req), do: {200, "application/json", Jason.encode!(Autopoet.Voice.sync())}
+  def voices_roster(_req), do: {200, "text/html; charset=utf-8", Autopoet.VoiceRoster.html(Autopoet.Discovery.token())}
+
+  def openrouter(req) do
+    key = to_string(req.raw_body || "") |> String.trim()
+
+    if key == "" do
+      {422, %{error: "empty key"}}
+    else
+      Autopoet.Keys.set_openrouter(key)
+      %{ok: true}
+    end
+  end
+end
