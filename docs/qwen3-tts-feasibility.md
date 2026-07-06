@@ -72,7 +72,13 @@ cropped at a silence boundary (7–12s), transcribed by our own STT (ref_text =
 crop verbatim; fix respell mishears like "autopilot" → "auto poet"), pinned as
 data/voices/<name>.wav+txt. ALL 14 accepted voices pinned; the lab routes
 kind:pinned through qwen-clone automatically. Default voice: qwen-clone
-rosalind. If clone anchoring ever wanders: 8-bit Base, then a longer crop.
+rosalind. LONGER REFS TESTED AND REJECTED (owner ear, same day): a 29s degapped ref
+(airgaps collapsed with crossfades from the full 33.5s take; STT transcribed
+it perfectly; no latency cost) sounded WORSE than the 9s single-utterance
+crop. The 5-10s sweet spot is real — one clean uncut utterance beats more
+material. Degapping is fine for STT, not for clone conditioning (jump-cut
+prosody likely pollutes the speaker read). If anchoring ever wanders, the
+lever is the 8-bit Base model, NOT a longer ref.
 
 ## CLONE-FROM-ANYWHERE (proven 2026-07-05)
 
