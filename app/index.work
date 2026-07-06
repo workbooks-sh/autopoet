@@ -10,3 +10,28 @@ deploy do
   auth="trusted"
   database="sqlite"
 end
+
+## Deploy parity: one tree, two engines
+
+The SAME `.work` app runs on the **local desktop nexus** (`work` / the desktop shell)
+and, for paying users, the **workbooks.sh cloud nexus** — a `git push` remounts it,
+no separate build. The one profile switch is `AUTOPOET_TARGET=cloud`, read by
+`Autopoet.Spine`, and it only drops the DESKTOP-BOUND I/O — everything else is
+identical, so there is no divergence to keep in sync.
+
+What runs where:
+
+  * **Desktop-only** (hardware / heavy-native, dropped on cloud via the `cloud?`
+    guard in `Spine.desktop_io/0`): mic STT (`Autopoet.Stt` / Moonshine + its Python
+    venv), realtime `Autopoet.Voice`, the TTS engines `Autopoet.QwenTts` (Python Port)
+    and `Autopoet.Kokoro` (Ortex), `Autopoet.Affect`, and the `:wx` window. These need
+    a mic, a speaker, or a Python sidecar — a Fly machine has none.
+
+  * **Nexus-native, runs on BOTH** (pure BEAM/Nx — no Python, no hardware, no weight
+    files): the whole domain spine (log/history/auth/profile/treasury/requests/capture/
+    the three shadow learners/discovery/desks), the `worker` rails (watchdog, snapshot),
+    and — the point of the learned layer — the ML companion: `Autopoet.Shadow.Profile`
+    (Scholar/GMM tabular clustering) and `Autopoet.Shadow.Sequence` (the self-training
+    minGRU), tied together by `Autopoet.Shadow.Companion` at `GET /shadow/companion`.
+    Scholar + Nx are ordinary deps of this build, so the same learned analysis runs on
+    the cloud machine exactly as on the desktop.
