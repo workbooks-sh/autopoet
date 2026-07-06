@@ -174,22 +174,13 @@ for turn in range(MAX_TURNS):
         # a human reads + types between turns; --stress skips the pause to hammer
         # rate limits on purpose
         if "--stress" not in sys.argv: time.sleep(1.5)
-    elif m == "fork":
-        forks += 1
-        opts = move.get("options", [])
-        check(len(opts) >= 2, f"fork has {len(opts)} options")
-        pick = opts[min(1, len(opts) - 1)]
-        print(f"       fork picks: {pick['title']!r}  (of {[o['title'] for o in opts]})")
-        if pick.get("md"): post_text("/voice/deck/add", pick["md"]); deck_adds += 1
-        state["history"].append({"role": "user", "content": "let's go with: " + pick["title"]})
-        state["fork_done"] = True
     elif m == "complete":
         completed = True
         break
 
 print("═ 3. STRUCTURE")
 check(completed, f"session completed (in {len(moves_seen)} moves)")
-check(forks == 1, f"exactly one fork (saw {forks})")
+check(forks == 0, "no fork (retired)")
 check(all(m in ("ask", "slide", "fork", "complete") for m in moves_seen), "all moves valid")
 req = urllib.request.Request(BASE + "/voice/deck", headers={"authorization": "Bearer " + TOKEN})
 deck_md = urllib.request.urlopen(req, timeout=15).read().decode()

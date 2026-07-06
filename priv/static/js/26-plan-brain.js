@@ -213,12 +213,6 @@ window.PlanBrain = (() => {
       if (move.move === "ask") {
         await waitForUser();           // block until the owner responds
         pinQuestion(null);
-      } else if (move.move === "fork") {
-        const pick = await showFork(move.options || []);
-        state.history.push({ role: "user", content: "let's go with: " + pick.title });
-        state.fork_done = true;
-        if (board && board.think) board.think(true);   // thought while the next turn runs
-        if (pick.md) { await board.slide(pick.md); state.deck_titles.push(pick.title); mountDeckNav(); }
       } else if (move.move === "complete") {
         await finish(move);
         break;
@@ -235,38 +229,12 @@ window.PlanBrain = (() => {
         headers: { authorization: "Bearer " + TOKEN, "content-type": "application/json" },
         body: JSON.stringify({
           form: state.form, pairing: state.pairing, history: state.history.slice(-20),
-          fork_done: state.fork_done, deck_titles: state.deck_titles.slice(-12)
+          deck_titles: state.deck_titles.slice(-12)
         })
       });
       if (!r.ok) return null;
       return await r.json();
     } catch (_) { return null; }
-  }
-
-  // ── the three-direction fork — the one thing the owner physically picks ──
-  function showFork(options) {
-    return new Promise(resolve => {
-      const wrap = document.createElement("div");
-      wrap.className = "pm-fork";
-      wrap.innerHTML = `<div class="pm-fork-cards">` +
-        options.map((o, i) => `
-          <button class="pm-card" data-i="${i}">
-            <div class="pm-card-k">direction ${String.fromCharCode(65 + i)}</div>
-            <div class="pm-card-t">${escapeHtml(o.title)}</div>
-            <div class="pm-card-m">${escapeHtml(oneLine(o.md))}</div>
-          </button>`).join("") + `</div>`;
-      document.body.appendChild(wrap);
-      requestAnimationFrame(() => wrap.classList.add("on"));
-      wrap.querySelectorAll(".pm-card").forEach(btn => {
-        btn.onclick = () => {
-          const pick = options[+btn.dataset.i];
-          wrap.querySelectorAll(".pm-card").forEach(b => b.classList.toggle("picked", b === btn));
-          wrap.classList.add("done");
-          bubble("you", "→ " + pick.title);
-          setTimeout(() => { wrap.remove(); resolve(pick); }, 520);
-        };
-      });
-    });
   }
 
   // ── completion → processing → the build lane (vault + graph fill) ──

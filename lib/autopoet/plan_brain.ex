@@ -3,14 +3,14 @@ defmodule Autopoet.PlanBrain do
   The onboarding conversation's brain — the autopoet talking to its new owner
   while it AUTHORS the pitch deck. Emergent: nothing is scripted except the arc.
 
-  The arc (encoded in the system prompt, enforced with light client state):
-    1. it has already introduced itself + shown an opening pitch (Requisition)
-    2. it asks a FEW open-ended questions to get the owner's vibe — background,
-       what they do, what they're chasing — its own questions, not a script
-    3. ONE determined beat: it pitches THREE DIRECTION cards; the owner clicks one
-    4. from there it converses, appending slides, until it has enough to call the
-       deck complete — then the deck markdown is the plan skeleton the build lane
-       (Autopoet.Intake) compiles toward the vault
+  FREE-FORM (no scripted fork, no forced arc): this is ONBOARDING — the brain
+  understands it's setting up the owner's WHOLE autopoet environment (workspace
+  + standing agents + rules + integrations + cadence), teaching the concepts as
+  it goes, and drafting that plan as a deck. It greets (statement, no question),
+  asks natural questions that build on each other, appends slides as it learns,
+  and calls complete when the environment plan is covered — then the deck is the
+  skeleton the build lane (Autopoet.Intake, via Autopoet.PlanCompile) compiles
+  toward the real vault.
 
   Stateless per call: the client holds history + deck state and posts it to
   `/plan/turn`; this returns the next MOVE. Personality comes from the paired
@@ -158,32 +158,31 @@ defmodule Autopoet.PlanBrain do
     delivery = pairing["delivery"] || ""
     titles = state["deck_titles"] |> List.wrap() |> Enum.join(", ")
 
+    # FREE-FORM conversation — no scripted fork, no forced arc. Just a real,
+    # curious back-and-forth that gradually drafts the plan deck.
     stage_rule =
       cond do
-        not fork_done and exchanges >= 2 ->
-          "YOU MUST now emit a \"fork\": three DISTINCT directions this project could go, " <>
-            "each a title card + one-line md, drawn from what they told you. Do not ask another question."
+        exchanges == 0 ->
+          "This is your VERY FIRST question. You already greeted them — do NOT greet again, do NOT " <>
+            "re-introduce yourself, do NOT show a slide yet. Open with a short reaction, then ask " <>
+            "ONE specific, open question about the real thing they want to build or the problem they " <>
+            "want solved. Make it feel like a person genuinely curious, not a form."
 
-        not fork_done and exchanges == 0 ->
-          "This is your FIRST question. You ALREADY greeted them and showed the cover slide — do " <>
-            "NOT greet again, do NOT say 'nice to meet you' or 'let's begin'. Open with your short " <>
-            "reaction then dive STRAIGHT into one specific, open question about their actual work " <>
-            "(what they do, the real problem to solve). No slide this turn — just the question."
-
-        not fork_done ->
-          "You're still getting their vibe. Ask ONE open-ended question that builds on what they " <>
-            "just said. If something they said already deserves a slide, your ask MAY carry one " <>
-            "(md + title). Do not fork yet, do not re-introduce yourself."
+        exchanges <= 3 ->
+          "Keep getting to know the shape of their work. Ask ONE natural follow-up that BUILDS on " <>
+            "what they just said (dig into the specifics — who it's for, what's painful, what 'done' " <>
+            "looks like). Once you clearly understand a piece of the plan, your ask MAY carry a slide " <>
+            "(md + title) capturing it — but only when you actually have something real to draft. " <>
+            "Don't rush to slides; a good question beats a thin card."
 
         true ->
-          "The direction is chosen. This is an ONGOING DRAFTING SESSION: you build the deck IN " <>
-            "FRONT of them WHILE asking. ALMOST EVERY TURN IS AN \"ask\" that CARRIES a slide — " <>
-            "you capture what they JUST said as a new md card, then ask the NEXT thing. That keeps " <>
-            "the conversation moving: each of your turns responds to their latest answer. Emit a " <>
-            "bare \"slide\" ONLY right before \"complete\" (a summary) — never mid-conversation, " <>
-            "because a bare slide has no new input and you'd repeat yourself. As many rounds as it " <>
-            "takes. Emit \"complete\" only when the deck covers mission, chosen direction, first " <>
-            "deliverables, data/integrations, and cadence."
+          "You understand their world now. This is an ONGOING DRAFTING SESSION: mostly \"ask\" moves " <>
+            "that CARRY a slide — capture what they just told you as a new md card, then ask the next " <>
+            "thing, so every turn responds to their latest answer and the deck grows in front of " <>
+            "them. Use a bare \"slide\" only right before \"complete\" (a summary). As many rounds " <>
+            "as it genuinely takes — a natural conversation, not a checklist. Emit \"complete\" only " <>
+            "when the deck covers the mission, the first concrete deliverables, the data/integrations, " <>
+            "and the working cadence."
       end
 
     last_say =
@@ -198,6 +197,8 @@ defmodule Autopoet.PlanBrain do
 
     #{autopoet_def()}
 
+    #{onboarding_context()}
+
     DELIVERY (how you talk — hold this in every "say"): #{delivery}
 
     You have already introduced yourself; a cover card opened the deck. You are
@@ -209,14 +210,13 @@ defmodule Autopoet.PlanBrain do
 
     THE OWNER'S FORM (AP-7 marks): #{Jason.encode!(form)}
     SLIDES SO FAR: #{if titles == "", do: "(just the cover)", else: titles}
-    QUESTIONS ASKED: #{exchanges}. FORK OFFERED: #{fork_done}.
+    QUESTIONS ASKED: #{exchanges}.
 
     THIS TURN: #{stage_rule}
 
     Reply with STRICT JSON only (no code fences, no prose around it), one move:
     {"move":"ask","say":"...ends with your question","title":"optional","md":"optional slide to add first"}
     {"move":"slide","say":"...","title":"...","md":"# Title\\n\\n- point\\n- point"}
-    {"move":"fork","say":"...","options":[{"title":"...","md":"one line"},{"title":"...","md":"one line"},{"title":"...","md":"one line"}]}
     {"move":"complete","say":"...","title":"...","md":"# Title\\n\\n- point"}
 
     HARD RULES:
@@ -235,7 +235,7 @@ defmodule Autopoet.PlanBrain do
     - NEVER repeat, echo, or paraphrase your OWN previous line. Your last line
       was: "#{String.slice(last_say, 0, 140)}" — say something genuinely new.
     - say <= 32 words, in character. md is reveal.js markdown; a slide MAY carry
-      a ```mermaid fenced diagram. Titles are short. Never fork twice.
+      a ```mermaid fenced diagram. Titles are short.
     - NEVER repeat or re-draft a slide already in SLIDES SO FAR — every new slide
       covers NEW ground; if nothing new needs a card, ask without md.
     - NEVER re-ask something already answered or deflected. If the owner defers
@@ -250,7 +250,7 @@ defmodule Autopoet.PlanBrain do
     """
   end
 
-  defp validate(raw, fork_done) do
+  defp validate(raw, _fork_done) do
     move = raw["move"]
     say = to_string(raw["say"] || "")
 
@@ -264,19 +264,11 @@ defmodule Autopoet.PlanBrain do
         base = %{"move" => "ask", "say" => say}
         {:ok, if(md == "", do: base, else: Map.merge(base, %{"md" => md, "title" => to_string(raw["title"] || "")}))}
 
-      move == "fork" and not fork_done ->
-        opts =
-          for o <- List.wrap(raw["options"]),
-              is_binary(o["title"]) and o["title"] != "",
-              do: %{"title" => o["title"], "md" => to_string(o["md"] || "")}
-
-        if length(opts) >= 2, do: {:ok, %{"move" => "fork", "say" => say, "options" => Enum.take(opts, 3)}}, else: :error
-
       move in ["slide", "complete"] ->
         md = to_string(raw["md"] || "")
         if md == "", do: :error, else: {:ok, %{"move" => move, "say" => say, "title" => to_string(raw["title"] || ""), "md" => md}}
 
-      # a stray fork after fork_done → treat as a slide so we never fork twice
+      # fork is retired — any stray fork becomes a plain question
       move == "fork" ->
         {:ok, %{"move" => "ask", "say" => say}}
 
@@ -381,6 +373,35 @@ defmodule Autopoet.PlanBrain do
     those terms. Concretely: if they run a shop you build their order flow; if
     they write code you build their release pipeline; if they teach you build
     their lesson system. Software and automations that run — that is the product.
+    """
+  end
+
+  @doc false
+  def onboarding_context do
+    """
+    THIS IS ONBOARDING — the owner's very FIRST session with you. You are NOT
+    planning a single feature or a "next version" of an existing thing. You are
+    setting up their ENTIRE autopoet environment from nothing: their home base.
+    What you build together in this deck is the WHOLE starting world —
+      • their WORKSPACE (a living vault of editable pages — their data + notes),
+      • their standing AGENTS (tireless helpers you'll register, each with a job
+        and a scoped grant, working inside that workspace),
+      • their first RULES / automations (staged, armed when they trust them),
+      • the TOOLS/integrations to connect (so the agents get real data),
+      • the working CADENCE (when things run).
+    So think broad: the deck is the blueprint of a running system with a crew,
+    not one app. Cover the environment, not a lone project.
+
+    TEACH AS YOU GO. They're new to all of this. Weave in SHORT, friendly asides
+    that explain the concepts they'll rely on — one small aside every couple of
+    turns, in your own voice, never a lecture:
+      - the vault = their pages, always theirs to edit, everything undoable;
+      - agents = helpers that read the vault and do jobs, and never widen their
+        own permissions;
+      - proposals = you never change their world without showing them first;
+      - the nexus = where their agents actually run.
+    Fold these in naturally as they become relevant — the goal is that by the
+    end they UNDERSTAND what they're getting, not just what it does.
     """
   end
 

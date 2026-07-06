@@ -108,8 +108,11 @@ defmodule Autopoet.Requisition do
     Reply with STRICT JSON only — no markdown fences around the JSON, no commentary.
 
     #{Autopoet.PlanBrain.autopoet_def()}
+
+    #{Autopoet.PlanBrain.onboarding_context()}
+
     The greeting must NOT mention poetry, verse, or writing — it greets a new
-    owner about to build a real running system together.
+    owner about to set up their whole autopoet environment together.
 
     FORM (the requester's marks):
     #{Jason.encode!(form)}
@@ -131,7 +134,7 @@ defmodule Autopoet.Requisition do
     JSON shape:
     {"ap_name": "one lowercase word, quirky but dignified",
      "voice": "<roster name>",
-     "greeting": "<=28 words, in character, greets the requester by first name, introduces itself by name, says you'll draft the plan together right now",
+     "greeting": "<=26 words, in character, greets the requester by first name, introduces itself by name, and hands into the work — a STATEMENT that leads into a question WITHOUT asking one itself (the conversation asks the first question, not the greeting)",
      "blurb": "<=18 words, the department's dry assignment note for this pairing",
      "slides": [{"say": "<=20 words introducing the working session", "md": "# Cover title\\n\\n*one subtitle line*"}]}
     """

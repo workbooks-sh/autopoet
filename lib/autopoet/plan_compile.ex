@@ -73,6 +73,9 @@ defmodule Autopoet.PlanCompile do
 
     #{Autopoet.PlanBrain.autopoet_def()}
     So pages/agents/firstrun describe SOFTWARE + automations, never poetry.
+    This deck is the owner's WHOLE starting environment (a workspace + a crew of
+    standing agents + rules + integrations), not one feature — compile it as
+    such: the workspace is their home base, the agents are real standing roles.
 
     THE PERSON (form marks): #{Jason.encode!(form)}
     THE PAIRED COMPANION: #{pairing["name"]} (#{pairing["persona_desc"]})
