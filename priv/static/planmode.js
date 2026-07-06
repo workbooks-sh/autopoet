@@ -128,6 +128,9 @@ build.sched -> build.weave: wakes
     }
 
     camReset(true);   // each step re-locks focus; wander + recenter anytime
+    // PRIORITY WARM: the very next line synths first (the 'next →' click should
+    // never wait on the tail of the queue), then the rest re-warm (cache no-ops)
+    if (SEED[n + 1]) board.warm(SEED[n + 1].say);
     board.say(s.say);
     if (s.point) setTimeout(() => board.point(s.point, 3000), 500);
     if (s.gesture === "wave") setTimeout(() => board.wave(), 300);

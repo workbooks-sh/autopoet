@@ -594,6 +594,10 @@ async function showPlanMode() {
 // poll the subscription until it's active. The SAME flow the dashboard exposes.
 function showQuiz() { showPower(); }
 function showSlides() {
+  // pre-warm the premium voice while the deck plays — plan mode's first line
+  // should meet a READY engine, not a cold one
+  fetch("/voice/tts/qwen/boot", { method: "POST",
+    headers: { authorization: "Bearer " + TOKEN } }).catch(() => {});
   // deck start → refresh the power prefetch so step 1 paints with live data
   if (typeof firePowerPrefetch === "function") firePowerPrefetch();
   document.querySelector("#onboard .obinner").style.display = "none";
