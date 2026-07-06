@@ -118,9 +118,23 @@ for line in sys.stdin:
         # the expected length so a ramble truncates instead of running away.
         expected_s = max(1.6, len(text) / 12.0)
         kwargs["max_tokens"] = int(expected_s * 12.5 * 2.5) + 24
+        def pinned_seed(ref):
+            # per-voice CALIBRATED seed (data/voices/<name>.seed): a seed known
+            # to pass the speaker gate on attempt 0 for this ref ("stable
+            # seeds" per QwenLM/Qwen3-TTS#298). Rerolls fall back to text-hash.
+            try:
+                return int(open(os.path.splitext(ref)[0] + ".seed").read().strip())
+            except Exception:
+                return None
+
         def synth(attempt):
-            mx.random.seed(seed_for(kwargs.get("ref_audio") or kwargs.get("voice")
-                                    or kwargs.get("instruct") or "", text, attempt))
+            ref = kwargs.get("ref_audio")
+            pin = pinned_seed(ref) if ref else None
+            if attempt == 0 and pin is not None:
+                mx.random.seed(pin)
+            else:
+                mx.random.seed(seed_for(ref or kwargs.get("voice")
+                                        or kwargs.get("instruct") or "", text, attempt))
             chunks, srr = [], 24000
             for seg in model.generate(**kwargs):
                 chunks.append(np.array(seg.audio))
