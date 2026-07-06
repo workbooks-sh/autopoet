@@ -46,14 +46,97 @@ defmodule Autopoet.VoiceEngine do
   Map a paired persona (or accent hint) to one of Kokoro's 3 preset voices.
   Kokoro can't clone, so this just picks the closest preset timbre.
   """
+  @kokoro_voices ~w(bf_emma af_heart am_santa)
+
   def kokoro_voice(name) do
     n = String.downcase(to_string(name || ""))
-    desc = String.downcase(to_string(Autopoet.VoicePersonas.description(name) || ""))
-    blob = n <> " " <> desc
 
     cond do
-      String.contains?(blob, ["male", "deep", "commander", "sterling", "gravelly", "man"]) -> "am_santa"
-      true -> "bf_emma"
+      # already an explicit Kokoro preset (the designer passes these) → use it.
+      # matches the Kokoro naming convention <accent><gender>_<name>
+      # (af_bella, am_onyx, bf_emma, bm_george …) so ALL installed voices pass,
+      # not just the original trio.
+      n in @kokoro_voices or Regex.match?(~r/^[a-z][fm]_[a-z]+$/, n) ->
+        n
+
+      true ->
+        desc = String.downcase(to_string(Autopoet.VoicePersonas.description(name) || ""))
+        blob = n <> " " <> desc
+        if String.contains?(blob, ["male", "deep", "commander", "sterling", "gravelly", "man"]),
+          do: "am_santa",
+          else: "bf_emma"
     end
+  end
+
+  # Voice PSEUDONYMS — the designer shows a timbre descriptor, not the raw
+  # Kokoro id (af_bella …). Showing the id risks a name collision with the
+  # Autopoet's own name; a descriptor ("Rich Alto") reads as a voice, not a
+  # second name. First letter of the id = accent → flag.
+  @voice_labels %{
+    "af_heart" => "Warm Mezzo",
+    "af_bella" => "Rich Alto",
+    "af_nicole" => "Soft Whisper",
+    "af_sarah" => "Clear Mezzo",
+    "af_sky" => "Bright Soprano",
+    "af_aoede" => "Smooth Alto",
+    "af_kore" => "Crisp Soprano",
+    "am_santa" => "Jolly Bass",
+    "am_adam" => "Firm Baritone",
+    "am_michael" => "Warm Baritone",
+    "am_onyx" => "Deep Bass",
+    "am_puck" => "Playful Tenor",
+    "bf_emma" => "Refined Mezzo",
+    "bf_alice" => "Gentle Alto",
+    "bf_isabella" => "Elegant Mezzo",
+    "bf_lily" => "Sweet Soprano",
+    "bm_george" => "Distinguished Bass",
+    "bm_lewis" => "Mellow Baritone",
+    "bm_fable" => "Storyteller Tenor"
+  }
+
+  @flags %{
+    "a" => "🇺🇸",
+    "b" => "🇬🇧",
+    "e" => "🇪🇸",
+    "f" => "🇫🇷",
+    "h" => "🇮🇳",
+    "i" => "🇮🇹",
+    "j" => "🇯🇵",
+    "p" => "🇧🇷",
+    "z" => "🇨🇳"
+  }
+
+  @doc """
+  The designer's voice picker list: `[%{id, label}]` for every installed
+  Kokoro voice, label = flag + timbre descriptor. Sorted by id so accents group.
+  """
+  def catalog do
+    dir = Path.join([Autopoet.Discovery.home(), "data", "models", "kokoro", "voices"])
+
+    case File.ls(dir) do
+      {:ok, files} ->
+        files
+        |> Enum.filter(&String.ends_with?(&1, ".bin"))
+        |> Enum.map(&String.trim_trailing(&1, ".bin"))
+        |> Enum.sort()
+        |> Enum.map(fn id -> %{id: id, label: label(id)} end)
+
+      _ ->
+        []
+    end
+  end
+
+  defp label(id) do
+    flag = Map.get(@flags, String.first(id) || "", "")
+    name = Map.get(@voice_labels, id, prettify(id))
+    String.trim("#{flag} #{name}")
+  end
+
+  # unknown voice → a readable fallback from the id ("af_river" → "River")
+  defp prettify(id) do
+    id
+    |> String.split("_")
+    |> List.last()
+    |> String.capitalize()
   end
 end

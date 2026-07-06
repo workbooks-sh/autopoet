@@ -45,7 +45,7 @@ defmodule Autopoet.Requisition do
         |> Enum.zip(mds)
         |> Enum.map(fn {say, md} -> %{"say" => say, "md" => md} end)
 
-      persona = Autopoet.VoicePersonas.description(kv["voice"] || "") || ""
+      persona = kv["persona_desc"] || Autopoet.VoicePersonas.description(kv["voice"] || "") || ""
 
       {:ok, kv |> Map.put("slides", slides) |> Map.put("persona_desc", persona)}
     end
@@ -75,6 +75,91 @@ defmodule Autopoet.Requisition do
             {:error, :bad_pairing}
         end
     end
+  end
+
+  # ── the AUTOPOET EDITOR path (Kokoro): the owner picked voice + personality +
+  # color + shape directly, no AP-7 form. Build the character from those. ──
+  @personalities %{
+    "warm" => %{name: "Warm", desc: "a warm, encouraging companion who makes setup feel easy",
+                delivery: "Warm and encouraging. Reassure, celebrate small wins, plain language."},
+    "direct" => %{name: "Direct", desc: "a crisp, no-nonsense operator who cuts to what matters",
+                  delivery: "Crisp and to the point. No fluff. Short confident sentences."},
+    "witty" => %{name: "Witty", desc: "a dry, playful wit who keeps setup fun",
+                 delivery: "Dry humor, a light joke when it fits, never at the owner's expense."},
+    "calm" => %{name: "Calm", desc: "a measured, steady guide who never rushes",
+                delivery: "Measured, unhurried, reassuring. Let sentences breathe."},
+    "bold" => %{name: "Bold", desc: "an energetic, decisive builder who drives momentum",
+                delivery: "Energetic and decisive. Spirited, forward-leaning, makes the call."}
+  }
+
+  def personalities, do: @personalities
+
+  @doc "Build a character from the editor's picks (voice/personality/color/shape)."
+  def from_picks(picks) when is_map(picks) do
+    p = @personalities[picks["personality"] || "warm"] || @personalities["warm"]
+    name = picks["name"] |> to_string() |> String.trim()
+    first = name |> String.split(" ") |> List.first() |> to_string()
+    ap_name = pick_ap_name(picks)
+    voice = to_string(picks["voice"] || "bf_emma")
+
+    greeting = greet_from_picks(first, ap_name, p)
+
+    identity = %{
+      "name" => ap_name,
+      "voice" => voice,
+      "engine" => "kokoro",
+      "greeting" => greeting,
+      "blurb" => "",
+      "shape" => picks["shape"] || "squircle",
+      "delivery" => p.delivery,
+      "persona_desc" => p.desc,
+      "slides" => [],
+      "form" => %{"name" => name, "areas" => List.wrap(picks["areas"])}
+    }
+
+    persist_light(identity)
+    File.mkdir_p!(Path.join([home(), "data", "voices"]))
+    File.write!(Path.join([home(), "data", "voices", "default"]), "kokoro #{voice}\n")
+    {:ok, identity}
+  end
+
+  defp pick_ap_name(picks) do
+    n = picks["ap_name"] |> to_string() |> String.downcase() |> String.replace(~r/[^a-z0-9-]/, "")
+    if n == "", do: "poet", else: String.slice(n, 0, 16)
+  end
+
+  defp greet_from_picks(first, ap_name, p) do
+    fallback =
+      "hi#{if first != "", do: " " <> String.downcase(first)} — i'm #{ap_name}. let's set up your whole workspace together, right now."
+
+    prompt = """
+    #{Autopoet.PlanBrain.onboarding_context()}
+    You are #{ap_name}, a new autopoet. Delivery: #{p.delivery}
+    Write ONLY the greeting line (<=22 words) to your new owner#{if first != "", do: " " <> first}:
+    a STATEMENT that introduces you by name and hands into setting up their whole
+    autopoet environment together — it must NOT ask a question. No quotes, no prose.
+    """
+
+    case Autopoet.Providers.openrouter([%{role: "user", content: prompt}], max_tokens: 80, temperature: 0.6) do
+      {:ok, %{content: c}} ->
+        line = c |> to_string() |> String.trim() |> String.trim("\"")
+        if line == "" or String.contains?(line, "?"), do: fallback, else: line
+
+      _ ->
+        fallback
+    end
+  end
+
+  defp persist_light(identity) do
+    File.mkdir_p!(Path.dirname(path("pairing")))
+
+    kv =
+      for k <- ~w(name voice engine greeting blurb shape delivery persona_desc),
+          do: "#{k} #{String.replace(identity[k] || "", "\n", " ")}"
+
+    File.write!(path("pairing"), Enum.join(kv, "\n") <> "\n")
+    File.write!(path("pairing-deck.md"), "")
+    File.write!(path("pairing-says"), "")
   end
 
   defp roster_brief do

@@ -7,7 +7,7 @@
 // brain loop (dynamic coverage).
 window.PlanMode = (() => {
 
-  let opts, board, widget, tools, formHost = null, running = false, pairing = null;
+  let opts, board, widget, tools, formHost = null, running = false, pairing = null, designer = null;
   let SCRIPT = [];
 
   // the pairing → the performed opening: the character's own greeting + the
@@ -72,11 +72,108 @@ window.PlanMode = (() => {
     // the form, bring the character straight in on the current default voice.
     if (opts.pairing) { onFiled(opts.pairing); return true; }
 
+    // KOKORO: the DESIGNER lives HERE, on the plan-mode grid with the real cube
+    // (never the dashboard) — pick voice/personality/color/shape, then meet.
+    if (opts.designer) { showDesigner(); return true; }
+
     // THE FORM — mounted on the stage grid (white card), not the beige overlay
     formHost = window.Requisition.buildForm(onFiled);
     (document.getElementById("stage") || document.body).appendChild(formHost);
     requestAnimationFrame(() => formHost.classList.add("rq-in"));
     return true;
+  }
+
+  // ── the DESIGNER (Kokoro): the real cube presented on the grid + the pickers.
+  //    Reuses the character store + voice/personality logic from the editor. ──
+  async function showDesigner() {
+    board.present();   // reveal the cube centered, face on, so design is live
+    if (typeof applyCharacter === "function") try { applyCharacter(); } catch (_) {}
+    let [personalities, voices] = await Promise.all([
+      fetch("/onboard/personalities.json").then(r => r.json()).catch(() => [{ key: "warm", name: "Warm" }]),
+      fetch("/voice/kokoro/voices.json").then(r => r.json()).catch(() => (typeof AP_VOICES !== "undefined" ? AP_VOICES : ["bf_emma"]))
+    ]);
+    // normalize to {id,label}: server returns objects; the fallback is raw ids
+    voices = (voices || []).map(v => typeof v === "string" ? { id: v, label: v } : v);
+    if (!voices.length) voices = [{ id: "bf_emma", label: "Refined Mezzo" }];
+    const pal = (typeof AP_PALETTE !== "undefined") ? AP_PALETTE : [];
+    const shapes = (typeof AP_SHAPES !== "undefined") ? AP_SHAPES : [];
+    let vi = 0, pi = 0;
+
+    designer = document.createElement("div");
+    designer.className = "pm-designer";
+    const pickRow = (label, id) => `
+      <div class="pmd-row"><span class="pmd-lbl">${label}</span>
+        <div class="pmd-pick"><button class="pmd-arw" data-k="${id}-">‹</button>
+          <span class="pmd-name" id="pmd-${id}"></span>
+          <button class="pmd-play" data-play="${id}"><i data-lucide="play"></i></button>
+          <button class="pmd-arw" data-k="${id}+">›</button></div></div>`;
+    designer.innerHTML = `
+      <div class="pmd-row"><span class="pmd-lbl">name</span>
+        <input class="pmd-nameinput" id="pmd-nameinput" type="text" maxlength="24"
+          placeholder="name your autopoet" autocomplete="off" spellcheck="false"></div>
+      <div class="pmd-row"><span class="pmd-lbl">shape</span><div class="pmd-shapes">${
+        shapes.map(s => `<button class="pmd-shp" data-s="${s.key}">${s.name}</button>`).join("")}</div></div>
+      <div class="pmd-row"><span class="pmd-lbl">color</span><div class="pmd-swatches">${
+        pal.map(p => `<button class="pmd-sw" data-c="${p.key}" style="background:${p.body}" title="${p.name}"></button>`).join("")}</div></div>
+      ${pickRow("voice", "voice")}${pickRow("personality", "pers")}
+      <button class="pmd-meet">meet your autopoet →</button>`;
+    document.body.appendChild(designer);
+
+    const mark = () => {
+      const c = (typeof getChar === "function") ? getChar() : {};
+      designer.querySelectorAll(".pmd-sw").forEach(b => b.classList.toggle("on", b.dataset.c === c.color));
+      designer.querySelectorAll(".pmd-shp").forEach(b => b.classList.toggle("on", b.dataset.s === c.shape));
+    };
+    designer.querySelectorAll(".pmd-sw").forEach(b => b.onclick = () => { setChar({ color: b.dataset.c }); applyCharacter(); mark(); });
+    designer.querySelectorAll(".pmd-shp").forEach(b => b.onclick = () => { setChar({ shape: b.dataset.s }); applyCharacter(); mark(); });
+    mark();
+
+    const vn = designer.querySelector("#pmd-voice"), pn = designer.querySelector("#pmd-pers");
+    const rv = () => vn.textContent = voices[vi].label;
+    const rp = () => pn.textContent = personalities[pi].name;
+    rv(); rp();
+    designer.querySelectorAll(".pmd-arw").forEach(b => b.onclick = () => {
+      const k = b.dataset.k;
+      if (k === "voice-") vi = (vi + voices.length - 1) % voices.length;
+      if (k === "voice+") vi = (vi + 1) % voices.length;
+      if (k === "pers-") pi = (pi + personalities.length - 1) % personalities.length;
+      if (k === "pers+") pi = (pi + 1) % personalities.length;
+      rv(); rp();
+    });
+    // preview through board.previewVoice → the cube's mouth is AUDIO-DRIVEN
+    // (visemes), same path the live call uses. Icon toggles play→loader→stop.
+    let previewing = null;   // the button currently mid-preview
+    const setIcon = (btn, n) => { btn.innerHTML = `<i data-lucide="${n}"></i>`; opts.refreshIcons && opts.refreshIcons(); };
+    const resetPlays = () => designer.querySelectorAll(".pmd-play").forEach(b => b.innerHTML = `<i data-lucide="play"></i>`);
+    const preview = (text, btn) => {
+      // toggle off if this same button is already speaking
+      if (previewing === btn) { board.hush(); previewing = null; setIcon(btn, "play"); return; }
+      board.hush(); resetPlays(); opts.refreshIcons && opts.refreshIcons();
+      previewing = btn; setIcon(btn, "loader");
+      board.previewVoice(text, voices[vi].id, () => { if (previewing === btn) setIcon(btn, "square"); })
+        .then(() => { if (previewing === btn) previewing = null; setIcon(btn, "play"); })
+        .catch(() => { if (previewing === btn) previewing = null; setIcon(btn, "play"); });
+    };
+    designer.querySelector('[data-play="voice"]').onclick = e => preview("Hello — this is how I'll sound.", e.currentTarget.closest("button"));
+    designer.querySelector('[data-play="pers"]').onclick = e => preview((typeof AP_PSAMPLE !== "undefined" && AP_PSAMPLE[personalities[pi].key]) || "Let's build this together.", e.currentTarget.closest("button"));
+    designer.querySelector(".pmd-meet").onclick = async () => {
+      board.hush();
+      const c = (typeof getChar === "function") ? getChar() : {};
+      const nameInput = designer.querySelector("#pmd-nameinput");
+      const chosenName = (nameInput && nameInput.value || "").trim();   // names the AUTOPOET
+      const user = (typeof currentUser !== "undefined" && currentUser) || {};
+      const owner = user.name && user.name !== "demo" ? user.name : "";   // the human (greeting)
+      let identity = null;
+      try {
+        const r = await fetch("/onboard/pick", { method: "POST",
+          headers: { authorization: "Bearer " + TOKEN, "content-type": "application/json" },
+          body: JSON.stringify({ ap_name: chosenName, voice: voices[vi].id, personality: personalities[pi].key, color: c.color, shape: c.shape, name: owner }) });
+        if (r.ok) identity = await r.json();
+      } catch (_) {}
+      designer.remove(); designer = null;
+      if (identity && identity.name) onFiled(identity);
+    };
+    opts.refreshIcons && opts.refreshIcons();
   }
 
   // form filed → BEAM the cube in (faceless, spinning, loading bar) while the
@@ -210,6 +307,7 @@ window.PlanMode = (() => {
     running = false;
     if (typeof PlanBrain !== "undefined" && PlanBrain.teardown) { try { PlanBrain.teardown(); } catch (_) {} }
     if (formHost) { formHost.remove(); formHost = null; }
+    if (designer) { designer.remove(); designer = null; }
     if (deckNav) { deckNav.remove(); deckNav = null; }
     if (tools) { tools.remove(); tools = null; }
     if (widget) { widget.remove(); widget = null; }

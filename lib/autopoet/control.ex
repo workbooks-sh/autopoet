@@ -703,6 +703,31 @@ defmodule Autopoet.Control do
     end)
   end
 
+  # the AUTOPOET EDITOR (Kokoro): the owner picked voice/personality/color/shape
+  post "/onboard/pick" do
+    authed!(conn, fn conn ->
+      {:ok, body, conn} = read_body(conn, length: 40_000)
+      picks = case Jason.decode(body) do
+                {:ok, m} when is_map(m) -> m
+                _ -> %{}
+              end
+
+      {:ok, identity} = Autopoet.Requisition.from_picks(picks)
+      conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(identity))
+    end)
+  end
+
+  # the designer's voice list — `[{id, label}]`, label = flag + timbre
+  # descriptor (pseudonym, not the raw Kokoro id), sorted so accents group
+  get "/voice/kokoro/voices.json" do
+    conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(Autopoet.VoiceEngine.catalog()))
+  end
+
+  get "/onboard/personalities.json" do
+    list = for {k, v} <- Autopoet.Requisition.personalities(), do: %{key: k, name: v.name, desc: v.desc}
+    conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(list))
+  end
+
   get "/onboard/pairing.json" do
     case Autopoet.Requisition.pairing() do
       {:ok, identity} ->
@@ -1347,7 +1372,7 @@ defmodule Autopoet.Control do
       case File.read(Path.join([Autopoet.Discovery.home(), "data", "voices", "default"])) do
         {:ok, body} ->
           case String.split(String.trim(body), " ", parts: 2) do
-            [engine, name] when engine in ["qwen-clone", "qwen-design"] -> %{engine: engine, name: name}
+            [engine, name] when engine in ["qwen-clone", "qwen-design", "kokoro"] -> %{engine: engine, name: name}
             _ -> %{}
           end
 

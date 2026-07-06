@@ -1,5 +1,7 @@
 // ── "customize autopoet" editor: fade the graph to just the character + float tools ──
-function enterCharacterMode() {
+// `onboarding` mode reuses the SAME editor (real 3D cube on the grid) but adds
+// voice + personality pickers and a "meet your autopoet" hand-off.
+function enterCharacterMode(onboarding) {
   if (charEditMode) return;
   if (!selfCube) { toast("open a workspace to meet your autopoet"); return; }
   if (selfCube.dataset.free === "1") { toast("finish the call first"); return; }
@@ -8,7 +10,55 @@ function enterCharacterMode() {
   g.transition().duration(350).style("opacity", 0.05);
   selfCube.style.transform = "";               // let the .char-edit CSS transform take over
   selfCube.classList.add("char-edit");
-  buildCharTools();
+  buildCharTools(onboarding);
+}
+
+// the Kokoro onboarding entry: the SAME 3D avatar on the grid, with voice +
+// personality added. Called from showPlanMode after the voice warm-up.
+async function enterDesignerOnboarding() {
+  hideOnboard();
+  await ensureSelfCube();
+  if (selfCube) selfCube.dataset.free = "0";
+  enterCharacterMode(true);
+}
+
+// the actual Kokoro voice files (data/models/kokoro/voices) — the REAL names.
+// Kokoro naming: 1st letter = accent (a=US, b=GB, e=ES, f=FR, h=IN, i=IT,
+// j=JP, p=BR, z=CN), 2nd = gender. The country flag comes from that prefix.
+const AP_VOICES = ["bf_emma", "af_heart", "am_santa"];
+const AP_FLAG = { a: "🇺🇸", b: "🇬🇧", e: "🇪🇸", f: "🇫🇷", h: "🇮🇳", i: "🇮🇹", j: "🇯🇵", p: "🇧🇷", z: "🇨🇳" };
+const voiceLabel = id => `${AP_FLAG[id[0]] || "🏳️"} ${id}`;
+const AP_PSAMPLE = {
+  warm: "Lovely to meet you. Let's build your whole workspace together.",
+  direct: "Right. Let's set up your environment and get to work.",
+  witty: "Well then. Let's turn your plans into something that actually runs.",
+  calm: "Take a breath. We'll set this up one steady step at a time.",
+  bold: "Let's go. We're building your entire operation from the ground up."
+};
+let _apVoice = 0, _apPers = 0, _apPersonalities = null, _apPrevAudio = null;
+
+// preview toggles: a lucide PLAY icon that becomes STOP while sounding; the
+// same button click stops playback. `btn` is the <button> to swap the icon in.
+function apPreview(text, btn) {
+  const setIcon = name => { if (btn) { btn.innerHTML = `<i data-lucide="${name}"></i>`; refreshIcons && refreshIcons(); } };
+  // if this button is already playing, stop
+  if (_apPrevAudio && _apPrevAudio._btn === btn && !_apPrevAudio.paused) {
+    try { _apPrevAudio.pause(); } catch (_) {}
+    setIcon("play"); return;
+  }
+  if (_apPrevAudio) { try { _apPrevAudio.pause(); } catch (_) {} document.querySelectorAll(".ct-play").forEach(b => b.innerHTML = `<i data-lucide="play"></i>`); }
+  setIcon("loader");
+  fetch(`/voice/tts?engine=qwen-clone&voice=${AP_VOICES[_apVoice]}`, {
+    method: "POST", headers: { authorization: "Bearer " + TOKEN, "content-type": "text/plain" }, body: text
+  }).then(r => r.ok ? r.arrayBuffer() : null).then(buf => {
+    if (!buf) { setIcon("play"); return; }
+    const a = new Audio(URL.createObjectURL(new Blob([buf], { type: "audio/wav" })));
+    a._btn = btn; _apPrevAudio = a;
+    a.onended = () => setIcon("play");
+    a.onpause = () => setIcon("play");
+    a.onplaying = () => setIcon("square");
+    a.play().catch(() => setIcon("play"));
+  }).catch(() => setIcon("play"));
 }
 function exitCharacterMode() {
   if (!charEditMode) return;
@@ -21,13 +71,22 @@ function exitCharacterMode() {
   }
   document.getElementById("char-tools")?.remove();
 }
-function buildCharTools() {
+async function buildCharTools(onboarding) {
   document.getElementById("char-tools")?.remove();
   const c = getChar();
+  if (onboarding && !_apPersonalities) {
+    _apPersonalities = await fetch("/onboard/personalities.json").then(r => r.json()).catch(() => [{ key: "warm", name: "Warm" }]);
+  }
   const el = document.createElement("div");
   el.id = "char-tools";
+  const pickRow = (label, name, prev) => `
+    <div class="ct-row ct-pickrow"><span class="ct-lbl">${label}</span>
+      <div class="ct-pick"><button class="ct-arw" data-k="${prev}-" >‹</button>
+        <span class="ct-pname" id="ct-${prev}name"></span>
+        <button class="ct-play" data-play="${prev}"><i data-lucide="play"></i></button>
+        <button class="ct-arw" data-k="${prev}+">›</button></div></div>`;
   el.innerHTML =
-    `<div class="ct-title">customize your autopoet</div>` +
+    `<div class="ct-title">${onboarding ? "design your autopoet" : "customize your autopoet"}</div>` +
     `<div class="ct-row">` +
       AP_SHAPES.map(s => `<button class="ct-shape ${s.key === c.shape ? "sel" : ""}" data-shape="${s.key}">` +
         `<span class="ct-shape-ic ct-${s.key}"></span>${s.name}</button>`).join("") +
@@ -36,7 +95,9 @@ function buildCharTools() {
       AP_PALETTE.map(p => `<button class="ct-swatch ${p.key === c.color ? "sel" : ""}" data-color="${p.key}" ` +
         `title="${p.name}" style="--sw:${p.body}"></button>`).join("") +
     `</div>` +
-    `<button class="ct-done">done</button>`;
+    (onboarding ? pickRow("voice", "", "voice") + pickRow("personality", "", "pers") : "") +
+    (onboarding ? `<button class="ct-done ct-meet">meet your autopoet →</button>`
+                : `<button class="ct-done">done</button>`);
   document.body.appendChild(el);
   el.querySelectorAll(".ct-shape").forEach(b => b.onclick = () => {
     setChar({ shape: b.dataset.shape }); applyCharacter();
@@ -46,7 +107,53 @@ function buildCharTools() {
     setChar({ color: b.dataset.color }); applyCharacter();
     el.querySelectorAll(".ct-swatch").forEach(x => x.classList.toggle("sel", x === b));
   });
-  el.querySelector(".ct-done").onclick = exitCharacterMode;
+
+  if (onboarding) {
+    const vn = el.querySelector("#ct-voicename"), pn = el.querySelector("#ct-persname");
+    const rv = () => vn.textContent = voiceLabel(AP_VOICES[_apVoice]);
+    const rp = () => pn.textContent = _apPersonalities[_apPers].name;
+    rv(); rp();
+    el.querySelectorAll(".ct-arw").forEach(b => b.onclick = () => {
+      const k = b.dataset.k;
+      if (k === "voice-") _apVoice = (_apVoice + AP_VOICES.length - 1) % AP_VOICES.length;
+      if (k === "voice+") _apVoice = (_apVoice + 1) % AP_VOICES.length;
+      if (k === "pers-") _apPers = (_apPers + _apPersonalities.length - 1) % _apPersonalities.length;
+      if (k === "pers+") _apPers = (_apPers + 1) % _apPersonalities.length;
+      rv(); rp();
+    });
+    el.querySelector('[data-play="voice"]').onclick = e =>
+      apPreview("Hello — this is how I'll sound.", e.currentTarget.closest("button"));
+    el.querySelector('[data-play="pers"]').onclick = e =>
+      apPreview(AP_PSAMPLE[_apPersonalities[_apPers].key] || AP_PSAMPLE.warm, e.currentTarget.closest("button"));
+    el.querySelector(".ct-meet").onclick = () => apMeet();
+    refreshIcons && refreshIcons();
+  } else {
+    el.querySelector(".ct-done").onclick = exitCharacterMode;
+  }
+}
+
+// commit the design → build the character → into the conversation
+async function apMeet() {
+  const c = getChar();
+  const user = (typeof currentUser !== "undefined" && currentUser) || {};
+  const picks = {
+    voice: AP_VOICES[_apVoice],
+    personality: _apPersonalities[_apPers].key,
+    color: c.color, shape: c.shape,
+    name: user.name && user.name !== "demo" ? user.name : ""
+  };
+  if (_apPrevAudio) { try { _apPrevAudio.pause(); } catch (_) {} }
+  let identity = null;
+  try {
+    const r = await fetch("/onboard/pick", {
+      method: "POST", headers: { authorization: "Bearer " + TOKEN, "content-type": "application/json" },
+      body: JSON.stringify(picks)
+    });
+    if (r.ok) identity = await r.json();
+  } catch (_) {}
+  exitCharacterMode();
+  if (identity && identity.name) showPlanMode(identity);
+  else showPower();
 }
 
 applyTheme(localStorage.getItem("ap-theme") || "light");

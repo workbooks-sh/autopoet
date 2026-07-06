@@ -564,6 +564,17 @@ async function showPlanMode(previewPairing) {
   document.getElementById("obsteps").style.display = "none";
   document.getElementById("obquiz").style.display = "none";
   document.querySelector("#onboard .obinner").style.display = "none";
+
+  // KOKORO onboarding: no AP-7 form. Warm the voice (a brief loader), then open
+  // the DESIGNER — which lives INSIDE plan mode on the grid with the real cube
+  // (opts.designer), never the dashboard. Mark it so the try-block below mounts
+  // plan mode in designer mode.
+  let kokoro = false;
+  if (!previewPairing) {
+    try { kokoro = (await fetch("/voice/engine").then(r => r.text())).trim() === "kokoro"; } catch (_) {}
+    if (kokoro) await warmVoice();
+  }
+
   try {
     // ONBOARDING uses the ONE avatar component — the SAME #self-cube (WebGL
     // body + real toon outline) the dashboard and voice calls use, NOT a DOM
@@ -577,6 +588,7 @@ async function showPlanMode(previewPairing) {
     hideOnboard();
     const ok = PlanMode.start({
       pairing: previewPairing || null,   // lab preview skips the form
+      designer: kokoro,                  // Kokoro → the designer, on the grid
       stage: { token: TOKEN, stage: document.getElementById("stage"), settleMs: 620,
                adopt: { scene: selfCube, cube: selfCubeInner, prefix: "ap-" } },
       refreshIcons,
@@ -588,6 +600,25 @@ async function showPlanMode(previewPairing) {
     document.getElementById("onboard").classList.remove("hidden");
     showQuiz();
   }
+}
+
+// warm the local voice (Kokoro) behind a small loader so previews are instant
+async function warmVoice() {
+  const ob = document.getElementById("onboard");
+  const loader = document.createElement("div");
+  loader.id = "ape-loader";
+  loader.innerHTML = `<div class="ape-load-cube"></div><div class="ape-load-txt">warming your voice…</div>`;
+  ob.appendChild(loader);
+  const t0 = Date.now();
+  await new Promise(res => {
+    (function poll() {
+      fetch("/voice/tts/status").then(r => r.text()).then(s => {
+        if (s.trim() === "ready" || Date.now() - t0 > 8000) res();
+        else setTimeout(poll, 300);
+      }).catch(() => setTimeout(poll, 300));
+    })();
+  });
+  loader.remove();
 }
 
 // INLINE Workbooks Cloud billing — machine + initial tokens + auto-top-up, one

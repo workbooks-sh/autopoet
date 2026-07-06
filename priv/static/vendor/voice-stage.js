@@ -2237,6 +2237,26 @@
           playEntrance(res);
         });
       },
+      // PRESENT: reveal the cube centered, FACE ON, static — for the designer
+      // (the owner sees their color/shape/cube live before the conversation).
+      present: function () {
+        if (!mounted || !scene) return;
+        stagePos = { x: 0, y: 0 };
+        scene.classList.add("vs-free");
+        scene.classList.remove("vs-faceless");
+        scene.dataset.free = "1";
+        scene.style.transition = "none";
+        scene.style.transform = "";
+        scene.style.opacity = "1";
+        scene.style.setProperty("--sx", "0px");
+        scene.style.setProperty("--sy", "0px");
+        scene.style.setProperty("--sc", "0.5");
+        void scene.offsetWidth;
+        scene.style.transition = "";
+        scene.style.setProperty("--sc", "1");
+        setMouth("smirk");
+        later(setTimeout(function () { if (mounted && !playing) wave(); }, 500));
+      },
       // BEAM: the SAME cube (WebGL body) drops to center, faceless, and slowly
       // spins (via --ry, which Avatar3D reads) while the voice warms — a loading
       // bar sits beneath it. Component-agnostic: drives whatever cube is mounted.
@@ -2370,11 +2390,35 @@
           .then(function (ab) { return actx.decodeAudioData(ab); })
           .then(function (buf) {
             return new Promise(function (res) {
-              playClip({ buffer: buf, duration: buf.duration }, res);
-              startMouthLoop();
+              playing = "take";
+              playClip({ buffer: buf, duration: buf.duration }, function () { if (playing === "take") playing = null; res(); });
             });
           });
       },
+      // designer voice preview — speaks `text` in `voiceId` through the SAME
+      // playClip path the call uses, so the cube's mouth is audio-driven
+      // (visemes), not a bare <audio>. onStart fires the instant playback
+      // begins; the promise resolves when it ends. hush() stops it.
+      previewVoice: function (text, voiceId, onStart) {
+        if (!mounted) return Promise.resolve();
+        ensureAudio();
+        var q = voiceId ? ("?voice=" + encodeURIComponent(voiceId)) : "";
+        var rid = "preview:" + (voiceId || "");
+        return fetch("/voice/tts" + q, { method: "POST",
+            headers: { authorization: "Bearer " + TOKEN, "content-type": "text/plain" }, body: text })
+          .then(function (r) { return r.ok ? r.arrayBuffer() : null; })
+          .then(function (ab) {
+            if (!ab || !ab.byteLength) return;
+            return actx.decodeAudioData(ab.slice(0)).then(function (buf) {
+              return new Promise(function (res) {
+                playing = rid;
+                if (onStart) { try { onStart(); } catch (e) {} }
+                playClip({ buffer: buf, duration: buf.duration }, function () { if (playing === rid) playing = null; res(); });
+              });
+            });
+          });
+      },
+      hush: function () { stopClip(); playing = null; },
       setVoice: function (spec) {
         ttsVoice = spec || null;
         genCache.clear();
