@@ -15,6 +15,12 @@ File.rm_rf!(Autopoet.Requests.dir())
 # each cycle proposes for the whole history. Trials share no state; wipe.
 File.rm_rf!(Path.join(Nexus.Paths.durable_dir(), "telemetry"))
 
+# `Autopoet.Capture` APPENDS to a per-date trace file (`data/traces/<date>.etfs`)
+# on every event; across many same-day runs it grows unbounded, and once a single
+# world file crosses the shell's 4MB skip cap a recursive `grep` over the body skips
+# it and exits non-zero — flaking the SEARCH suite. Each trial starts trace-cold.
+File.rm_rf!(Autopoet.Capture.dir())
+
 for name <- [Autopoet.Shadow.Hebb, Autopoet.Shadow.Surprise, Autopoet.Shadow.Outcomes, Autopoet.Requests, Nexus.Telemetry],
     pid = Process.whereis(name),
     is_pid(pid) do
