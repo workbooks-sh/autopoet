@@ -116,8 +116,13 @@ defmodule Autopoet.Application do
     if cloud?() do
       []
     else
-      # Kokoro removed from voice duty (owner: Qwen3-TTS only) — engine not booted
-      Enum.filter([Autopoet.Stt, Autopoet.Voice, Autopoet.QwenTts, Autopoet.Affect], fn mod ->
+      # Qwen3-TTS is the product engine. Kokoro is booted ONLY when the dev
+      # toggle asks for it (WB_VOICE=kokoro or data/voice-engine) — a comparison
+      # lens, never the default.
+      base = [Autopoet.Stt, Autopoet.Voice, Autopoet.QwenTts, Autopoet.Affect]
+      base = if Autopoet.VoiceEngine.kokoro?(), do: [Autopoet.Kokoro | base], else: base
+
+      Enum.filter(base, fn mod ->
         Code.ensure_loaded?(mod) ||
           (IO.puts("autopoet: desktop I/O child #{inspect(mod)} missing — skipped") && false)
       end)

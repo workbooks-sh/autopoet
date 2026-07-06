@@ -14,6 +14,11 @@ if config_env() == :test do
     # tests NEVER go live — keys in the developer's shell env must not leak network
     # calls into the suite; inject :brain_llm instead
     brain_live: false
+
+  # The resident micro-brain is OFF in test: `Shadow.Triage` checks this before
+  # spawning a task or probing the network, so the suite's drift alarms behave
+  # exactly as they did before Phase 1 (no `autopoet.attention.triaged` events).
+  config :autopoet, Autopoet.Micro, enabled: false
 end
 
 # Nx stays on BinaryBackend by default: the ONNX lane (Ortex/moonshine) must own

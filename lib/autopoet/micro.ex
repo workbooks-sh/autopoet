@@ -46,6 +46,14 @@ defmodule Autopoet.Micro do
   def model, do: Application.get_env(:autopoet, __MODULE__, [])[:model] || @default_model
 
   @doc """
+  Master enable switch (default ON). Test config sets it OFF so the suite never
+  spawns a triage task or touches the network — a cheap config read, checked
+  BEFORE `available?/0`, so callers on a hot path (the shadow bus) pay nothing
+  when the micro-brain is disabled.
+  """
+  def enabled?, do: Application.get_env(:autopoet, __MODULE__, [])[:enabled] != false
+
+  @doc """
   Is the local micro-model reachable? A cheap `/health` probe (llama-server
   exposes it). Callers gate on this and fall back to their non-micro path when
   it's down — the substrate must degrade to exactly today's behavior, never fail.
@@ -101,16 +109,19 @@ defmodule Autopoet.Micro do
     end
   end
 
-  # ── prompt (the eval-proven shape: rigid template + optional one-shot, ASCII) ──
+  # ── prompt design (eval-hardened) ──
+  # CRITICAL: the tool MENU is written in NON-`CALL` syntax ("- name : desc"). The
+  # 1B's failure mode is echoing the menu back verbatim as its answer; if the menu
+  # were also `CALL name <arg>` lines, an echo would look like a valid action. By
+  # making the menu un-echoable and reserving `CALL <tool> <arg>` for the ANSWER
+  # ONLY, the model can't pass by copying. Plus a rigid one-line instruction and a
+  # one-shot example (format discipline is prompt-sensitive — see the spike evals).
   defp system_prompt(tools, example) do
-    lines =
-      Enum.map_join(tools, "\n", fn t ->
-        "  CALL #{t.name} #{Map.get(t, :arg_hint, "<arg>")}    #{Map.get(t, :desc, "")}"
-      end)
+    menu = Enum.map_join(tools, "\n", fn t -> "- #{t.name} : #{Map.get(t, :desc, "")}" end)
 
     base =
-      "You are a substrate decision agent. Reply with ONE line only, no other text, " <>
-        "format: CALL <tool> <arg>\n" <> lines
+      "You choose ONE action for the situation. Output exactly one line: " <>
+        "CALL <tool> <arg>  (nothing else — no menu, no prose).\n\nTools you may call:\n" <> menu
 
     case example do
       {sit, call} -> base <> "\n\nExample:\nSITUATION: #{sit}\n#{call}"

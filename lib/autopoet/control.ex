@@ -1176,6 +1176,41 @@ defmodule Autopoet.Control do
       conn = fetch_query_params(conn)
       q = conn.query_params
 
+      # ── DEV TOGGLE: speak through Kokoro instead of Qwen (WB_VOICE=kokoro or
+      # data/voice-engine). Kokoro can't clone, so it maps the paired persona to
+      # a preset. Fast + steady; the client's streaming player gets it as one
+      # chunk. When off, the Qwen path (below) runs.
+      if Autopoet.VoiceEngine.kokoro?() and Autopoet.Kokoro.ready?() do
+        kvoice =
+          Autopoet.VoiceEngine.kokoro_voice(
+            q["voice"] || q["persona"] ||
+              (case File.read(Path.join([Autopoet.Discovery.home(), "data", "voices", "default"])) do
+                 {:ok, d} -> d |> String.trim() |> String.split(" ") |> List.last()
+                 _ -> nil
+               end)
+          )
+
+        text = String.replace(body, ~r/\[[^\]]+\]\s*/, "")
+        streaming = q["stream"] == "1"
+
+        case Autopoet.Kokoro.speak(text, kvoice) do
+          {:ok, wav} when streaming ->
+            {:ok, conn} =
+              conn
+              |> put_resp_content_type("application/octet-stream")
+              |> put_resp_header("cache-control", "no-store")
+              |> send_chunked(200)
+              |> chunk(<<byte_size(wav)::32, wav::binary>>)
+
+            conn
+
+          {:ok, wav} ->
+            conn |> put_resp_content_type("audio/wav") |> send_resp(200, wav)
+
+          _ ->
+            send_resp(conn, 503, "kokoro not ready\n")
+        end
+      else
       {engine, name} =
         case q["engine"] do
           e when e in ["qwen-clone", "qwen-design"] ->
@@ -1267,7 +1302,25 @@ defmodule Autopoet.Control do
           {:error, reason} = req_or_err
           send_resp(conn, 422, "speak failed: #{inspect(reason)}\n")
       end
+      end
     end)
+  end
+
+  # flip the dev voice engine: POST /voice/engine?e=kokoro|qwen (needs a restart
+  # to (un)boot the Kokoro child; the route change takes effect immediately)
+  post "/voice/engine" do
+    authed!(conn, fn conn ->
+      conn = fetch_query_params(conn)
+
+      case Autopoet.VoiceEngine.set(conn.query_params["e"]) do
+        :ok -> text(conn, "voice engine → #{conn.query_params["e"]} (restart to (un)boot kokoro)\n")
+        _ -> send_resp(conn, 400, "e must be kokoro | qwen\n")
+      end
+    end)
+  end
+
+  get "/voice/engine" do
+    text(conn, Autopoet.VoiceEngine.current() <> "\n")
   end
 
   # forward {:tts_chunk}/{:tts_done} from QwenTts.stream as length-prefixed

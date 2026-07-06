@@ -398,6 +398,12 @@ defmodule Autopoet.Shadow.Surprise do
             tags: []
           })
 
+          # Net-new (Phase 1): hand the alarm to the resident micro-brain for a
+          # first diagnostic action. Async + degradation-safe — returns instantly,
+          # no-op when the micro-brain is disabled/absent, never touches the
+          # pinned detector arithmetic above. `st.prev` is the locus that drifted.
+          Autopoet.Shadow.Triage.on_alarm(to_string(st.prev), %{fast: st.f, slow: st.s})
+
           {:noreply, st}
 
         {st, false} ->
