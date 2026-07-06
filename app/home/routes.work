@@ -859,3 +859,28 @@ server :ops5 do
     {200, "text/plain; charset=utf-8", body}
   end
 end
+
+## Digest + deck export
+
+server :ops6 do
+  route "GET /digest", :digest, auth: :public
+  route "GET /voice/deck/export", :deck_export, auth: :public
+
+  def digest(_req) do
+    pending = Autopoet.Proposals.pending()
+
+    body =
+      if pending == [] do
+        "no pending proposals\n"
+      else
+        Enum.map_join(pending, "\n", fn {id, _} -> "#{id}" end) <> "\n"
+      end
+
+    {200, "text/plain; charset=utf-8", body}
+  end
+
+  def deck_export(_req) do
+    md = case File.read(Path.join([Autopoet.Discovery.home(), "data", "decks", "current.md"])) do {:ok, m} -> m; _ -> "" end
+    {200, "text/markdown; charset=utf-8", md}
+  end
+end
