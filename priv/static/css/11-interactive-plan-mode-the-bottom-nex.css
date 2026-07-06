@@ -84,5 +84,6 @@
   #blab .bl-tr{display:flex;align-items:center;gap:6px;color:#6a6f68}
   #blab .bl-tr span{width:104px;flex:none}
   #blab .bl-tr input{flex:1;accent-color:#16161a;height:12px}
+  #blab .bl-note{font:500 10.5px ui-monospace,monospace;color:#8a8f88;min-height:12px}
   #blab .bl-meter{height:5px;background:#eef0f2;border-radius:3px;overflow:hidden}
   #blab .bl-meter i{display:block;height:100%;width:0;background:#16161a}
