@@ -14,7 +14,7 @@ import os, sys, glob, wave, struct
 import numpy as np
 import mlx.core as mx
 
-HOME = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # autopoet/
+HOME = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # autopoet/
 VOICES = os.path.join(HOME, "data", "voices")
 SEEDS = [11, 23, 37, 42, 51, 64]
 PROBES = [
@@ -66,13 +66,16 @@ def main():
             continue
         ref_text = open(txtp).read()
         best = None  # (hits, -avg_dist, seed)
+        all_f0s = []
         for seed in SEEDS:
             dists = []
             for probe in PROBES:
                 mx.random.seed(seed)
                 segs = model.generate(text=probe, ref_audio=wavp, ref_text=ref_text)
                 audio = np.concatenate([np.asarray(s.audio) for s in segs])
-                dists.append(abs(f0_median(audio) - target))
+                f0 = f0_median(audio)
+                all_f0s.append(f0)
+                dists.append(abs(f0 - target))
             hits = sum(1 for d in dists if d <= target * 0.12)
             score = (hits, -sum(dists) / len(dists), seed)
             if best is None or score > best:
@@ -80,7 +83,12 @@ def main():
             print(f"{name} seed {seed}: hits {hits}/2, avg off {sum(dists)/len(dists):.0f}Hz",
                   flush=True)
         open(os.path.join(VOICES, name + ".seed"), "w").write(str(best[2]))
-        print(f"{name} → PINNED seed {best[2]} (hits {best[0]}, avg off {-best[1]:.0f}Hz)",
+        # gate v2 target: the clone's OWN typical pitch for this ref (median
+        # across all probe takes) — the raw ref f0 sits systematically off the
+        # clone's output, which made honest takes fail the gate
+        med = float(np.median(all_f0s)) if all_f0s else target
+        open(os.path.join(VOICES, name + ".f0"), "w").write(f"{med:.1f}")
+        print(f"{name} → PINNED seed {best[2]} (hits {best[0]}, avg off {-best[1]:.0f}Hz), gate target {med:.0f}Hz (ref {target:.0f})",
               flush=True)
 
 

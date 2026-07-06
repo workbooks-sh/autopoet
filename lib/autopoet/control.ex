@@ -1135,9 +1135,13 @@ defmodule Autopoet.Control do
   # all voice traits (the behavior lab's per-voice parameters)
   get "/voices/traits.json" do
     pinned = Autopoet.VoiceRoster.pinned()
+    verdicts = Autopoet.VoiceRoster.verdicts()
 
     all =
       for name <- Autopoet.VoicePersonas.names() ++ pinned,
+          # rejected voices keep their roster history but leave the pickable
+          # list — the lab offers only what the owner accepted
+          verdicts[name] != "rejected",
           t = Autopoet.VoiceRoster.traits(name),
           t != nil,
           File.exists?(Path.join(Autopoet.VoiceRoster.takes_dir(), name <> ".wav")),

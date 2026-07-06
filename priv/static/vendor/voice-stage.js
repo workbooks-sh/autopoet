@@ -29,6 +29,10 @@
   var TOKEN = "";
   var stageEl = null, callbarEl = null, callinEl = null;
   var root = null, mounted = false;
+  // exit()'s world-restore timers — cancelled if a new stage mounts before
+  // they fire (the lab's instant restart), else the returning vault graph
+  // lands ON TOP of the fresh plan session
+  var exitTimers = [];
   var timers = [], listeners = [];
   var transcript = [];   // [{who:"you"|"poet", text}]
 
@@ -1785,6 +1789,7 @@
       appHooks = null; adopt = null;
     }
     if (mounted) return null;
+    exitTimers.forEach(clearTimeout); exitTimers = [];
     opts = opts || {};
     var mode = opts.type || "voice";
     var voice = mode === "voice";
@@ -1968,8 +1973,8 @@
       sceneRef.style.setProperty("--sx", spot.sx + "px");
       sceneRef.style.setProperty("--sy", spot.sy + "px");
       sceneRef.style.setProperty("--sc", spot.sc.toFixed(4));
-      setTimeout(function () { hooks.showWorld(); }, 480);
-      setTimeout(function () {
+      exitTimers.push(setTimeout(function () { hooks.showWorld(); }, 480));
+      exitTimers.push(setTimeout(function () {
         // hand the cube back to the graph's node-tracking
         sceneRef.classList.remove("vs-free");
         sceneRef.style.transition = "";
@@ -1980,7 +1985,7 @@
         hooks.resync();
         setMouth("neutral"); setBrows("none");
         if (rootRef) rootRef.classList.remove("on");
-      }, 680);
+      }, 680));
       cleanup(1150);
     } else {
       stageEl.classList.remove("vs-whiteboard");

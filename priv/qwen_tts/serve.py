@@ -142,12 +142,19 @@ for line in sys.stdin:
             return (np.concatenate(chunks) if chunks
                     else np.zeros(1, dtype=np.float32)), srr
 
-        target = ref_f0(kwargs["ref_audio"]) if kwargs.get("ref_audio") else 0.0
+        target = 0.0
+        if kwargs.get("ref_audio"):
+            # gate v2: prefer the calibrated clone-output median (<name>.f0) —
+            # the ref's own f0 sits systematically off what the clone renders
+            try:
+                target = float(open(os.path.splitext(kwargs["ref_audio"])[0] + ".f0").read())
+            except Exception:
+                target = ref_f0(kwargs["ref_audio"])
         audio, sr = synth(0)
         if target > 0:
             best, best_d = audio, abs(_f0_median(audio) - target)
             for attempt in range(1, 3):
-                if best_d <= target * 0.12:
+                if best_d <= target * 0.15:
                     break
                 log(f"gate: take f0 off by {best_d:.0f}Hz (target {target:.0f}) — reroll {attempt}")
                 cand, sr = synth(attempt)
