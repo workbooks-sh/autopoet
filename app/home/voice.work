@@ -1,0 +1,65 @@
+# Voice — streaming TTS
+
+The voice synth route, migrated to a `server` block using the nexus's new
+**streaming contract** (`{:stream, content_type, enum}` → chunked response). The
+handler yields length-prefixed wav chunks as the engine produces them, so first
+audio reaches the client sub-second — the same first-audio-early lane the legacy
+Plug had, now a first-class nexus capability every `.work` app can use.
+
+Two engines: Kokoro (BEAM-native, one chunk, the default) and Qwen (streaming
+sidecar, many chunks). Chunk framing: 4-byte big-endian length + wav bytes.
+
+server :voice do
+  route "POST /voice/tts", :tts, auth: :public
+
+  defp frame(wav), do: <<byte_size(wav)::32, wav::binary>>
+
+  defp kokoro_voice(req) do
+    Autopoet.VoiceEngine.kokoro_voice(
+      req.query["voice"] || req.query["persona"] ||
+        (case File.read(Path.join([Autopoet.Discovery.home(), "data", "voices", "default"])) do
+           {:ok, d} -> d |> String.trim() |> String.split(" ") |> List.last()
+           _ -> nil
+         end)
+    )
+  end
+
+  def tts(req) do
+    text = String.replace(to_string(req.raw_body || ""), ~r/\[[^\]]+\]\s*/, "")
+    streaming = req.query["stream"] == "1"
+
+    cond do
+      # Kokoro (default) — synthesizes fully in-BEAM; one framed chunk when streaming
+      Autopoet.VoiceEngine.kokoro?() and Autopoet.Kokoro.ready?() ->
+        case Autopoet.Kokoro.speak(text, kokoro_voice(req)) do
+          {:ok, wav} when streaming -> {:stream, "application/octet-stream", [frame(wav)]}
+          {:ok, wav} -> {200, "audio/wav", wav}
+          _ -> {503, %{error: "kokoro not ready"}}
+        end
+
+      # Qwen — streaming sidecar; yield each framed chunk as it decodes
+      Autopoet.QwenTts.ready?() ->
+        qreq = %{text: text, voice: req.query["voice"] || "Ryan", instruct: req.query["instruct"]}
+
+        enum =
+          Stream.resource(
+            fn -> Autopoet.QwenTts.stream(qreq, self()) end,
+            fn acc ->
+              receive do
+                {:tts_chunk, data} -> {[frame(data)], acc}
+                {:tts_done} -> {:halt, acc}
+              after
+                30_000 -> {:halt, acc}
+              end
+            end,
+            fn _ -> :ok end
+          )
+
+        {:stream, "application/octet-stream", enum}
+
+      true ->
+        Autopoet.QwenTts.ensure(:custom)
+        {503, %{error: "voice engine loading"}}
+    end
+  end
+end
