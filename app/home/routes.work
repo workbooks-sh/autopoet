@@ -806,3 +806,56 @@ server :ops4 do
     %{ok: true}
   end
 end
+
+## Log, theme, intake proposal, project create, status
+
+server :ops5 do
+  route "GET /log", :log, auth: :public
+  route "POST /chrome-theme", :chrome_theme, auth: :public
+  route "GET /intake/proposal", :intake_proposal, auth: :public
+  route "POST /projects/new", :projects_new, auth: :public
+  route "GET /status", :status, auth: :public
+
+  def log(_req), do: {200, "text/plain; charset=utf-8", Enum.join(Autopoet.Log.recent(200), "\n") <> "\n"}
+
+  def chrome_theme(req) do
+    theme = if req.query["t"] == "dark", do: :dark, else: :light
+
+    case Process.whereis(Autopoet.Window) do
+      nil -> {200, "text/plain; charset=utf-8", "no window (headless)\n"}
+      _ -> Autopoet.Window.set_theme(theme); {200, "text/plain; charset=utf-8", "ok\n"}
+    end
+  end
+
+  def intake_proposal(_req) do
+    case Autopoet.Intake.pending_proposal() do
+      nil -> {404, %{error: "none"}}
+      {id, brief} -> {200, "text/plain; charset=utf-8", id <> "\n" <> brief}
+    end
+  end
+
+  def projects_new(req) do
+    slug = req.query["slug"] || "project-#{System.os_time(:second)}"
+    archetype = String.to_atom(req.query["archetype"] || "venture")
+
+    case Autopoet.Projects.create(slug, archetype: archetype) do
+      {:ok, p} -> %{ok: true, slug: p.slug}
+      {:error, w} -> {422, %{error: inspect(w)}}
+    end
+  end
+
+  def status(_req) do
+    st = Nexus.Autopoet.Worker.status()
+    {up_ms, _} = :erlang.statistics(:wall_clock)
+
+    body = """
+    armed: #{st.armed}
+    next_ms: #{inspect(st.next_ms)}
+    memory_mb: #{div(:erlang.memory(:total), 1_048_576)}
+    uptime_s: #{div(up_ms, 1000)}
+    window: #{if Process.whereis(Autopoet.Window), do: "open", else: "headless"}
+    """
+
+    {200, "text/plain; charset=utf-8", body}
+  end
+end
