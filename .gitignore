@@ -42,3 +42,4 @@ eval/live-runs/
 # model weights — never commit (downloaded to disk)
 desktop_ml/models/
 *.gguf
+app/home/static/

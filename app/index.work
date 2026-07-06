@@ -1,20 +1,12 @@
 # Autopoet — deploy manifest
 
-This is the **deploy root** for the Autopoet app: the one `index.work` that carries
-the `deploy` block (read by `Nexus.Config` at boot). It is NOT a served surface —
-mount discovery skips it. The single surface, [[home]], is served at `/` (its
-client islands render as the app, its server blocks run on the nexus).
-
-Autopoet runs the same way everywhere: a **local nexus** boots this tree for the
-desktop window, and the **cloud nexus** at workbooks.sh serves the identical tree
-for paying users — same `git push → remount`. The runtime owns HTTP, auth, and
-worker supervision; this workbook declares the app.
+The deploy root for Autopoet. This `index.work` carries the `deploy` block
+(read by `Nexus.Config` at boot); it is NOT a served surface. The single surface,
+`home`, is served at `/` — its client islands render as the app, its server
+blocks run on the nexus. Same tree local (desktop) and cloud (workbooks.sh).
 
 deploy do
-  # the desktop/dev profile — a single trusted operator on a local nexus. The
-  # cloud tenant layers auth + tiers on top (mirrored from the control plane).
   home="home"
-  nexus-emoji="🪶"
   auth="trusted"
   database="sqlite"
 end

@@ -18,6 +18,10 @@ defmodule Autopoet.Application do
 
   @impl true
   def start(_type, _args) do
+    # Load the .work deploy manifest (WB_DATA/index.work: home=/auth=/database=)
+    # so Nexus.Server rebases the `home` surface to `/`. Nexus runs as a library
+    # dep here (its own Application doesn't boot Config), so we boot it ourselves.
+    Nexus.Config.boot()
     port = port()
 
     # Cloud profile: the SAME build runs on a vendored Fly machine as the 24/7
@@ -42,13 +46,13 @@ defmodule Autopoet.Application do
           Autopoet.Shadow.Hebb,
           Autopoet.Shadow.Surprise,
           Autopoet.Shadow.Outcomes,
-          Autopoet.Treasury,
-          {Bandit, plug: Autopoet.Control, ip: io, port: port},
-          # P0 — Autopoet runs ON the nexus: Nexus.Server mounts the `.work` app
-          # tree (app/, deploy root → the `home` surface) and serves it. Runs on
-          # port+1 alongside the legacy Control for now; the window + routes move
-          # over in P1, then Control retires and this takes the main port.
-          {Nexus.Server, root: Path.join(Autopoet.Discovery.home(), "app"), port: port + 1},
+          # P0 — Autopoet runs ON the nexus: Nexus.Server owns the MAIN port (the
+          # window points here) and serves the `.work` app surface (app/home —
+          # client islands + server blocks) at `/`. Legacy Control drops to port+1
+          # (NOT deleted) to serve the routes not yet migrated; P1 moves those into
+          # server blocks, then Control retires entirely.
+          {Nexus.Server, root: Path.join([Autopoet.Discovery.home(), "app", "home"]), port: port},
+          {Bandit, plug: Autopoet.Control, ip: io, port: port + 1},
           {Autopoet.Discovery, port}
         ] ++ [Autopoet.Desks] ++ desk() ++ window()
 
