@@ -884,3 +884,42 @@ server :ops6 do
     {200, "text/markdown; charset=utf-8", md}
   end
 end
+
+## Realtime WS + cloud auth (via the new nexus contracts)
+
+server :realtime do
+  route "GET /voice/live", :voice_live, auth: :public
+  route "POST /auth/cloud/open", :cloud_open, auth: :public
+  route "GET /auth/cloud/callback", :cloud_callback, auth: :public
+  route "POST /auth/signup", :signup, auth: :public
+  route "POST /auth/cloud/signout", :cloud_signout, auth: :public
+  route "POST /auth/cloud/disconnect", :cloud_disconnect, auth: :public
+
+  # WebSocket upgrade — the realtime voice call, via the nexus {:ws, …} contract
+  def voice_live(_req), do: {:ws, Autopoet.VoiceSock, %{}}
+
+  def cloud_open(_req) do
+    cb = "http://127.0.0.1:#{Autopoet.Application.port()}/auth/cloud/callback"
+    url = Autopoet.Cloud.base_url() <> "/login/?device=autopoet&cb=" <> URI.encode_www_form(cb)
+    spawn(fn -> System.cmd("open", [url]) end)
+    %{ok: true}
+  end
+
+  # OAuth-style callback via the nexus {:redirect, …} contract
+  def cloud_callback(req) do
+    case Autopoet.Cloud.put_token(req.query["token"] || "") do
+      :ok -> Autopoet.Auth.sign_in_cloud(); {:redirect, "/"}
+      _ -> {:redirect, "/?auth=failed"}
+    end
+  end
+
+  def signup(req) do
+    case Autopoet.Auth.signup(req.query) do
+      {:error, reason} -> {200, "text/plain; charset=utf-8", "refused: #{inspect(reason)}\n"}
+      _ -> {200, "text/plain; charset=utf-8", "onboarding\n"}
+    end
+  end
+
+  def cloud_signout(_req), do: (Autopoet.Cloud.sign_out(); %{ok: true})
+  def cloud_disconnect(_req), do: (Autopoet.Cloud.disconnect(); %{ok: true})
+end
