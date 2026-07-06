@@ -104,9 +104,12 @@ defmodule Autopoet.Requisition do
     prompt = """
     You are the AUTOPOET DEPARTMENT's pairing officer. A requester filed form
     AP-7 (personality requisition). Pair them with ONE voice from the roster,
-    invent their autopoet's character, and author its opening PITCH DECK —
-    reveal.js markdown slides the autopoet presents while introducing itself.
+    invent their autopoet's character, and author its opening PITCH DECK.
     Reply with STRICT JSON only — no markdown fences around the JSON, no commentary.
+
+    #{Autopoet.PlanBrain.autopoet_def()}
+    The greeting must NOT mention poetry, verse, or writing — it greets a new
+    owner about to build a real running system together.
 
     FORM (the requester's marks):
     #{Jason.encode!(form)}

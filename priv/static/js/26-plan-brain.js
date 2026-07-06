@@ -8,20 +8,27 @@ window.PlanBrain = (() => {
   let board, opts, state, running = false;
   let bar, askResolve = null, deckNav = null;
 
-  async function take(b, o, pairing) {
+  let primed = null;
+
+  // PREFETCH the first question DURING the greeting (which is still playing) so
+  // when the greeting ends there is NO LLM wait — only the on-demand synth.
+  // planmode calls this as the greeting starts.
+  function prime(b, o, pairing) {
+    if (board) return;                 // already set up
     board = b; opts = o || {};
-    // the conversation owns the text now: the deck shows content, the pinned
-    // bar shows the open question, the voice speaks. The transient floating
-    // caption is redundant here (it overlapped the pinned question) — hide it.
-    document.body.classList.add("pm-convo");
     const titles = ((pairing && pairing.slides) || []).map(s => (s.md.match(/^#+\s*(.+)$/m) || [])[1] || "");
     state = {
       form: (pairing && pairing.form) || safeForm(),
-      pairing: pairing || {},
-      history: [],
-      fork_done: false,
-      deck_titles: titles
+      pairing: pairing || {}, history: [], fork_done: false, deck_titles: titles
     };
+    primed = postTurn();               // the first /plan/turn fires NOW
+  }
+
+  async function take(b, o, pairing) {
+    if (!board) prime(b, o, pairing);  // not primed → set up + fetch now
+    // the conversation owns the text now: the deck shows content, the pinned
+    // bar shows the open question, the voice speaks. Hide the redundant caption.
+    document.body.classList.add("pm-convo");
     mountBar();
     running = true;
     loop();
@@ -72,10 +79,14 @@ window.PlanBrain = (() => {
   }
 
   async function loop() {
-    let misses = 0, prefetch = null;
+    let misses = 0, prefetch = primed;   // the first turn was primed during the greeting
+    primed = null;
     while (running && board) {
-      // PIPELINE: a prefetched turn (started during the previous narration)
-      // lands with zero dead air; otherwise pay the call now
+      // PIPELINE: a prefetched turn (primed during the greeting, or fetched
+      // during the previous line's narration) lands with ZERO llm wait. Only a
+      // genuinely unpredictable wait (right after the owner answers) shows the
+      // thinking cloud — and that's honest, not a mask.
+      if (!prefetch && board.think) board.think(true);
       const move = prefetch ? await prefetch : await postTurn();
       prefetch = null;
       if (!running) break;

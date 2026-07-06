@@ -71,6 +71,9 @@ defmodule Autopoet.PlanCompile do
     build spec for the vault generator. Extract ONLY what the deck actually says
     — never invent scope the human didn't agree to.
 
+    #{Autopoet.PlanBrain.autopoet_def()}
+    So pages/agents/firstrun describe SOFTWARE + automations, never poetry.
+
     THE PERSON (form marks): #{Jason.encode!(form)}
     THE PAIRED COMPANION: #{pairing["name"]} (#{pairing["persona_desc"]})
 

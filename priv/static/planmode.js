@@ -16,12 +16,11 @@ window.PlanMode = (() => {
   // comes from the LLM: the greeting/cover from the pairing officer, the rest
   // from /plan/turn.
   function scriptFromPairing(p) {
-    // ONE spoken intro: the greeting. The cover slide appears silently DURING
-    // it (no separate cover narration — that was a redundant second 'let's
-    // begin'). Then straight to the brain's first real question.
-    const cover = (p.slides || []).find(st => st.md);
+    // ONE spoken intro: the greeting, on an EMPTY board — no blank cover slide
+    // (owner: don't show a page until it authors real content). The deck stays
+    // empty until the brain's first real slide. Then straight to the question.
     return [
-      { say: p.greeting, slide: cover ? cover.md : null, gesture: "wave" },
+      { say: p.greeting, gesture: "wave" },
       { handoff: true }
     ];
   }
@@ -133,6 +132,12 @@ window.PlanMode = (() => {
       if (s.slide) { await board.slide(s.slide); mountDeckNav(); }  // grows the pitch
       if (s.gesture === "wave") setTimeout(() => board.wave(), 250);
       if (SCRIPT[n + 1] && SCRIPT[n + 1].say) board.warm(SCRIPT[n + 1].say);
+
+      // the LAST spoken beat before the handoff: PRIME the brain's first
+      // question NOW so it fetches WHILE this greeting plays — no wait after
+      if (SCRIPT[n + 1] && SCRIPT[n + 1].handoff && typeof PlanBrain !== "undefined" && PlanBrain.prime) {
+        try { PlanBrain.prime(board, opts, pairing); } catch (_) {}
+      }
 
       await board.say(s.say);     // resolves when the line finishes speaking
       const ms = Math.round(performance.now() - tEnter);

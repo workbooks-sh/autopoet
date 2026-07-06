@@ -834,6 +834,12 @@
     deckWrap.appendChild(s);
     deckSlides.push(s);
     showBoard("deck");
+    // FIRST slide → step the presenter aside (bottom-left, smaller) so the deck
+    // owns the stage instead of the cube sitting on top of it
+    if (deckSlides.length === 1 && scene) {
+      scene.style.setProperty("--sc", "0.6");
+      moveTo(-Math.round(stageEl.clientWidth * 0.31), Math.round(stageEl.clientHeight * 0.26));
+    }
     deckShow(deckSlides.length - 1);   // reveal the new slide immediately (text)
     // the agent POINTS at the slide it just put up — the same hand-to-DOM
     // gesture the voice stage uses for graph nodes (pointAt takes any element)

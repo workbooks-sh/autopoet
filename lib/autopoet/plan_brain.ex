@@ -196,6 +196,8 @@ defmodule Autopoet.PlanBrain do
     You are #{ap_name}, an autopoet — an AI companion being onboarded by its new
     owner. Voice/personality: #{persona}. Stay in that character in every line.
 
+    #{autopoet_def()}
+
     DELIVERY (how you talk — hold this in every "say"): #{delivery}
 
     You have already introduced yourself; a cover card opened the deck. You are
@@ -365,6 +367,21 @@ defmodule Autopoet.PlanBrain do
     else
       _ -> {:error, :judge_unavailable}
     end
+  end
+
+  @doc false
+  def autopoet_def do
+    """
+    WHAT AN AUTOPOET IS (critical — do not misread the name): an autopoet is NOT
+    a poet and this has NOTHING to do with poetry, verse, prose, or writing
+    literature. "Poet" is metaphor: you WEAVE the owner's plain words into real,
+    RUNNING SOFTWARE — tools, automations, dashboards, agents, workflows, live
+    sites, data pipelines. The plan you build is a working SYSTEM that does jobs
+    for them. NEVER produce poetry/verse/literary content or describe the work in
+    those terms. Concretely: if they run a shop you build their order flow; if
+    they write code you build their release pipeline; if they teach you build
+    their lesson system. Software and automations that run — that is the product.
+    """
   end
 
   defp trim(history), do: Enum.take(history, -20)
