@@ -1065,14 +1065,30 @@
   // stage entry — a voice must never change mid-conversation. Qwen boots
   // fire-and-forget; if it isn't ready by the first line, kokoro owns the
   // whole session and qwen waits for the next one.
-  var ttsEngine = null;
-  var ttsVoice = null;   // dev/session override: {engine:"qwen-design", persona:"noir"} etc
+  var ttsEngine = "qwen";   // THE engine. Kokoro is permanently retired (owner).
+  var ttsVoice = null;      // session voice: {engine:"qwen-clone", voice} | {engine:"qwen-design", persona}
   function lockEngine() {
-    fetch("/voice/tts/qwen/boot", { method: "POST",
-      headers: { authorization: "Bearer " + TOKEN } }).catch(function () {});
-    return fetch("/voice/tts/qwen/status").then(function (r) { return r.text(); })
-      .then(function (st) { ttsEngine = st.trim() === "ready" ? "qwen" : "kokoro"; })
-      .catch(function () { ttsEngine = "kokoro"; });
+    // the session speaks with the app's DEFAULT voice — boot its model and
+    // wait briefly so the FIRST line is the right voice (silent visemes cover
+    // any residual warm-up; there is no fallback voice by design)
+    return fetch("/voices/default.json").then(function (r) { return r.json(); })
+      .then(function (d) {
+        var model = "custom";
+        if (d && d.engine === "qwen-clone") { ttsVoice = { engine: "qwen-clone", voice: d.name }; model = "base"; }
+        else if (d && d.engine === "qwen-design") { ttsVoice = { engine: "qwen-design", persona: d.name }; model = "design"; }
+        fetch("/voice/tts/qwen/boot?model=" + model, { method: "POST",
+          headers: { authorization: "Bearer " + TOKEN } }).catch(function () {});
+        return new Promise(function (res) {
+          var t0 = Date.now();
+          (function poll() {
+            fetch("/voice/tts/qwen/status").then(function (r) { return r.text(); }).then(function (st) {
+              if (st.trim() === "ready" || Date.now() - t0 > 12000) res();
+              else setTimeout(poll, 700);
+            }).catch(res);
+          })();
+        });
+      })
+      .catch(function () {});
   }
   // stage type + TTS gate: voice always speaks; plan starts silent (visemes +
   // karaoke caption still run — perform()'s no-clip path) until toggled on
@@ -1142,17 +1158,16 @@
     return p;
   }
   function kokoroGenRaw(text) {
-    if (kokoroMode === "server" || ttsVoice) {   // a voice override ALWAYS rides the server
+    if (true) {   // ONE lane: the server's Qwen engine (kokoro worker retired)
       var q;
       if (ttsVoice && ttsVoice.engine === "qwen-design") {
         q = "engine=qwen-design&persona=" + encodeURIComponent(ttsVoice.persona || "narrator");
       } else if (ttsVoice && ttsVoice.engine === "qwen-clone") {
         q = "engine=qwen-clone&voice=" + encodeURIComponent(ttsVoice.voice || "");
       } else {
-        var vparam = ttsEngine === "qwen" ? "Ryan" : VOICE_ID;
-        q = "voice=" + encodeURIComponent(vparam) + (ttsEngine ? "&engine=" + ttsEngine : "");
+        q = "";   // no spec → the server resolves the app's default voice
       }
-      return fetch("/voice/tts?" + q, {
+      return fetch("/voice/tts" + (q ? "?" + q : ""), {
         method: "POST",
         headers: { authorization: "Bearer " + TOKEN, "content-type": "text/plain" },
         body: text.replace(/\[[^\]]+\]\s*/g, "")   // never SAY a stray bracket tag
@@ -1282,7 +1297,7 @@
 
     // pipeline synthesis: all sentences fired at once, speak on first arrival
     var clips = [], clipP = [];
-    if (kokoro && tts) {
+    if (tts) {
       for (var s = 0; s < sText.length; s++) {
         clipP[s] = kokoroGen(sText[s]);   // → clip {buffer, duration} (server or worker)
         clipP[s].then((function (idx) { return function (a) { clips[idx] = a; }; })(s));
@@ -1852,7 +1867,7 @@
       setTTS: function (on) { tts = !!on; if (tts) bootKokoro(); return tts; },
       ttsOn: function () { return tts; },
       ready: function () { return kokoro; },
-      warm: function (text) { if ((kokoro || ttsVoice) && tts) ttsTexts(text).forEach(kokoroGen); },
+      warm: function (text) { if (tts) ttsTexts(text).forEach(kokoroGen); },
       wave: function () { if (mounted) wave(); },
       nod: function (amp) {
         if (!mounted) return;

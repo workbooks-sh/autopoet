@@ -33,6 +33,7 @@ window.BehaviorLab = (() => {
       <select id="bl-voice">${Object.keys(traits).sort().map(n => `<option>${n}</option>`).join("")}</select>
       <div class="bl-row">
         <button id="bl-use">use voice</button>
+        <button id="bl-default">set default ★</button>
         <button id="bl-take">play take ▸</button>
       </div>
       <div id="bl-sliders"></div>
@@ -70,6 +71,14 @@ window.BehaviorLab = (() => {
           else setTimeout(poll, 2000);
         }).catch(() => {});
       })();
+    };
+    panel.querySelector("#bl-default").onclick = async () => {
+      const kind = (traits[sel.value] || {}).kind;
+      const engine = kind === "pinned" ? "qwen-clone" : "qwen-design";
+      const r = await fetch(`/voices/default?engine=${engine}&name=${sel.value}`, { method: "POST",
+        headers: { authorization: "Bearer " + TOKEN } });
+      panel.querySelector("#bl-note").textContent = r.ok
+        ? `★ default voice → ${sel.value} (all sessions)` : "couldn't set default";
     };
     panel.querySelector("#bl-take").onclick = () => verbs.playTake(`/voices/take/${sel.value}.wav`);
     panel.querySelectorAll(".bl-fire button").forEach(b => b.onclick = () => fire(b.dataset.f));

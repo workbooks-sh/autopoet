@@ -1015,84 +1015,119 @@ defmodule Autopoet.Control do
     text(conn, Autopoet.Kokoro.status() <> "\n")
   end
 
-  # TWO local engines behind one route. Kokoro (82M, instant) is the default;
-  # Qwen3-TTS 1.7B-4bit/MLX (premium: instruction-directed delivery, 10 langs,
-  # 1.83x RT) serves when engine=qwen OR when it's ready and engine is unset
-  # (auto-upgrade — never boots implicitly; POST /voice/tts/qwen/boot first).
+  # ONE voice engine: Qwen3-TTS (owner decree — Kokoro and every other engine
+  # are permanently removed as options). No params → the app's DEFAULT voice
+  # (data/voices/default). Not ready → 503; the client shows silent visemes
+  # until the warm engine answers.
   post "/voice/tts" do
     authed!(conn, fn conn ->
       {:ok, body, conn} = read_body(conn, length: 4_000)
       conn = fetch_query_params(conn)
       q = conn.query_params
-      engine = q["engine"]
-      use_qwen = engine in ["qwen", "qwen-design", "qwen-clone"] or (engine == nil and Autopoet.QwenTts.ready?())
-      # kokoro voice ids (af_heart…) don't name a qwen speaker — map to the default
-      qvoice =
-        case q["voice"] do
-          v when is_binary(v) -> if String.match?(v, ~r/^[a-z]+_/), do: "Ryan", else: v
-          _ -> "Ryan"
+
+      {engine, name} =
+        case q["engine"] do
+          e when e in ["qwen-clone", "qwen-design"] ->
+            {e, q["voice"] || q["persona"]}
+
+          _ ->
+            case File.read(Path.join([Autopoet.Discovery.home(), "data", "voices", "default"])) do
+              {:ok, d} ->
+                case String.split(String.trim(d), " ", parts: 2) do
+                  [e, n] when e in ["qwen-clone", "qwen-design"] -> {e, n}
+                  _ -> {"qwen", nil}
+                end
+
+              _ ->
+                {"qwen", nil}
+            end
         end
 
       result =
         cond do
           engine == "qwen-clone" ->
-            # a PINNED voice: data/voices/<name>.wav + .txt (the clip is the identity)
-            if Autopoet.QwenTts.model() != :base do
+            if Autopoet.QwenTts.model() != :base or not Autopoet.QwenTts.ready?() do
               Autopoet.QwenTts.switch(:base)
-              {:error, :base_model_loading}
+              {:error, :engine_loading}
             else
               vdir = Path.join([Autopoet.Discovery.home(), "data", "voices"])
-              name = Path.basename(q["voice"] || "")
-              ref = Path.join(vdir, name <> ".wav")
-              reftxt = Path.join(vdir, name <> ".txt")
+              ref = Path.join(vdir, Path.basename(name || "") <> ".wav")
+              reftxt = Path.join(vdir, Path.basename(name || "") <> ".txt")
 
               if File.exists?(ref) and File.exists?(reftxt),
                 do: Autopoet.QwenTts.clone(body, ref, String.trim(File.read!(reftxt))),
                 else: {:error, :no_such_pinned_voice}
             end
 
-          engine == "qwen-design" and Autopoet.QwenTts.model() != :design ->
-            # design personas need the DESIGN model — never cross-speak on
-            # custom (delivery-instruction ≠ designed timbre) and never mask
-            # with kokoro. Trigger the switch; the client's next clip lands.
-            Autopoet.QwenTts.switch(:design)
-            {:error, :design_model_loading}
-
-          use_qwen ->
-          # qwen-design: the voice IS a description (rides instruct; no presets)
-          {qv, qi} =
-            if engine == "qwen-design" do
+          engine == "qwen-design" ->
+            if Autopoet.QwenTts.model() != :design or not Autopoet.QwenTts.ready?() do
+              Autopoet.QwenTts.switch(:design)
+              {:error, :engine_loading}
+            else
               desc =
                 q["design"] || q["instruct"] ||
-                  Autopoet.VoicePersonas.description(q["persona"] || Autopoet.VoicePersonas.default())
+                  Autopoet.VoicePersonas.description(name || Autopoet.VoicePersonas.default())
 
-              {nil, desc}
-            else
-              {qvoice, q["instruct"]}
+              Autopoet.QwenTts.speak(body, nil, desc)
             end
 
-          case Autopoet.QwenTts.speak(body, qv, qi) do
-            {:ok, wav} -> {:ok, wav}
-            # AUTO mode only: the instant engine covers a mid-flight failure.
-            # An EXPLICIT qwen/qwen-design request fails loudly — a silent
-            # kokoro swap masked the design-model stomp for a full session.
-            _ when engine == nil -> Autopoet.Kokoro.speak(body, "af_heart")
-            err -> err
-          end
-
           true ->
-            Autopoet.Kokoro.speak(body, q["voice"] || "af_heart")
+            # bare qwen (no default configured): the CustomVoice preset
+            if Autopoet.QwenTts.ready?(),
+              do: Autopoet.QwenTts.speak(body, q["voice"] || "Ryan", q["instruct"]),
+              else: (Autopoet.QwenTts.ensure(:custom) && {:error, :engine_loading})
         end
 
       case result do
         {:ok, wav} ->
           conn |> put_resp_content_type("audio/wav") |> send_resp(200, wav)
 
-        {:error, :not_ready} ->
+        {:error, :engine_loading} ->
           send_resp(conn, 503, "voice engine loading\n")
 
         {:error, reason} ->
           send_resp(conn, 422, "speak failed: #{inspect(reason)}\n")
+      end
+    end)
+  end
+
+  # the DEFAULT session voice — what the autopoet speaks with everywhere.
+  # data/voices/default: "<engine> <name>"
+  get "/voices/default.json" do
+    payload =
+      case File.read(Path.join([Autopoet.Discovery.home(), "data", "voices", "default"])) do
+        {:ok, body} ->
+          case String.split(String.trim(body), " ", parts: 2) do
+            [engine, name] when engine in ["qwen-clone", "qwen-design"] -> %{engine: engine, name: name}
+            _ -> %{}
+          end
+
+        _ ->
+          %{}
+      end
+
+    conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(payload))
+  end
+
+  post "/voices/default" do
+    authed!(conn, fn conn ->
+      conn = fetch_query_params(conn)
+      q = conn.query_params
+      engine = q["engine"]
+      name = Path.basename(q["name"] || "")
+
+      valid =
+        (engine == "qwen-clone" and name in Autopoet.VoiceRoster.pinned()) or
+          (engine == "qwen-design" and Autopoet.VoicePersonas.description(name) != nil)
+
+      if valid do
+        path = Path.join([Autopoet.Discovery.home(), "data", "voices", "default"])
+        File.mkdir_p!(Path.dirname(path))
+        File.write!(path, engine <> " " <> name <> "\n")
+        Autopoet.QwenTts.switch(if(engine == "qwen-clone", do: :base, else: :design))
+        text(conn, "default: " <> name <> "\n")
+      else
+        send_resp(conn, 422, "unknown voice\n")
       end
     end)
   end

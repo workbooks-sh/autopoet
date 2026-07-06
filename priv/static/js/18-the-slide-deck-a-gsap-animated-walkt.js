@@ -594,10 +594,13 @@ async function showPlanMode() {
 // poll the subscription until it's active. The SAME flow the dashboard exposes.
 function showQuiz() { showPower(); }
 function showSlides() {
-  // pre-warm the premium voice while the deck plays — plan mode's first line
-  // should meet a READY engine, not a cold one
-  fetch("/voice/tts/qwen/boot", { method: "POST",
-    headers: { authorization: "Bearer " + TOKEN } }).catch(() => {});
+  // pre-warm the DEFAULT voice's engine while the deck plays — the first plan
+  // line meets a READY engine speaking the RIGHT voice
+  fetch("/voices/default.json").then(r => r.json()).then(d => {
+    const model = d && d.engine === "qwen-clone" ? "base" : d && d.engine === "qwen-design" ? "design" : "custom";
+    return fetch("/voice/tts/qwen/boot?model=" + model, { method: "POST",
+      headers: { authorization: "Bearer " + TOKEN } });
+  }).catch(() => {});
   // deck start → refresh the power prefetch so step 1 paints with live data
   if (typeof firePowerPrefetch === "function") firePowerPrefetch();
   document.querySelector("#onboard .obinner").style.display = "none";
