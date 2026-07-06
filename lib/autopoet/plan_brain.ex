@@ -55,6 +55,11 @@ defmodule Autopoet.PlanBrain do
     prompt = [%{"role" => "system", "content" => system_prompt(state, fork_done, exchanges)} | trim(history)]
     titles = state["deck_titles"] |> List.wrap() |> Enum.map(&String.downcase(to_string(&1)))
 
+    last_say =
+      history
+      |> Enum.reverse()
+      |> Enum.find_value("", fn m -> if m["role"] == "assistant", do: m["content"], else: nil end)
+
     # PLANNER-PRIMARY: gemma-class fast models hold persona + strict JSON
     # unreliably (the teacher persona failed the eval ~2/3 of runs — fragment
     # questions, dropped character). The planner (gemini-3.5-flash) is
@@ -70,17 +75,19 @@ defmodule Autopoet.PlanBrain do
     ]
 
     Enum.reduce_while(attempts, :error, fn call, _ ->
-      case try_move(call, fork_done, titles) do
+      case try_move(call, fork_done, titles, last_say) do
         {:ok, move} -> {:halt, {:ok, move}}
         :error -> {:cont, :error}
       end
     end)
   end
 
-  defp try_move(call, fork_done, titles) do
+  defp try_move(call, fork_done, titles, last_say) do
     with {:ok, content} <- call.(),
          {:ok, raw} when is_map(raw) <- decode_move(content),
-         {:ok, move} <- validate(raw, fork_done) do
+         {:ok, move} <- validate(raw, fork_done),
+         move <- statement_only(move),
+         false <- repeats?(move, last_say) do
       {:ok, dedupe(move, titles)}
     else
       _ -> :error
@@ -88,6 +95,24 @@ defmodule Autopoet.PlanBrain do
   rescue
     _ -> :error
   end
+
+  # a "slide" whose say contains a question is really an ask — reclassify so the
+  # session waits for the answer instead of auto-continuing past an open question
+  defp statement_only(%{"move" => "slide", "say" => say} = move) do
+    if String.contains?(say, "?"), do: Map.put(move, "move", "ask"), else: move
+  end
+
+  defp statement_only(move), do: move
+
+  # reject a say that echoes the previous line (normalized prefix match) — the
+  # attempt fails, so ask_llm tries the next lane / the repair nudge
+  defp repeats?(%{"say" => say}, last_say) when is_binary(last_say) and last_say != "" do
+    norm = fn s -> s |> String.downcase() |> String.replace(~r/[^a-z0-9 ]/, "") |> String.slice(0, 60) end
+    a = norm.(say)
+    a != "" and a == norm.(last_say)
+  end
+
+  defp repeats?(_, _), do: false
 
   # a slide whose title matches one already on the deck adds NOTHING — keep
   # the narration/question, drop the duplicate card (prompt asks; this enforces)
@@ -146,14 +171,20 @@ defmodule Autopoet.PlanBrain do
 
         true ->
           "The direction is chosen. This is an ONGOING DRAFTING SESSION: you build the deck IN " <>
-            "FRONT of them WHILE asking — most turns should be an \"ask\" carrying a slide (capture " <>
-            "what they just gave you as md, then ask the next thing). Use a bare \"slide\" only to " <>
-            "chain an extra card between questions. As many rounds as it takes — there is no slide " <>
-            "count or turn count. Emit \"complete\" ONLY when the deck genuinely covers what you " <>
-            "need to build: the mission, the chosen direction, the first concrete deliverables, the " <>
-            "data/integrations involved, and the working cadence. If any of those is still fuzzy, " <>
-            "keep asking."
+            "FRONT of them WHILE asking. ALMOST EVERY TURN IS AN \"ask\" that CARRIES a slide — " <>
+            "you capture what they JUST said as a new md card, then ask the NEXT thing. That keeps " <>
+            "the conversation moving: each of your turns responds to their latest answer. Emit a " <>
+            "bare \"slide\" ONLY right before \"complete\" (a summary) — never mid-conversation, " <>
+            "because a bare slide has no new input and you'd repeat yourself. As many rounds as it " <>
+            "takes. Emit \"complete\" only when the deck covers mission, chosen direction, first " <>
+            "deliverables, data/integrations, and cadence."
       end
+
+    last_say =
+      state["history"]
+      |> List.wrap()
+      |> Enum.reverse()
+      |> Enum.find_value("", fn m -> if m["role"] == "assistant", do: m["content"], else: nil end)
 
     """
     You are #{ap_name}, an autopoet — an AI companion being onboarded by its new
@@ -188,6 +219,13 @@ defmodule Autopoet.PlanBrain do
       sentence ("Ah, ceramics." / "Right." / "Perfect — noted.") THEN the
       substance in the next sentence. (This lets your voice start instantly
       while the rest is prepared; it also just sounds human.)
+    - A "slide" say is a STATEMENT describing what you're adding — it must NOT
+      contain a question ("?"). ONLY an "ask" asks. If you want to ask, use the
+      "ask" move (which may still carry the slide via md).
+    - RESPOND to the owner's LAST message. Never ignore what they just said and
+      jump to an unrelated question.
+    - NEVER repeat, echo, or paraphrase your OWN previous line. Your last line
+      was: "#{String.slice(last_say, 0, 140)}" — say something genuinely new.
     - say <= 32 words, in character. md is reveal.js markdown; a slide MAY carry
       a ```mermaid fenced diagram. Titles are short. Never fork twice.
     - NEVER repeat or re-draft a slide already in SLIDES SO FAR — every new slide
@@ -265,9 +303,11 @@ defmodule Autopoet.PlanBrain do
     - deck_coverage: the deck captures mission, direction, deliverables, integrations, cadence
     - emergence: content clearly derives from THIS owner's answers (no template smell)
     - deck_craft: slides are tight, well-formed reveal.js md, good titles, sane mermaid
+    - flow: each line FOLLOWS from the prior turn — responds to the owner's last
+      answer, never repeats/echoes an earlier line, never asks then ignores it
 
     Reply STRICT JSON only:
-    {"character_fit":n,"question_quality":n,"deck_coverage":n,"emergence":n,"deck_craft":n,
+    {"character_fit":n,"question_quality":n,"deck_coverage":n,"emergence":n,"deck_craft":n,"flow":n,
      "worst_moment":"one sentence","best_moment":"one sentence","verdict":"ship|polish|rework"}
     """
 

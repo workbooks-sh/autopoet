@@ -133,6 +133,7 @@ if pairing.get("slides"):
 state = {"form": FORM, "pairing": pairing, "history": [], "fork_done": False, "deck_titles": []}
 turn_times, moves_seen, forks, asks, asks_with_md = [], [], 0, 0, 0
 answer_i, completed = 0, False
+prev_say = [""]
 
 for turn in range(MAX_TURNS):
     # the real client retries hiccups (bad JSON from the fast lane etc.) —
@@ -153,6 +154,11 @@ for turn in range(MAX_TURNS):
     say = move.get("say", "")
     print(f"  [{turn:02d}] {dt:4.1f}s {m:<9} {'📄' if move.get('md') else '  '} {say[:76]!r}")
     warn(len(say.split()) > 40, f"turn {turn}: say ran long ({len(say.split())} words)")
+    # COHERENCE (owner: 'it repeats itself / gets misaligned before the question')
+    nsay = say.strip().lower()[:45]
+    check(nsay != prev_say[0], f"turn {turn}: say is not a repeat of the previous line")
+    prev_say[0] = nsay
+    check(not (m == "slide" and "?" in say), f"turn {turn}: slide say is a statement (no question)")
 
     if move.get("md"):
         post_text("/voice/deck/add", move["md"]); deck_adds += 1
@@ -207,7 +213,7 @@ if "--fast" not in sys.argv:
     if "error" in scores:
         warn(True, f"judge unavailable: {scores}")
     else:
-        for k in ("character_fit", "question_quality", "deck_coverage", "emergence", "deck_craft"):
+        for k in ("character_fit", "question_quality", "deck_coverage", "emergence", "deck_craft", "flow"):
             v = scores.get(k, 0)
             print(f"  {k:<18} {v}/10")
             check(isinstance(v, (int, float)) and v >= 6, f"{k} ≥ 6")
