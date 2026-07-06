@@ -22,15 +22,15 @@ defmodule Autopoet.Control do
   plug :dispatch
 
   get "/" do
-    # The desktop renders the WOVEN .work app — the entire UI authored as `.work`
-    # (design + client blocks) and woven by the `work` reactor into one surface.
-    # Falls back to the legacy app.html only if the weave hasn't been produced.
-    woven = [:code.priv_dir(:autopoet), "static", "woven.work.html"] |> Path.join()
-    src = if File.exists?(woven), do: woven, else: Path.join([:code.priv_dir(:autopoet), "static", "app.html"])
+    # The desktop renders the `.work` app the way the nexus renders any app:
+    # Nexus.SSR emits the CLIENT islands + the design as the live page (prose +
+    # server-block source are context, NOT rendered). This is the app, not the
+    # literate document the static `work weave` produces.
+    app_root = Path.join(Autopoet.Discovery.home(), "app")
 
     html =
-      src
-      |> File.read!()
+      app_root
+      |> Nexus.SSR.render(route: "/")
       |> String.replace("__TOKEN__", Autopoet.Discovery.token())
       |> String.replace("__CHROME__", if(Autopoet.Window.frameless?(), do: "flex", else: "none"))
 

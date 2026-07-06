@@ -11,12 +11,6 @@ onboarding conversation, the deck), and `server` blocks are the brain + voice on
 the nexus. Woven by `work`, served by `Nexus.Server`, shipped as the Elixir
 desktop app. No stray `.js`, no hand-authored `.html` — the workbook IS the app.
 
-app :autopoet do
-  title       "Autopoet"
-  description "The onboarding companion — meet, design, and set up your autopoet."
-  home        "shell"
-end
-
 ## The world
 
 The avatar's world is **grid paper** — light or ink per theme. The cube performs
