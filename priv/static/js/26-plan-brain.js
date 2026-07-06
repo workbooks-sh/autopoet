@@ -33,8 +33,11 @@ window.PlanBrain = (() => {
     bar = document.createElement("div");
     bar.className = "pm-bar";
     bar.innerHTML = `
-      <input id="pm-say" placeholder="answer, ask, or say anything…" autocomplete="off" spellcheck="false">
-      <button id="pm-send" class="pm-send" title="send">→</button>`;
+      <div id="pm-qpin"></div>
+      <div class="pm-bar-row">
+        <input id="pm-say" placeholder="answer, ask, or say anything…" autocomplete="off" spellcheck="false">
+        <button id="pm-send" class="pm-send" title="send">→</button>
+      </div>`;
     document.body.appendChild(bar);
     const input = bar.querySelector("#pm-say");
     const fire = () => {
@@ -56,6 +59,13 @@ window.PlanBrain = (() => {
   }
 
   function waitForUser() { return new Promise(res => { askResolve = res; }); }
+
+  function pinQuestion(text) {
+    const pin = bar && bar.querySelector("#pm-qpin");
+    if (!pin) return;
+    pin.textContent = text || "";
+    pin.classList.toggle("on", !!text);
+  }
 
   async function loop() {
     let misses = 0;
@@ -81,10 +91,14 @@ window.PlanBrain = (() => {
         mountDeckNav();
       }
       state.history.push({ role: "assistant", content: move.say });
+      // the FULL question stays readable above the input while it's open —
+      // the spoken caption is transient, this pin is not
+      if (move.move === "ask") pinQuestion(move.say);
       await board.say(move.say);       // resolves when narration ends
 
       if (move.move === "ask") {
         await waitForUser();           // block until the owner responds
+        pinQuestion(null);
       } else if (move.move === "fork") {
         const pick = await showFork(move.options || []);
         state.history.push({ role: "user", content: "let's go with: " + pick.title });
