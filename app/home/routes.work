@@ -15,7 +15,9 @@ server :vault do
   route "GET /avatar/mouths.json", :avatar_mouths, auth: :public
   route "GET /micons.json", :micons, auth: :public
 
-  def notes_tree(_req), do: Autopoet.Notes.tree()
+  # the nexus router wraps a BARE list return in %{result: …}; the client wants
+  # the array directly, so JSON-encode list payloads ourselves.
+  def notes_tree(_req), do: {200, "application/json", Jason.encode!(Autopoet.Notes.tree())}
 
   def notes_file(req) do
     case Autopoet.Notes.read(req.query["path"] || "") do
@@ -105,10 +107,10 @@ server :studio do
     end
   end
 
-  def history_log(_req), do: Autopoet.History.log()
+  def history_log(_req), do: {200, "application/json", Jason.encode!(Autopoet.History.log())}
   def history_diff(req), do: %{files: Autopoet.History.diff(req.query["rev"] || "@")}
   def profile(_req), do: {200, "text/plain; charset=utf-8", Autopoet.Profile.render()}
-  def chat_sessions(_req), do: Autopoet.Chat.sessions()
+  def chat_sessions(_req), do: {200, "application/json", Jason.encode!(Autopoet.Chat.sessions())}
   def chat_new(_req), do: {200, "text/plain; charset=utf-8", Autopoet.Chat.new() <> "\n"}
   def intake_start(_req), do: {200, "text/plain; charset=utf-8", "#{Autopoet.Intake.start()}\n"}
 
@@ -191,7 +193,7 @@ server :app_misc do
     %{ok: true}
   end
 
-  def graph_json(_req), do: Autopoet.WorldGraph.payload()
+  def graph_json(_req), do: {200, "application/json", Jason.encode!(Autopoet.WorldGraph.payload())}
 
   def profile_reset(_req) do
     Autopoet.Profile.clear()
