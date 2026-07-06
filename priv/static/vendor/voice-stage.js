@@ -843,23 +843,45 @@
     deckWrap.appendChild(s);
     deckSlides.push(s);
     showBoard("deck");
-    // FIRST slide → step the presenter aside (bottom-left, smaller) so the deck
-    // owns the stage instead of the cube sitting on top of it
-    if (deckSlides.length === 1 && scene) {
-      scene.style.setProperty("--sc", "0.6");
-      moveTo(-Math.round(stageEl.clientWidth * 0.31), Math.round(stageEl.clientHeight * 0.26));
-    }
     deckShow(deckSlides.length - 1);   // reveal the new slide immediately (text)
-    // the agent POINTS at the slide it just put up — the same hand-to-DOM
-    // gesture the voice stage uses for graph nodes (pointAt takes any element)
-    var head = s.querySelector("h1, h2, h3") || s;
-    later(setTimeout(function () { if (mounted && boardMode === "deck") pointAt(head, 2800); }, 450));
+    parkCube();                        // keep the cube OFF the card, in whitespace
     await renderMermaidIn(s);          // its diagram fills in a beat later
+    parkCube();                        // the diagram may have resized the card
   }
   function deckShow(n) {
     if (!deckSlides.length) return;
     deckCur = Math.max(0, Math.min(deckSlides.length - 1, n));
     deckSlides.forEach(function (sl, i) { sl.classList.toggle("cur", i === deckCur); });
+  }
+  // ── PARK THE CUBE in the largest whitespace AROUND the deck card (never on
+  //    top of the slide). Measures the card vs the stage, picks the biggest
+  //    edge gap (left/right/top/bottom, minus the input bar), centers the cube
+  //    there and scales it to fit. Context-aware: re-runs on every slide/resize.
+  var _parkT = null;
+  function parkCube() {
+    if (!parkCube._wired) {
+      parkCube._wired = true;
+      window.addEventListener("resize", function () { clearTimeout(_parkT); _parkT = later(setTimeout(parkCube, 160)); });
+    }
+    if (!scene || !graphBg || boardMode !== "deck") return;
+    var card = graphBg.getBoundingClientRect();
+    var st = stageEl.getBoundingClientRect();
+    if (card.width < 20) { later(setTimeout(parkCube, 120)); return; }   // not laid out yet
+    var barH = 150;   // reserve the bottom bar/keycap zone
+    var pad = 8;
+    var gaps = [
+      { k: "left",   size: card.left - st.left,               cx: st.left + (card.left - st.left) / 2, cy: card.top + card.height / 2 },
+      { k: "right",  size: st.right - card.right,             cx: card.right + (st.right - card.right) / 2, cy: card.top + card.height / 2 },
+      { k: "top",    size: card.top - st.top,                 cx: card.left + card.width / 2, cy: st.top + (card.top - st.top) / 2 },
+      { k: "bottom", size: (st.bottom - barH) - card.bottom,  cx: card.left + card.width / 2, cy: card.bottom + ((st.bottom - barH) - card.bottom) / 2 }
+    ];
+    var best = gaps.reduce(function (a, b) { return b.size > a.size ? b : a; });
+    // scale the cube to fit the gap (native 132px); shrink hard in a thin gap
+    var sc = Math.max(0.34, Math.min(0.8, (best.size - pad * 2) / 132));
+    if (best.size < 70) sc = Math.max(0.3, best.size / 150);   // very tight → tiny
+    var cen = stageCenter();
+    scene.style.setProperty("--sc", sc.toFixed(3));
+    moveTo(Math.round(best.cx - cen.x), Math.round(best.cy - cen.y));
   }
   function deckGoto(n) { deckShow((n || 1) - 1); }
   function deckResetLocal() {
