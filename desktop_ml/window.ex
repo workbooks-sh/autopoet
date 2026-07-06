@@ -85,7 +85,11 @@ defmodule Autopoet.Window do
   # The app UI: a native WKWebView filling the frame (single child auto-fills).
   defp attach_view(frame) do
     url = ~c"http://127.0.0.1:#{Autopoet.Application.port()}/"
-    {:webview, :wxWebView.new(frame, -1, url: url)}
+    wv = :wxWebView.new(frame, -1, url: url)
+    # right-click → Inspect Element in the desktop window: enable the context menu
+    # (WKWebView also needs `defaults write -g WebKitDeveloperExtras -bool true`).
+    try do :wxWebView.enableContextMenu(wv, true) rescue _ -> :ok catch _, _ -> :ok end
+    {:webview, wv}
   rescue
     _ ->
       Autopoet.Log.puts("window: wxWebView unavailable — degrading to text log")
