@@ -7,17 +7,17 @@ a beam-compiled `server` block instead of a scattered `.ex` file.
 
 defmodule Autopoet.VoiceEngine do
   @moduledoc """
-  DEV TOGGLE — which TTS engine /voice/tts speaks through:
+  ENGINE TOGGLE — which TTS engine /voice/tts speaks through:
 
-    * "qwen"   (default): the premium local clone/persona voice (Qwen3-TTS, the
-                product engine — expressive, per-owner cloned voices, ~0.8s
-                streaming first-audio).
-    * "kokoro" (comparison): the tiny BEAM-native Kokoro-82M (fixed preset
-                voices, no personas/cloning, but ~0.3-0.5s and rock steady).
+    * "kokoro" (DEFAULT): the tiny BEAM-native Kokoro-82M (fixed preset voices,
+                no personas/cloning, ~0.3-0.5s, rock steady). This is the product
+                engine — the whole app defaults here.
+    * "qwen"   (backup): the Qwen3-TTS clone/persona sidecar. Kept as a dormant
+                A/B/backup lane; only used when explicitly selected.
 
-  Switch WITHOUT recompiling: set `WB_VOICE=kokoro` in the environment, OR write
-  "kokoro"/"qwen" to `data/voice-engine` (POST /voice/engine?e=kokoro flips it).
-  Env wins if present. Qwen stays the product default; this is a dev A/B lens.
+  Switch WITHOUT recompiling: set `WB_VOICE=qwen` in the environment, OR write
+  "qwen"/"kokoro" to `data/voice-engine` (POST /voice/engine?e=qwen flips it).
+  Env wins if present. With neither set, everything defaults to Kokoro.
   """
 
   @valid ~w(qwen kokoro)
@@ -31,8 +31,8 @@ defmodule Autopoet.VoiceEngine do
 
       true ->
         case File.read(path()) do
-          {:ok, v} when is_binary(v) -> if String.trim(v) in @valid, do: String.trim(v), else: "qwen"
-          _ -> "qwen"
+          {:ok, v} when is_binary(v) -> if String.trim(v) in @valid, do: String.trim(v), else: "kokoro"
+          _ -> "kokoro"
         end
     end
   end

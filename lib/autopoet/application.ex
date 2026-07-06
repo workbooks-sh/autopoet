@@ -32,17 +32,11 @@ defmodule Autopoet.Application do
     # spine goes undefined.
     root = Path.join([app_root(), "app", "home"])
 
-    # Compile the `.work` BEAM tier NOW — before the supervision tree — so every
-    # server-block module the app supervises, `Autopoet.Spine` first among them, is a
-    # LOADED module by the time its child slot starts. This is the robust, env-
-    # independent guarantee: it does not depend on Nexus.Server's own bringup firing
-    # (and completing — bringup rescues its own crashes) at the right moment. It
-    # matters most under `mix test`, where the app boots without a fully-primed
-    # serving context; without this the tree dies on `Autopoet.Spine undefined`.
-    # Nexus.Server (child 1) re-runs bringup to register routes/workers — a second
-    # pass that redefines the same modules (a handful of harmless warnings, gone once
-    # P6 deletes the `.ex` twins).
-    Nexus.Compile.workbook(root)
+    # No runtime pre-compile: the `.work` BEAM tier (the spine + every domain module)
+    # is WOVEN to real `.beam` at build time by `Mix.Tasks.Compile.Workbooks`, so the
+    # BEAM has already loaded it from disk before `start/2` runs — the OTP tree boots
+    # from native artifacts, no chicken-and-egg. (A generic cloud nexus that never ran
+    # the weave still works: Nexus.Server's `bringup` runtime-compiles the same `.work`.)
 
     # v0-nexus tree — three top-level boundaries; the fat domain child list now
     # lives in the `.work`-authored `Autopoet.Spine` (app/home/backend/spine.work):

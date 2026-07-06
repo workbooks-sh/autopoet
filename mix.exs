@@ -11,10 +11,20 @@ defmodule Autopoet.MixProject do
       app: :autopoet,
       version: "0.1.0",
       elixir: "~> 1.17",
+      # `:workbooks` runs LAST — weaves app/home's `.work` BEAM tier to real `.beam` in
+      # the compile path AFTER `:elixir` (so `:elixir --force` can't clean the woven
+      # artifacts). The `.ex` bootstrap calls into these woven modules via late-bound
+      # remote calls, so a handful of compile-time "undefined" advisories are expected
+      # and harmless — the modules exist as `.beam` by boot.
+      compilers: Mix.compilers() ++ [:workbooks],
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       releases: releases(),
       aliases: aliases(),
+      # Weave the `.work` app surface to `.beam` ahead of time (see
+      # Mix.Tasks.Compile.Workbooks): the domain modules ship as real BEAM the OTP tree
+      # boots from — no runtime bringup-compile for the supervision tree, no `.ex` mirror.
+      workbook_surfaces: ["app/home"],
       preferred_cli_env: [eval: :test, "eval.live": :test, "eval.iso": :test],
       deps: deps()
     ]
