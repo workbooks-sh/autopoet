@@ -923,3 +923,69 @@ server :realtime do
   def cloud_signout(_req), do: (Autopoet.Cloud.sign_out(); %{ok: true})
   def cloud_disconnect(_req), do: (Autopoet.Cloud.disconnect(); %{ok: true})
 end
+
+## OAuth (conn contract), brain-stream (SSE), power status, widget pages
+
+server :auth_flows do
+  route "GET /auth/:provider/login", :oauth_login, auth: :public
+  route "GET /auth/:provider/callback", :oauth_callback, auth: :public
+  route "POST /auth/:provider/open", :oauth_open, auth: :public
+  route "POST /auth/cloudflare/token", :cloudflare_token, auth: :public
+  route "POST /voice/brain/stream", :brain_stream, auth: :public
+  route "GET /power/status", :power_status, auth: :public
+
+  defp prov(req), do: req.params["provider"] || req.params[:provider]
+
+  # OAuth needs the Plug conn (session cookie + redirect) → the {:conn, …} contract
+  def oauth_login(req), do: {:conn, fn conn -> Autopoet.Auth.OAuth.login(conn, prov(req)) end}
+  def oauth_callback(req), do: {:conn, fn conn -> Autopoet.Auth.OAuth.callback(conn, prov(req)) end}
+
+  def oauth_open(req) do
+    case Autopoet.Auth.connect(prov(req)) do
+      {:error, r} -> {200, "text/plain; charset=utf-8", "refused: #{inspect(r)}\n"}
+      _ -> {200, "text/plain; charset=utf-8", "ok\n"}
+    end
+  end
+
+  def cloudflare_token(req) do
+    case Autopoet.Auth.OAuth.cloudflare_connect(req.query["token"] || "") do
+      :ok -> {200, "text/plain; charset=utf-8", "ok\n"}
+      {:error, r} -> {200, "text/plain; charset=utf-8", "refused: #{inspect(r)}\n"}
+    end
+  end
+
+  # SSE via the streaming contract — the provider's tokens forwarded as they arrive
+  def brain_stream(req) do
+    with %{"history" => history} when is_list(history) <- (req.body || %{}),
+         {:ok, ref} <- Autopoet.VoiceBrain.stream_req(history) do
+      enum =
+        Stream.resource(
+          fn -> ref end,
+          fn r ->
+            receive do
+              {:http, {^r, :stream, chunk}} -> {[chunk], r}
+              {:http, {^r, :stream_end, _}} -> {:halt, r}
+              {:http, {^r, {:error, _}}} -> {:halt, r}
+            after
+              60_000 -> {:halt, r}
+            end
+          end,
+          fn _ -> :ok end
+        )
+
+      {:stream, "text/event-stream", enum}
+    else
+      _ -> {400, %{error: "bad request"}}
+    end
+  end
+
+  def power_status(_req) do
+    compute =
+      case File.read(Path.join([Autopoet.Discovery.home(), "data", "power-compute"])) do
+        {:ok, c} -> String.trim(c)
+        _ -> nil
+      end
+
+    %{compute: compute, inference: (if is_binary(Autopoet.Keys.openrouter()), do: "local", else: "cloud"), signed_in: Autopoet.Cloud.signed_in?()}
+  end
+end
