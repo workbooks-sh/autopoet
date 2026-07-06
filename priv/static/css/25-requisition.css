@@ -1,0 +1,52 @@
+/* ── FORM AP-7 — the requisition sheet: a straight-faced government form ── */
+#obreq{position:absolute;inset:0;display:flex;align-items:flex-start;justify-content:center;
+  overflow-y:auto;padding:38px 16px 60px;z-index:5;
+  background:
+    linear-gradient(transparent 23px, rgba(22,22,26,.035) 24px) 0 0/24px 24px,
+    linear-gradient(90deg, transparent 23px, rgba(22,22,26,.035) 24px) 0 0/24px 24px;}
+.rq-sheet{width:min(680px,94vw);background:#fdfdfa;border:1.6px solid #16161a;border-radius:3px;
+  box-shadow:6px 8px 0 rgba(22,22,26,.14);padding:26px 30px 22px;
+  font:13px/1.45 ui-monospace,SFMono-Regular,monospace;color:#26262b;transform:rotate(-.3deg)}
+.rq-head{display:flex;align-items:center;gap:14px;border-bottom:2.5px solid #16161a;padding-bottom:12px}
+.rq-seal{width:44px;height:44px;border:2.5px double #16161a;border-radius:50%;display:flex;
+  align-items:center;justify-content:center;font-weight:800;font-size:15px;flex:none}
+.rq-agency{flex:1;display:flex;flex-direction:column;gap:2px}
+.rq-agency b{font-size:15px;letter-spacing:.12em}
+.rq-agency span{font-size:10.5px;color:#6a6f68}
+.rq-omb{font-size:9.5px;color:#8a8f88;text-align:right;line-height:1.5}
+.rq-title{text-align:center;font-weight:800;font-size:17px;letter-spacing:.28em;margin:16px 0 4px}
+.rq-sub{text-align:center;font-size:11px;color:#6a6f68;font-style:italic;margin-bottom:16px}
+.rq-sec{border:1.4px solid #16161a;border-radius:2px;padding:10px 14px 12px;margin-bottom:12px}
+.rq-sec>b{font-size:11.5px;letter-spacing:.08em}
+.rq-sec>em{font-size:10px;color:#8a8f88}
+.rq-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px 10px;margin-top:9px}
+.rq-row{display:flex;align-items:center;gap:12px;margin-top:9px;flex-wrap:wrap}
+.rq-lbl{width:118px;flex:none;font-size:11px;color:#4a4f48}
+.rq-ck{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;cursor:pointer;user-select:none}
+.rq-ck input{position:absolute;opacity:0;width:0}
+.rq-ck i{width:13px;height:13px;border:1.6px solid #16161a;flex:none;display:inline-block;position:relative;background:#fff}
+.rq-ck.rq-rd i{border-radius:50%}
+.rq-ck input:checked+i::after{content:"✕";position:absolute;inset:-4px 0 0 0;font:800 13px/1 ui-monospace,monospace;
+  color:#16161a;text-align:center}
+.rq-ck.rq-rd input:checked+i::after{content:"●";font-size:9px;inset:0;line-height:11px}
+.rq-line{border:0;border-bottom:1.6px solid #16161a;background:transparent;flex:1;min-width:200px;
+  font:inherit;padding:2px 4px;outline:none}
+.rq-wide{width:100%;margin-top:8px}
+.rq-sig{display:flex;gap:34px;margin:18px 4px 6px}
+.rq-sig>div{flex:1;display:flex;flex-direction:column}
+.rq-sig span{border-bottom:1.6px solid #16161a;min-height:26px;padding:0 6px 2px}
+.rq-sig label{font-size:9.5px;color:#8a8f88;margin-top:3px}
+.rq-cursive{font-family:"Snell Roundhand","Segoe Script",cursive;font-size:19px}
+.rq-fine{font-size:9px;color:#9a9f98;margin:8px 4px 0;line-height:1.6}
+.rq-actions{display:flex;align-items:center;justify-content:flex-end;gap:16px;margin-top:14px;min-height:44px}
+.rq-btn{font:700 12.5px ui-monospace,monospace;letter-spacing:.1em;padding:11px 20px;cursor:pointer;
+  background:#16161a;color:#fff;border:1.6px solid #16161a;border-radius:2px}
+.rq-btn:hover{background:#2e2e34}
+.rq-btn:disabled{opacity:.55;cursor:default}
+.rq-stamp{display:none}
+.rq-stamp.on{display:block;font:800 15px ui-monospace,monospace;letter-spacing:.24em;color:#b3372f;
+  border:2.5px solid #b3372f;border-radius:3px;padding:5px 12px;transform:rotate(-7deg);
+  animation:rq-slam .28s cubic-bezier(.2,2.4,.4,1)}
+.rq-stamp.on.ok{color:#2c6e49;border-color:#2c6e49}
+.rq-note{font-size:11.5px;color:#26262b;text-align:right;max-width:380px}
+@keyframes rq-slam{from{transform:rotate(-7deg) scale(2.1);opacity:0}to{transform:rotate(-7deg) scale(1);opacity:1}}

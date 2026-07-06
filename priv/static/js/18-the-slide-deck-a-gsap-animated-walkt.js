@@ -572,7 +572,10 @@ async function showPlanMode() {
     await ensureSelfCube();
     zoomTo("self", false);            // camera settles on the head, like a call
     hideOnboard();                    // the overlay yields to the whiteboard
+    const pairing = await fetch("/onboard/pairing.json")
+      .then(r => (r.ok ? r.json() : null)).catch(() => null);
     const ok = PlanMode.start({
+      pairing,
       stage: { token: TOKEN, stage: document.getElementById("stage"),
                adopt: { scene: selfCube, cube: selfCubeInner, prefix: "ap-" },
                selfSpot: vsSelfSpot, hideWorld: vsHideWorld, showWorld: vsShowWorld,
@@ -594,6 +597,12 @@ async function showPlanMode() {
 // poll the subscription until it's active. The SAME flow the dashboard exposes.
 function showQuiz() { showPower(); }
 function showSlides() {
+  // FORM AP-7 replaced the deck: the requisition IS the introduction now.
+  // (the old GSAP deck stays below as showSlidesDeck for dev spelunking)
+  if (typeof showRequisition === "function") { showRequisition(); return; }
+  showSlidesDeck();
+}
+function showSlidesDeck() {
   // pre-warm the DEFAULT voice's engine while the deck plays — the first plan
   // line meets a READY engine speaking the RIGHT voice
   fetch("/voices/default.json").then(r => r.json()).then(d => {

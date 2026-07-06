@@ -52,9 +52,30 @@ build.sched -> build.weave: wakes
   ];
 
   let opts, board, widget, step = -1, shown = false;
+  let SCRIPT = SEED, SRC = D2_SRC;   // swapped when a pairing exists
+
+  // the requisition pairing → a performed script: the character's own
+  // greeting, its LLM-authored diagram walk, then the designer beat
+  function scriptFromPairing(p) {
+    const steps = (p.steps || [])
+      .filter(st => st.say)
+      .map(st => ({ say: st.say, reveal: st.reveal || [], point: st.point || "" }));
+    return [
+      { say: p.greeting || SEED[0].say, next: "nice to meet you →", gesture: "wave" },
+      ...steps,
+      { say: "one more thing — make me yours. tweak my shape and colors; i'll hold still. mostly.",
+        designer: true, next: "looks right →" },
+      { say: "then let's get to work. from here on i ask the questions, and this board becomes your real system.",
+        end: true, gesture: "thumbsUp" }
+    ];
+  }
 
   function start(options) {
     opts = options || {};
+    if (opts.pairing && Array.isArray(opts.pairing.steps) && opts.pairing.steps.length && opts.pairing.d2) {
+      SCRIPT = scriptFromPairing(opts.pairing);
+      SRC = opts.pairing.d2;
+    } else { SCRIPT = SEED; SRC = D2_SRC; }
     // plan mode is its OWN SCREEN: onboarding-first, no dashboard chrome —
     // the stage takes the viewport (body.pm-screen hides sidebar/console/bars)
     document.body.classList.add("pm-screen");
@@ -102,7 +123,7 @@ build.sched -> build.weave: wakes
     const t0 = performance.now();
     (function waitReady() {
       if (board.ready() || performance.now() - t0 > 2500) {
-        SEED.forEach(st => board.warm(st.say));
+        SCRIPT.forEach(st => board.warm(st.say));
         setTimeout(() => go(0), Math.max(0, settle - (performance.now() - t0)));
       } else setTimeout(waitReady, 150);
     })();
@@ -110,19 +131,29 @@ build.sched -> build.weave: wakes
   }
 
   async function go(n) {
-    if (n < 0 || n >= SEED.length || !board) return;
+    if (n < 0 || n >= SCRIPT.length || !board) return;
     const backward = n < step;
+    const wasDesigner = step >= 0 && SCRIPT[step] && SCRIPT[step].designer;
     step = n;
     renderWidget();
-    const s = SEED[n];
+    const s = SCRIPT[n];
+    const tEnter = performance.now();
+
+    // the designer beat: the real customize panel over the live performer
+    if (wasDesigner && !s.designer && typeof exitCharacterMode === "function") {
+      try { exitCharacterMode(); } catch (_) {}
+    }
+    if (s.designer && typeof enterCharacterMode === "function") {
+      setTimeout(() => { try { enterCharacterMode(); } catch (_) {} }, 400);
+    }
 
     // the board mounts on the first graph step — the opening is pure character
-    if (s.reveal && !shown) { await board.show(D2_SRC); shown = true; }
+    if (s.reveal && s.reveal.length && !shown) { await board.show(SRC); shown = true; }
 
     if (backward && shown) {
       // back = remount + re-walk (reveal() is additive-only)
-      await board.show(D2_SRC);
-      for (let i = 1; i <= n; i++) (SEED[i].reveal || []).forEach(r => board.reveal(r));
+      await board.show(SRC);
+      for (let i = 1; i <= n; i++) (SCRIPT[i].reveal || []).forEach(r => board.reveal(r));
     } else {
       (s.reveal || []).forEach(r => board.reveal(r));
     }
@@ -130,22 +161,28 @@ build.sched -> build.weave: wakes
     camReset(true);   // each step re-locks focus; wander + recenter anytime
     // PRIORITY WARM: the very next line synths first (the 'next →' click should
     // never wait on the tail of the queue), then the rest re-warm (cache no-ops)
-    if (SEED[n + 1]) board.warm(SEED[n + 1].say);
-    board.say(s.say);
+    if (SCRIPT[n + 1]) board.warm(SCRIPT[n + 1].say);
+    // step timing: entry → narration finished (the owner is measuring how
+    // fast the onboarding moves; PM_TIMINGS collects it, console shows it)
+    Promise.resolve(board.say(s.say)).then(() => {
+      const ms = Math.round(performance.now() - tEnter);
+      (window.PM_TIMINGS = window.PM_TIMINGS || []).push({ step: n, ms });
+      console.info("[pm] step " + n + " performed in " + ms + "ms");
+    });
     if (s.point) setTimeout(() => board.point(s.point, 3000), 500);
     if (s.gesture === "wave") setTimeout(() => board.wave(), 300);
     if (s.gesture === "thumbsUp") setTimeout(() => board.thumbsUp(), 400);
   }
 
   function renderWidget() {
-    const s = SEED[step];
+    const s = SCRIPT[step];
     // narration lives in the CAPTION (the performer's own voice line); the
     // question box only appears when the brain asks real questions (phase 2)
     const q = widget.querySelector("#pm-q");
     q.textContent = s.question || "";
     q.style.display = s.question ? "block" : "none";
     widget.querySelector("#pm-dots").innerHTML =
-      SEED.map((_, i) => `<i class="${i === step ? "on" : ""}"></i>`).join("");
+      SCRIPT.map((_, i) => `<i class="${i === step ? "on" : ""}"></i>`).join("");
     widget.querySelector("#pm-back").style.visibility = step === 0 ? "hidden" : "visible";
     const next = widget.querySelector("#pm-next");
     if (s.end) {
@@ -181,6 +218,7 @@ build.sched -> build.weave: wakes
   }
 
   function teardown() {
+    if (typeof exitCharacterMode === "function") { try { exitCharacterMode(); } catch (_) {} }
     document.body.classList.remove("pm-screen");
     if (widget) { widget.remove(); widget = null; }
     if (board) { try { board.exit(); } catch (_) {} board = null; }

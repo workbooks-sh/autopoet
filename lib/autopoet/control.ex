@@ -680,6 +680,32 @@ defmodule Autopoet.Control do
     end)
   end
 
+  # ── the requisition desk: form AP-7 in, a paired character out ─────────────
+  post "/onboard/requisition" do
+    authed!(conn, fn conn ->
+      {:ok, body, conn} = read_body(conn, length: 60_000)
+
+      form =
+        case Jason.decode(body) do
+          {:ok, m} when is_map(m) -> m
+          _ -> %{}
+        end
+
+      {:ok, identity} = Autopoet.Requisition.pair(form)
+      conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(identity))
+    end)
+  end
+
+  get "/onboard/pairing.json" do
+    case Autopoet.Requisition.pairing() do
+      {:ok, identity} ->
+        conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(identity))
+
+      _ ->
+        conn |> put_resp_content_type("application/json") |> send_resp(404, "{}")
+    end
+  end
+
   # ── the intake agent: builds the first world while the finale is on screen ──
   post "/intake/start" do
     authed!(conn, fn conn -> text(conn, "#{Autopoet.Intake.start()}\n") end)
