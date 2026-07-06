@@ -1,9 +1,8 @@
 # Autopoet.Control
 
-  Localhost-only control surface (bound to 127.0.0.1 by the supervisor).
-
-The module verbatim, now authored as `.work` — its Elixir source lives inside
-a beam-compiled `server` block instead of a scattered `.ex` file.
+The HTTP surface — every route the desktop + widget call. The module verbatim,
+now authored as `.work` inside a beam-compiled `server` block. `get "/"` now
+serves the WOVEN `.work` app (`woven.work.html`).
 
 server :control do
 defmodule Autopoet.Control do
@@ -30,9 +29,14 @@ defmodule Autopoet.Control do
   plug :dispatch
 
   get "/" do
+    # The desktop renders the WOVEN .work app — the entire UI authored as `.work`
+    # (design + client blocks) and woven by the `work` reactor into one surface.
+    # Falls back to the legacy app.html only if the weave hasn't been produced.
+    woven = [:code.priv_dir(:autopoet), "static", "woven.work.html"] |> Path.join()
+    src = if File.exists?(woven), do: woven, else: Path.join([:code.priv_dir(:autopoet), "static", "app.html"])
+
     html =
-      [:code.priv_dir(:autopoet), "static", "app.html"]
-      |> Path.join()
+      src
       |> File.read!()
       |> String.replace("__TOKEN__", Autopoet.Discovery.token())
       |> String.replace("__CHROME__", if(Autopoet.Window.frameless?(), do: "flex", else: "none"))

@@ -22,9 +22,14 @@ defmodule Autopoet.Control do
   plug :dispatch
 
   get "/" do
+    # The desktop renders the WOVEN .work app — the entire UI authored as `.work`
+    # (design + client blocks) and woven by the `work` reactor into one surface.
+    # Falls back to the legacy app.html only if the weave hasn't been produced.
+    woven = [:code.priv_dir(:autopoet), "static", "woven.work.html"] |> Path.join()
+    src = if File.exists?(woven), do: woven, else: Path.join([:code.priv_dir(:autopoet), "static", "app.html"])
+
     html =
-      [:code.priv_dir(:autopoet), "static", "app.html"]
-      |> Path.join()
+      src
       |> File.read!()
       |> String.replace("__TOKEN__", Autopoet.Discovery.token())
       |> String.replace("__CHROME__", if(Autopoet.Window.frameless?(), do: "flex", else: "none"))
@@ -797,6 +802,32 @@ defmodule Autopoet.Control do
       conn
       |> put_resp_content_type("application/json")
       |> send_resp(200, Jason.encode!(%{query: query, results: results}))
+    end)
+  end
+
+  # BASH — the onboarding brain's full agent shell: coreutils over its seeded
+  # skill/guide world (`ls skills`, `cat skills/<name>.md`, `grep`) PLUS the host
+  # web verbs (`search`, `scrape`). Same Nexus.Agent.Bash a regular agent runs.
+  post "/plan/bash" do
+    authed!(conn, fn conn ->
+      {:ok, body, conn} = read_body(conn, length: 8_000)
+
+      line =
+        case Jason.decode(body) do
+          {:ok, %{"command" => c}} when is_binary(c) -> c
+          {:ok, %{"cmd" => c}} when is_binary(c) -> c
+          _ -> ""
+        end
+
+      {out, ok} =
+        case Autopoet.PlanTools.bash(line) do
+          {:ok, o} -> {o, true}
+          {:error, e} -> {"error: #{e}", false}
+        end
+
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(200, Jason.encode!(%{command: line, output: out, ok: ok}))
     end)
   end
 
