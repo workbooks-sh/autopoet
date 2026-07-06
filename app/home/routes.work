@@ -942,12 +942,55 @@ server :realtime do
     %{ok: true}
   end
 
-  # OAuth-style callback via the nexus {:redirect, …} contract
+  # The device-flow return hop. It ALWAYS lands in the system browser (the login was
+  # opened there — WKWebView can't host it), NOT in the desktop webview. So redirecting
+  # to "/" here just loaded a second, confusing copy of the whole app in the browser
+  # while the real desktop window sat behind it. Instead: store the token, establish the
+  # session (the desktop window's poll picks it up within 2s and advances itself), pull
+  # the desktop app forward, and hand the BROWSER a small "you're done, go back" page.
   def cloud_callback(req) do
     case Autopoet.Cloud.put_token(req.query["token"] || "") do
-      :ok -> Autopoet.Auth.sign_in_cloud(); {:redirect, "/"}
-      _ -> {:redirect, "/?auth=failed"}
+      :ok ->
+        Autopoet.Auth.sign_in_cloud()
+        # best-effort: raise the desktop window (no-op on a headless/cloud nexus that has none)
+        if pid = Process.whereis(Autopoet.Window), do: send(pid, :to_front)
+        {200, "text/html; charset=utf-8", return_to_app_page(:ok)}
+
+      _ ->
+        {200, "text/html; charset=utf-8", return_to_app_page(:failed)}
     end
+  end
+
+  # A minimal, self-contained confirmation for the browser tab (it can't be reliably
+  # auto-closed — it was opened by `open`, not by script — so it TELLS the user to
+  # switch back, and tries window.close() anyway for the same-browser case).
+  defp return_to_app_page(status) do
+    {title, msg, ok} =
+      case status do
+        :ok -> {"Signed in", "You're connected to Workbooks Cloud. Return to Autopoet — it's already signing you in.", true}
+        _ -> {"Sign-in didn't complete", "Something went wrong minting your device token. Return to Autopoet and try “Sign in with Workbooks” again.", false}
+      end
+
+    accent = if ok, do: "#3a7d54", else: "#a23b3b"
+
+    """
+    <!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>#{title} — Autopoet</title><style>
+      html,body{height:100%;margin:0}
+      body{display:flex;align-items:center;justify-content:center;background:#fbfbf9;
+        font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#2a2622}
+      .card{max-width:420px;padding:40px 34px;text-align:center}
+      .dot{width:46px;height:46px;border-radius:50%;background:#{accent};margin:0 auto 22px;
+        display:flex;align-items:center;justify-content:center;color:#fff;font-size:24px}
+      h1{font-size:21px;letter-spacing:-.01em;margin:0 0 10px} p{color:#787066;margin:0 0 24px}
+      .hint{font-size:13px;color:#a39a8e}
+    </style></head><body><div class="card">
+      <div class="dot">#{if ok, do: "✓", else: "!"}</div>
+      <h1>#{title}</h1><p>#{msg}</p>
+      <div class="hint">You can close this tab.</div>
+    </div><script>setTimeout(function(){try{window.close();}catch(e){}},400);</script>
+    </body></html>
+    """
   end
 
   def signup(req) do

@@ -11,8 +11,20 @@ client :shell do
   <!doctype html>
   <meta charset="utf-8">
   <title>autopoet</title>
-  <style>:root{--chrome-display:__CHROME__}</style>
-  
+  <style>:root{--chrome-display:none}</style>
+  <script>
+    // Custom traffic-light chrome renders ONLY in the desktop's frameless webview:
+    // there the wx frame draws no native title bar, so the PAGE draws its own. The
+    // desktop loads the shell with ?frameless=1 (Autopoet.Window); a plain browser
+    // tab — e.g. the cloud-login callback landing on localhost — has no flag, so the
+    // stoplights stay hidden (no fake, non-functional controls in a browser). Runs
+    // synchronously during parse (no flash) and survives location.reload() (which
+    // preserves the query string). Replaces the old serve-time __CHROME__ substitution
+    // that Autopoet.Control did before the nexus migration served the page verbatim.
+    if (new URLSearchParams(location.search).has("frameless"))
+      document.documentElement.style.setProperty("--chrome-display", "flex");
+  </script>
+
   <div id="dragbar"></div>
   <div id="chrome">
     <span class="tl close" title="close"></span>
@@ -237,7 +249,11 @@ client :shell do
     import { getStroke } from "/static/perfect-freehand.mjs";
     window.getStroke = getStroke;   // the Excalidraw-grade ink engine (pen falls back until loaded)
   </script>
-  <script>window.TOKEN = "__TOKEN__";</script>
+  <!-- Legacy localhost-control bearer. Every app route is `auth: :public` on the
+       nexus, so this value is ignored; the old serve-time __TOKEN__ substitution
+       (Autopoet.Control) is gone with it. Kept as an empty string so the ~30
+       `"Bearer " + TOKEN` fetches send a harmless header rather than a fake token. -->
+  <script>window.TOKEN = "";</script>
 end
 
 ## performer

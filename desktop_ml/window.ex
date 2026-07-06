@@ -84,7 +84,11 @@ defmodule Autopoet.Window do
 
   # The app UI: a native WKWebView filling the frame (single child auto-fills).
   defp attach_view(frame) do
-    url = ~c"http://127.0.0.1:#{Autopoet.Application.port()}/"
+    # Pass ?frameless=1 so the page draws its own traffic-light chrome (this frame has
+    # no native title bar in frameless mode). A plain browser tab hitting localhost has
+    # no flag → no fake stoplights. Replaces the old serve-time __CHROME__ substitution.
+    q = if frameless?(), do: "?frameless=1", else: ""
+    url = ~c"http://127.0.0.1:#{Autopoet.Application.port()}/#{q}"
     wv = :wxWebView.new(frame, -1, url: url)
     # right-click → Inspect Element in the desktop window: enable the context menu
     # (WKWebView also needs `defaults write -g WebKitDeveloperExtras -bool true`).
@@ -169,6 +173,17 @@ defmodule Autopoet.Window do
       when not is_nil(drag) do
     :wxWindow.setSize(drag, {w, @drag_strip_height})
     resize_content(s.frame, s.view)
+    {:noreply, s}
+  end
+
+  # Best-effort bring the window forward — used after an out-of-app flow returns
+  # (the cloud sign-in device flow completes in the SYSTEM browser; on the callback
+  # we raise the window and bounce the dock so the user knows to switch back). macOS
+  # won't let a background app steal focus outright, so requestUserAttention (the
+  # dock bounce) is the honest signal alongside raise().
+  def handle_info(:to_front, s) do
+    :wxWindow.raise(s.frame)
+    try do :wxTopLevelWindow.requestUserAttention(s.frame) rescue _ -> :ok catch _, _ -> :ok end
     {:noreply, s}
   end
 
