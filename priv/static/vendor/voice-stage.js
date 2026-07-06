@@ -297,6 +297,7 @@
     return { buffer: buf, duration: buf.duration };
   }
   var clipNow = null;   // { src, t0 } while a sentence is sounding
+  var streamSrcs = [];  // all scheduled sources of the current stream (to stop on cut)
   function playClip(clip, onended) {
     ensureAudio();
     stopClip();
@@ -311,6 +312,10 @@
   }
   function stopClip() {
     if (clipNow) { try { clipNow.src.onended = null; clipNow.src.stop(); } catch (e) {} clipNow = null; }
+    if (streamSrcs.length) {
+      streamSrcs.forEach(function (s) { try { s.onended = null; s.stop(); } catch (e) {} });
+      streamSrcs = [];
+    }
   }
 
   // audio-driven mouth: amplitude gates the jaw, word vowels pick the family
@@ -1191,6 +1196,115 @@
     genCache.set(key, p);
     return p;
   }
+  // ── STREAMING PLAYBACK: the server emits audio chunks as they decode
+  //    (/voice/tts?stream=1, length-prefixed wav frames). Each sentence's
+  //    chunks play back-to-back through the analyser (so the live-energy mouth
+  //    keeps working) and the FIRST sound lands ~0.8s in, not ~3s. Plan mode's
+  //    say is plain text (no inline cue-DSL), so this just speaks + mouths. ──
+  var STREAM_TTS = true;
+  function streamClip(text, vq) {
+    var clean = text.replace(/\[[^\]]+\]\s*/g, "");
+    var q = vq === undefined ? voiceQuery() : vq;
+    var c = { buffers: [], done: false, total: -1, onChunk: null, whenFirst: null };
+    var firstRes;
+    c.whenFirst = new Promise(function (r) { firstRes = r; });
+    fetch("/voice/tts?stream=1" + (q ? "&" + q : ""), {
+      method: "POST",
+      headers: { authorization: "Bearer " + TOKEN, "content-type": "text/plain" },
+      body: clean
+    }).then(function (resp) {
+      if (!resp.ok || !resp.body) { c.done = true; firstRes(); if (c.onChunk) c.onChunk(); return; }
+      var reader = resp.body.getReader();
+      var acc = new Uint8Array(0), parseSeq = 0;
+      function feed(bytes) {
+        var m = new Uint8Array(acc.length + bytes.length);
+        m.set(acc); m.set(bytes, acc.length); acc = m;
+        while (acc.length >= 4) {
+          var len = ((acc[0] << 24) | (acc[1] << 16) | (acc[2] << 8) | acc[3]) >>> 0;
+          if (acc.length < 4 + len) break;
+          var wav = acc.slice(4, 4 + len);
+          acc = acc.slice(4 + len);
+          ensureAudio();
+          // index by PARSE order (decodeAudioData resolves out of order) so
+          // chunks always play in sequence — the player reads buffers[idx]
+          var seq = parseSeq++;
+          actx.decodeAudioData(wav.buffer.slice(wav.byteOffset, wav.byteOffset + wav.byteLength))
+            .then(function (buf) {
+              c.buffers[seq] = buf;
+              if (seq === 0) firstRes();
+              if (c.onChunk) c.onChunk();
+            }).catch(function () { if (c.onChunk) c.onChunk(); });
+        }
+      }
+      (function pump() {
+        reader.read().then(function (r) {
+          if (r.value) feed(r.value);
+          if (r.done) { c.total = parseSeq; c.done = true; if (c.onChunk) c.onChunk(); return; }
+          pump();
+        }).catch(function () { c.total = parseSeq; c.done = true; if (c.onChunk) c.onChunk(); });
+      })();
+    }).catch(function () { c.done = true; firstRes(); if (c.onChunk) c.onChunk(); });
+    return c;
+  }
+  // speak plain text with streaming: sentences fire together (queue on the one
+  // worker → chunks arrive in order), play back-to-back, live-energy mouth,
+  // sentence-level caption. Resolves onDone.
+  // entry: set up the run, freeze the voice, then stream. onDone via performDone.
+  function startStreamSpeak(text, onDone) {
+    stopPerform();
+    var runId = {};
+    playing = runId;
+    performDone = onDone || null;
+    narrationVoiceLive = voiceQuery();
+    logLine("poet", text.replace(/\[[^\]]+\]/g, "").trim());
+    stopThink();
+    moveTo(0, stageEl.clientHeight * 0.12);
+    mood = "smirk"; setMouth("smirk");
+    speakStream(text, runId);
+  }
+  function speakStream(text, runId) {
+    var sTexts = ttsTexts(text);
+    if (!sTexts.length) { playing = null; var cb0 = performDone; performDone = null; if (cb0) cb0(); return; }
+    var clips = sTexts.map(function (t) { return streamClip(t, narrationVoiceLive); });
+    var endTime = 0, started = false;
+    (async function run() {
+      for (var i = 0; i < clips.length && playing === runId; i++) {
+        var c = clips[i];
+        captionShow("", sTexts[i].replace(/&/g, "&amp;").replace(/</g, "&lt;"));
+        await c.whenFirst;
+        if (playing !== runId) return;
+        var idx = 0;
+        function sched() {
+          // consume buffers IN ORDER; stop at the first gap (a later chunk may
+          // have decoded before an earlier one — wait for the earlier one)
+          while (c.buffers[idx] !== undefined) {
+            var src = actx.createBufferSource();
+            src.buffer = c.buffers[idx];
+            src.connect(analyser);
+            var at = Math.max(endTime, actx.currentTime + 0.02);
+            src.start(at);
+            endTime = at + c.buffers[idx].duration;
+            clipNow = { src: src, t0: at };
+            streamSrcs.push(src);   // tracked so a cut stops queued-ahead audio
+            if (!started) { started = true; stopThink(); startMouthLoop(); }
+            idx++;
+          }
+        }
+        sched();
+        c.onChunk = sched;
+        await new Promise(function (res) {
+          (function wait() {
+            if (playing !== runId) return res();
+            if (c.done && c.total >= 0 && idx >= c.total) {
+              setTimeout(res, Math.max(0, (endTime - actx.currentTime) * 1000 + 40));
+            } else setTimeout(wait, 50);
+          })();
+        });
+      }
+      clipNow = null; streamSrcs = [];
+      if (playing === runId) { playing = null; var cb = performDone; performDone = null; if (cb) cb(); }
+    })();
+  }
   function kokoroGenRaw(text, vq) {
     if (true) {   // ONE lane: the server's Qwen engine (kokoro worker retired)
       var q = vq === undefined ? voiceQuery() : vq;
@@ -1234,7 +1348,7 @@
     serious: ["neutral", "skeptical"], worried: ["neutral", "worried"],
     neutral: ["neutral", "none"]
   };
-  var playing = null, timer = null, performDone = null;
+  var playing = null, timer = null, performDone = null, narrationVoiceLive = "";
   // the entrance. ADOPT mode (live call from the dashboard): release the self
   // cube from its node footprint and glide it to center stage. STANDALONE mode
   // (onboarding + /voice/widget): the stage owns its own cube — scale it in at
@@ -2005,6 +2119,9 @@
       // warm the FIRST clip of a line and resolve when it's ready to play —
       // ties the beam animation's length to real synth readiness
       warmFirst: function (text) {
+        // streaming synthesizes fast on say() itself — a batch pre-gen here
+        // would DOUBLE-generate and fight the stream for the one GPU
+        if (STREAM_TTS && tts) return Promise.resolve();
         if (!tts) return Promise.resolve();
         var vq = voiceQuery();
         var parts = ttsTexts(text);
@@ -2014,7 +2131,11 @@
       },
       say: function (text) {
         return new Promise(function (res) {
-          if (mounted) perform(text, res); else res();
+          if (!mounted) { res(); return; }
+          // STREAM when speaking aloud (sub-second first audio); the silent
+          // path (tts off) keeps perform()'s text-cadence visemes
+          if (STREAM_TTS && tts && kokoro) startStreamSpeak(text, res);
+          else perform(text, res);
         });
       },
       caption: function (text) { if (mounted) captionShow("", escT(text)); },
@@ -2038,7 +2159,7 @@
       ttsOn: function () { return tts; },
       ready: function () { return kokoro; },
       warm: function (text) {
-        if (!tts) return;
+        if (!tts || (STREAM_TTS && tts)) return;   // streaming self-warms on say()
         var vq = voiceQuery();
         ttsTexts(text).forEach(function (t) { kokoroGen(t, vq); });
       },

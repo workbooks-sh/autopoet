@@ -96,7 +96,7 @@ window.PlanMode = (() => {
     }
 
     board.deckReset();            // fresh deck — this session's pitch only
-    board.beam();                 // drop in, spin, loading bar (covers warm-up)
+    board.beam();                 // drop in, spin, loading bar
 
     // land motion follows the voice's temperament: serious/blunt → a sudden
     // snap; lively/warm → a springy bounce
@@ -104,14 +104,12 @@ window.PlanMode = (() => {
     const serious = f.energy === "calm" || f.manner === "blunt" ||
       (f.manner === "direct" && f.humor === "minimal");
 
-    // warm the greeting's first clip; land the instant it's ready (cap 6s so a
-    // cold/slow synth never strands the user staring at the spinner)
+    // streaming self-warms on say() (first audio ~0.8s), so the beam is just
+    // the entrance animation now — hold it a beat, land, then the greeting
+    // streams. warmFirst is a no-op under streaming (it would double-generate).
     const first = SCRIPT[0] ? SCRIPT[0].say : "";
-    SCRIPT.forEach(st => board.warm(st.say));
-    await Promise.race([
-      board.warmFirst(first),
-      new Promise(res => setTimeout(res, 6000))
-    ]);
+    await board.warmFirst(first);
+    await new Promise(res => setTimeout(res, 1300));   // let the beam play
 
     await board.land({ snap: serious });
     autoRun();
