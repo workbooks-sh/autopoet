@@ -43,3 +43,6 @@ eval/live-runs/
 desktop_ml/models/
 *.gguf
 app/home/static/
+
+# native NIF build artifact (rebuilt from c_src/ by elixir_make on macOS desktop)
+/priv/*.so
