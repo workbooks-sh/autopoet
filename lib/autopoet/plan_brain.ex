@@ -330,6 +330,43 @@ defmodule Autopoet.PlanBrain do
     end
   end
 
+  @doc """
+  EVAL JUDGE (vault): did the compiled vault faithfully + usefully realize the
+  deck? Input: %{"deck","vault","proposal"}. Returns {:ok, scores}.
+  """
+  def judge_vault(%{} = s) do
+    prompt = """
+    You judge whether a planning DECK was faithfully turned into a starting
+    VAULT (workspace + agents + rules + a first proposal). Judge realization
+    quality, not the deck itself.
+
+    THE DECK (what was planned):
+    #{String.slice(to_string(s["deck"]), 0, 4000)}
+
+    THE BUILT VAULT (summary): #{Jason.encode!(s["vault"])}
+    THE FIRST PROPOSAL (shown to the human):
+    #{String.slice(to_string(s["proposal"]), 0, 2000)}
+
+    Score 1-10:
+    - faithfulness: the vault reflects THIS deck's plan (right workspace, agents
+      whose jobs match, first task from the deck) — not a generic template
+    - usefulness: a real person could accept this and start working immediately
+    - specificity: names/pages/tasks are concrete to this person, not boilerplate
+
+    Reply STRICT JSON only:
+    {"faithfulness":n,"usefulness":n,"specificity":n,"verdict":"ship|polish|rework","note":"one sentence"}
+    """
+
+    with true <- Autopoet.Providers.openrouter?(),
+         {:ok, %{content: c}} <-
+           Autopoet.Providers.openrouter([%{role: "user", content: prompt}], max_tokens: 400, temperature: 0.1),
+         {:ok, scores} <- decode_move(c) do
+      {:ok, scores}
+    else
+      _ -> {:error, :judge_unavailable}
+    end
+  end
+
   defp trim(history), do: Enum.take(history, -20)
 
   # tolerant JSON parse: models wrap the object in prose or fences ~5% of the

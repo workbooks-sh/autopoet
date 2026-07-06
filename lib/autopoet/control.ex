@@ -738,6 +738,22 @@ defmodule Autopoet.Control do
     end)
   end
 
+  # eval-only: did the deck compile into a faithful, useful vault?
+  post "/plan/judge_vault" do
+    authed!(conn, fn conn ->
+      {:ok, body, conn} = read_body(conn, length: 400_000)
+      s = case Jason.decode(body) do
+            {:ok, m} when is_map(m) -> m
+            _ -> %{}
+          end
+
+      case Autopoet.PlanBrain.judge_vault(s) do
+        {:ok, scores} -> conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(scores))
+        {:error, r} -> conn |> put_resp_content_type("application/json") |> send_resp(503, Jason.encode!(%{error: r}))
+      end
+    end)
+  end
+
   # eval-only: LLM rubric over a finished session (evals/plan_session.py)
   post "/plan/judge" do
     authed!(conn, fn conn ->
@@ -764,6 +780,60 @@ defmodule Autopoet.Control do
   # ── the intake agent: builds the first world while the finale is on screen ──
   post "/intake/start" do
     authed!(conn, fn conn -> text(conn, "#{Autopoet.Intake.start()}\n") end)
+  end
+
+  # ── FINALIZE: compile the finished DECK into the vault (inform7 → inform6) ──
+  # the missing seam — the conversation's deck becomes the plan.* contract, then
+  # Intake builds the real vault from it. Returns the built summary.
+  post "/plan/finalize" do
+    authed!(conn, fn conn ->
+      deck =
+        case File.read(Path.join([Autopoet.Discovery.home(), "data", "decks", "current.md"])) do
+          {:ok, d} -> d
+          _ -> (case Autopoet.Requisition.pairing() do
+                  {:ok, p} -> Enum.map_join(p["slides"] || [], "\n---\n", & &1["md"])
+                  _ -> ""
+                end)
+        end
+
+      pairing = case Autopoet.Requisition.pairing() do
+                  {:ok, p} -> p
+                  _ -> %{}
+                end
+
+      form =
+        case Jason.decode((with {:ok, b, _} <- read_body(conn, length: 40_000), do: b) || "") do
+          {:ok, m} when is_map(m) -> m
+          _ -> %{}
+        end
+
+      {:ok, plan} = Autopoet.PlanCompile.from_deck(deck, pairing, form)
+
+      # build the vault fresh from the compiled plan (force a clean re-run) —
+      # clear any stale intake proposal first, else propose_first short-circuits
+      # and the human sees a PRIOR generic proposal instead of this plan's
+      for {id, _} <- Autopoet.Proposals.pending() do
+        t = Path.join([Autopoet.Proposals.dir(), id, "target"])
+
+        case File.read(t) do
+          {:ok, "intake" <> _} -> Autopoet.Proposals.reject(id, "superseded by finalize")
+          _ -> :ok
+        end
+      end
+
+      File.rm(Autopoet.Intake.marker())
+      Autopoet.Intake.run()
+
+      summary = %{
+        workspace: plan.title,
+        pages: plan.pages,
+        agents: Enum.map(plan.agents, & &1.name),
+        rules: length(plan.rules),
+        firstrun: plan.firstrun
+      }
+
+      conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(summary))
+    end)
   end
 
   # the pending first proposal, if any: line 1 = id, rest = the brief (plain text)

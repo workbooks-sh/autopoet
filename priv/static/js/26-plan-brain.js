@@ -180,13 +180,23 @@ window.PlanBrain = (() => {
     document.body.appendChild(proc);
     requestAnimationFrame(() => proc.classList.add("on"));
 
-    // kick the build lane: the deck (already persisted slide-by-slide via the
-    // stage's /voice/deck/add) becomes the seed the intake agent compiles into
-    // the first vault + graph. Onboarding is marked done; the app takes over
-    // showing the graph fill.
+    // COMPILE the deck → the real vault (inform7 → inform6): /plan/finalize
+    // turns this session's deck into the plan.* contract and builds the first
+    // workspace/agents/rules from it — the conversation actually becomes the
+    // system. Then the app opens on the first proposal.
+    let built = null;
     try {
-      await fetch("/intake/start", { method: "POST", headers: { authorization: "Bearer " + TOKEN } });
+      const r = await fetch("/plan/finalize", {
+        method: "POST",
+        headers: { authorization: "Bearer " + TOKEN, "content-type": "application/json" },
+        body: JSON.stringify(state.form || {})
+      });
+      if (r.ok) built = await r.json();
     } catch (_) {}
+    if (built && built.workspace) {
+      const sub = proc.querySelector(".pm-proc-sub");
+      if (sub) sub.textContent = `built ${built.workspace} · ${(built.agents || []).length} agent(s) · ${(built.pages || []).length} pages`;
+    }
     setTimeout(() => { const d = opts.onDone; d && d(); }, 2600);
   }
 
