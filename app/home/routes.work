@@ -60,3 +60,141 @@ server :vault do
     %{icons: names}
   end
 end
+
+## Studio — voices, history, chat, profile
+
+server :studio do
+  route "GET /voices/traits.json", :voices_traits, auth: :public
+  route "POST /voices/default", :voices_default, auth: :public
+  route "GET /history/log.json", :history_log, auth: :public
+  route "GET /history/diff.json", :history_diff, auth: :public
+  route "GET /profile", :profile, auth: :public
+  route "GET /chat/sessions.json", :chat_sessions, auth: :public
+  route "POST /chat/new", :chat_new, auth: :public
+  route "POST /intake/start", :intake_start, auth: :public
+  route "POST /speak/stop", :speak_stop, auth: :public
+
+  def voices_traits(_req) do
+    pinned = Autopoet.VoiceRoster.pinned()
+    verdicts = Autopoet.VoiceRoster.verdicts()
+
+    for name <- Autopoet.VoicePersonas.names() ++ pinned,
+        verdicts[name] != "rejected",
+        t = Autopoet.VoiceRoster.traits(name),
+        t != nil,
+        File.exists?(Path.join(Autopoet.VoiceRoster.takes_dir(), name <> ".wav")),
+        into: %{},
+        do: {name, Map.put(t, "kind", if(name in pinned, do: "pinned", else: "designed"))}
+  end
+
+  def voices_default(req) do
+    engine = req.query["engine"]
+    name = Path.basename(req.query["name"] || "")
+
+    valid =
+      (engine == "qwen-clone" and name in Autopoet.VoiceRoster.pinned()) or
+        (engine == "qwen-design" and Autopoet.VoicePersonas.description(name) != nil)
+
+    if valid do
+      path = Path.join([Autopoet.Discovery.home(), "data", "voices", "default"])
+      File.mkdir_p!(Path.dirname(path))
+      File.write!(path, "#{engine} #{name}\n")
+      %{ok: true, engine: engine, name: name}
+    else
+      {400, %{error: "unknown voice"}}
+    end
+  end
+
+  def history_log(_req), do: Autopoet.History.log()
+  def history_diff(req), do: %{files: Autopoet.History.diff(req.query["rev"] || "@")}
+  def profile(_req), do: {200, "text/plain; charset=utf-8", Autopoet.Profile.render()}
+  def chat_sessions(_req), do: Autopoet.Chat.sessions()
+  def chat_new(_req), do: {200, "text/plain; charset=utf-8", Autopoet.Chat.new() <> "\n"}
+  def intake_start(_req), do: {200, "text/plain; charset=utf-8", "#{Autopoet.Intake.start()}\n"}
+
+  def speak_stop(_req) do
+    Autopoet.Voice.stop()
+    {200, "text/plain; charset=utf-8", "quiet\n"}
+  end
+end
+
+## App misc — auth state, deck, affect, graph
+
+server :app_misc do
+  route "GET /auth/state.json", :auth_state, auth: :public
+  route "POST /auth/onboarding/done", :onboarding_done, auth: :public
+  route "POST /auth/onboarding/reset", :onboarding_reset, auth: :public
+  route "POST /voice/affect", :voice_affect, auth: :public
+  route "POST /voice/deck/new", :deck_new, auth: :public
+  route "POST /voice/deck/add", :deck_add, auth: :public
+  route "GET /graph.json", :graph_json, auth: :public
+  route "POST /profile/reset", :profile_reset, auth: :public
+
+  defp deck_dir, do: Path.join([Autopoet.Discovery.home(), "data", "decks"])
+  defp deck_file, do: Path.join(deck_dir(), "current.md")
+
+  def auth_state(_req) do
+    s = Autopoet.Auth.state()
+    real = Map.new(Autopoet.Connections.all(), &{&1, true})
+
+    %{
+      authenticated: s.authenticated,
+      onboarded: s.onboarded,
+      user: s.user,
+      connections: Map.merge(Map.get(s, :connections, %{}), real)
+    }
+  end
+
+  def onboarding_done(_req) do
+    Autopoet.Auth.complete_onboarding()
+    %{ok: true}
+  end
+
+  def onboarding_reset(_req) do
+    Autopoet.Auth.reset_onboarding()
+    %{ok: true}
+  end
+
+  def voice_affect(req) do
+    case Autopoet.Affect.classify(to_string(req.raw_body || "")) do
+      {:ok, top} -> {200, "text/plain; charset=utf-8", Enum.map_join(top, "\n", fn {l, s} -> "#{l} #{s}" end)}
+      _ -> {200, "text/plain; charset=utf-8", ""}
+    end
+  end
+
+  def deck_new(_req) do
+    File.mkdir_p!(deck_dir())
+
+    case File.stat(deck_file()) do
+      {:ok, %{mtime: mt}} ->
+        stamp = mt |> NaiveDateTime.from_erl!() |> NaiveDateTime.to_iso8601() |> String.replace(":", "-")
+        File.rename(deck_file(), Path.join(deck_dir(), "deck-#{stamp}.md"))
+
+      _ ->
+        :ok
+    end
+
+    %{ok: true}
+  end
+
+  def deck_add(req) do
+    slide = String.trim(to_string(req.raw_body || ""))
+    File.mkdir_p!(deck_dir())
+
+    deck =
+      case File.read(deck_file()) do
+        {:ok, prior} when prior != "" -> prior <> "\n---\n" <> slide
+        _ -> slide
+      end
+
+    File.write!(deck_file(), deck)
+    %{ok: true}
+  end
+
+  def graph_json(_req), do: Autopoet.WorldGraph.payload()
+
+  def profile_reset(_req) do
+    Autopoet.Profile.clear()
+    %{ok: true}
+  end
+end
