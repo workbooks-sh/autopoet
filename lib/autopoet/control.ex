@@ -26,7 +26,9 @@ defmodule Autopoet.Control do
     # Nexus.SSR emits the CLIENT islands + the design as the live page (prose +
     # server-block source are context, NOT rendered). This is the app, not the
     # literate document the static `work weave` produces.
-    app_root = Path.join(Autopoet.Discovery.home(), "app")
+    # the app now lives in the `home` SURFACE (app/home/); app/index.work is the
+    # deploy manifest (a document), not the app — so render the surface.
+    app_root = Path.join([Autopoet.Discovery.home(), "app", "home"])
 
     html =
       app_root

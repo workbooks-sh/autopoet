@@ -9201,7 +9201,7 @@ window.PlanMode = (() => {
           body: JSON.stringify({ ap_name: chosenName, voice: voices[vi].id, personality: personalities[pi].key, color: c.color, shape: c.shape, name: owner }) });
         if (r.ok) identity = await r.json();
       } catch (_) {}
-      designer.remove(); designer = null;
+      if (designer) { designer.remove(); designer = null; }
       if (identity && identity.name) onFiled(identity);
     };
     opts.refreshIcons && opts.refreshIcons();

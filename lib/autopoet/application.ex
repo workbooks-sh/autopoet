@@ -44,6 +44,11 @@ defmodule Autopoet.Application do
           Autopoet.Shadow.Outcomes,
           Autopoet.Treasury,
           {Bandit, plug: Autopoet.Control, ip: io, port: port},
+          # P0 — Autopoet runs ON the nexus: Nexus.Server mounts the `.work` app
+          # tree (app/, deploy root → the `home` surface) and serves it. Runs on
+          # port+1 alongside the legacy Control for now; the window + routes move
+          # over in P1, then Control retires and this takes the main port.
+          {Nexus.Server, root: Path.join(Autopoet.Discovery.home(), "app"), port: port + 1},
           {Autopoet.Discovery, port}
         ] ++ [Autopoet.Desks] ++ desk() ++ window()
 
