@@ -125,7 +125,7 @@ check(len(pairing.get("slides", [])) == 1, "exactly one cover slide")
 check(bool(re.match(r"^#\s", pairing["slides"][0]["md"])) if pairing.get("slides") else False, "cover md starts with a title")
 
 print("═ 2. THE SESSION")
-post_text("/voice/deck/new", "")
+post_text("/voice/deck/new", ""); time.sleep(0.5)
 deck_adds = 0
 if pairing.get("slides"):
     post_text("/voice/deck/add", pairing["slides"][0]["md"]); deck_adds += 1

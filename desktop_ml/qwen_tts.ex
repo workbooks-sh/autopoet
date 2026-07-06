@@ -22,7 +22,11 @@ defmodule Autopoet.QwenTts do
   require Logger
 
   @timeout 120_000
-  @pool 2
+  # ONE worker: measured — two MLX processes CONTEND for the single Metal GPU
+  # (2 clips parallel = 11.3s vs ~8s sequential). TTS is GPU-bound, so a pool
+  # backfires. The pool machinery stays (N-generic) but N=1 is correct here;
+  # the real first-audio lever is streaming, not process parallelism.
+  @pool 1
   # one resident model at a time; switch/1 recycles the pool onto another
   @models %{
     custom: "mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-4bit",

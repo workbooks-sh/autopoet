@@ -108,7 +108,7 @@ defmodule Autopoet.PlanBrain do
   # doesn't survive the strict-JSON parse.
   defp completion(messages) do
     if Autopoet.VoiceBrain.available?() do
-      case Autopoet.VoiceBrain.complete(messages, max_tokens: 1100, temperature: 0.45) do
+      case Autopoet.VoiceBrain.complete(messages, max_tokens: 550, temperature: 0.45) do
         {:ok, %{content: content}} -> {:ok, content}
         {:ok, content} when is_binary(content) -> {:ok, content}
         _ -> planner(messages)
@@ -119,7 +119,7 @@ defmodule Autopoet.PlanBrain do
   end
 
   defp planner(messages) do
-    case Autopoet.Providers.openrouter(messages, max_tokens: 1100, temperature: 0.4) do
+    case Autopoet.Providers.openrouter(messages, max_tokens: 550, temperature: 0.4) do
       {:ok, %{content: content}} -> {:ok, content}
       _ -> :error
     end
@@ -181,9 +181,13 @@ defmodule Autopoet.PlanBrain do
     {"move":"complete","say":"...","title":"...","md":"# Title\\n\\n- point"}
 
     HARD RULES:
-    - Every "say" is a COMPLETE, natural sentence in your character's voice —
+    - Every "say" is COMPLETE, natural sentences in your character's voice —
       speak like a person, NEVER a bare form-field fragment ("What features?",
       "How often?", "Next, data storage?"). Honor the DELIVERY spec above.
+    - OPEN every "say" with a SHORT reaction of 2-5 words that stands as its own
+      sentence ("Ah, ceramics." / "Right." / "Perfect — noted.") THEN the
+      substance in the next sentence. (This lets your voice start instantly
+      while the rest is prepared; it also just sounds human.)
     - say <= 32 words, in character. md is reveal.js markdown; a slide MAY carry
       a ```mermaid fenced diagram. Titles are short. Never fork twice.
     - NEVER repeat or re-draft a slide already in SLIDES SO FAR — every new slide
