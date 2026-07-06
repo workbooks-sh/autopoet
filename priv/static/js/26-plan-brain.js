@@ -38,7 +38,7 @@ window.PlanBrain = (() => {
     try { return JSON.parse(sessionStorage.getItem("ap-form") || "{}"); } catch (_) { return {}; }
   }
 
-  // the interjection bar: answer, ask, or speak past — always available
+  // the interjection bar: type OR hold-space to talk (push-to-talk)
   function mountBar() {
     if (bar) return;
     bar = document.createElement("div");
@@ -46,8 +46,12 @@ window.PlanBrain = (() => {
     bar.innerHTML = `
       <div id="pm-qpin"></div>
       <div class="pm-bar-row">
-        <input id="pm-say" placeholder="answer, ask, or say anything…" autocomplete="off" spellcheck="false">
+        <input id="pm-say" placeholder="type, or hold space to talk…" autocomplete="off" spellcheck="false">
         <button id="pm-send" class="pm-send" title="send">→</button>
+      </div>
+      <div class="pm-ptt" id="pm-ptt">
+        <span class="pm-ptt-lead">hold</span><kbd class="pm-key">space</kbd>
+        <span class="pm-ptt-verb" id="pm-ptt-verb">to talk</span>
       </div>`;
     document.body.appendChild(bar);
     const input = bar.querySelector("#pm-say");
@@ -59,8 +63,49 @@ window.PlanBrain = (() => {
     };
     bar.querySelector("#pm-send").onclick = fire;
     input.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); fire(); } });
-    setTimeout(() => input.focus(), 200);
+    // the keycap verb tracks whether holding will INTERRUPT or just talk
+    const verb = bar.querySelector("#pm-ptt-verb");
+    setInterval(() => {
+      if (!bar || !board) return;
+      verb.textContent = board.isSpeaking && board.isSpeaking() ? "to interrupt" : "to talk";
+    }, 300);
+    wirePTT(input);
+    // NOT autofocused — space is push-to-talk by default; click the field to type
   }
+
+  // ── push-to-talk: hold SPACE (when not typing) → record + live transcribe;
+  //    release → send. Holding while the agent speaks interrupts it. ──
+  let pttHeld = false;
+  function wirePTT(input) {
+    const bubbleLive = t => {
+      let el = document.getElementById("pm-live");
+      if (!el) { el = document.createElement("div"); el.id = "pm-live"; el.className = "pm-bub you pm-live"; ensureChat().appendChild(el); }
+      el.textContent = t;
+    };
+    const onDown = async e => {
+      if (e.code !== "Space" || e.repeat || pttHeld) return;
+      if (document.activeElement === input) return;   // typing → space is a space
+      e.preventDefault();
+      pttHeld = true;
+      bar.classList.add("ptt-live");
+      const ok = await board.pttStart(bubbleLive);
+      if (!ok) { pttHeld = false; bar.classList.remove("ptt-live"); }
+    };
+    const onUp = async e => {
+      if (e.code !== "Space" || !pttHeld) return;
+      e.preventDefault();
+      pttHeld = false;
+      bar.classList.remove("ptt-live");
+      const live = document.getElementById("pm-live");
+      if (live) live.remove();
+      const text = await board.pttStop();
+      if (text) send(text);
+    };
+    window.addEventListener("keydown", onDown, true);
+    window.addEventListener("keyup", onUp, true);
+    _pttHandlers = { onDown, onUp };
+  }
+  let _pttHandlers = null;
 
   // owner speaks → into history; if the brain was waiting on an answer, release
   function send(text) {
@@ -224,12 +269,13 @@ window.PlanBrain = (() => {
     deckNav.querySelector("#pmb-next").onclick = () => board.deckNext();
   }
 
-  function bubble(who, text) {
+  function ensureChat() {
     let log = document.getElementById("pm-chat");
-    if (!log) {
-      log = document.createElement("div"); log.id = "pm-chat"; log.className = "pm-chat";
-      document.body.appendChild(log);
-    }
+    if (!log) { log = document.createElement("div"); log.id = "pm-chat"; log.className = "pm-chat"; document.body.appendChild(log); }
+    return log;
+  }
+  function bubble(who, text) {
+    const log = ensureChat();
     const b = document.createElement("div");
     b.className = "pm-bub " + (who === "you" ? "you" : "ap");
     b.textContent = text;
@@ -241,6 +287,11 @@ window.PlanBrain = (() => {
   function teardown() {
     running = false;
     document.body.classList.remove("pm-convo");
+    if (_pttHandlers) {
+      window.removeEventListener("keydown", _pttHandlers.onDown, true);
+      window.removeEventListener("keyup", _pttHandlers.onUp, true);
+      _pttHandlers = null;
+    }
     [bar, deckNav, document.getElementById("pm-chat")].forEach(el => el && el.remove());
     bar = null; deckNav = null;
     document.querySelectorAll(".pm-fork,.pm-proc").forEach(el => el.remove());

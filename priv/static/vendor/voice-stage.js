@@ -76,9 +76,13 @@
     "#vs-graph-bg { position:absolute; left:50%; top:40%; transform:translate(-50%,-50%); z-index:3;",
     "  width:min(86%,1080px); pointer-events:none; opacity:0; transition:opacity .5s ease-out; }",
     "#vs-graph-bg.on { opacity:1; }",
-    "#vs-graph-bg svg { width:100%; height:auto; display:block; }",
+    // scoped to the DIRECT-child D2 svg ONLY — these must NOT leak into the
+    // deck's nested mermaid (.vsd-mermaid svg), where forcing a monospace 15px
+    // font broke mermaid's own node sizing (text clipped) and the ID-specificity
+    // overrode the mermaid max-height (diagram overflowed the card)
+    "#vs-graph-bg > svg { width:100%; height:auto; display:block; }",
     "#vs-graph-bg .shape rect, #vs-graph-bg .shape path { fill:#fff; stroke:#121316; stroke-width:1.3; }",
-    "#vs-graph-bg text { fill:#121316 !important; font-family:ui-monospace,Menlo,monospace !important; font-size:15px !important; }",
+    "#vs-graph-bg > svg text { fill:#121316 !important; font-family:ui-monospace,Menlo,monospace !important; font-size:15px !important; }",
     "#vs-graph-bg path.connection { stroke:#121316 !important; stroke-width:1.7 !important; }",
     "#vs-graph-bg marker path, #vs-graph-bg marker polygon { fill:#121316 !important; stroke:none !important; }",
     "#vs-graph-bg .m-hidden { opacity:0 !important; }",
@@ -102,8 +106,11 @@
     "  font:italic 18px/1.5 ui-sans-serif,system-ui; color:#5a6068; }",
     "#vs-graph-bg .vsd-slide b { color:#16161a; } #vs-graph-bg .vsd-slide code { font:15px ui-monospace,monospace;",
     "  background:#eef0f2; padding:1px 5px; border-radius:5px; }",
-    "#vs-graph-bg .vsd-slide .vsd-mermaid { display:flex; justify-content:center; margin:10px 0; }",
-    "#vs-graph-bg .vsd-slide .vsd-mermaid svg { max-width:100%; max-height:360px; height:auto; }",
+    "#vs-graph-bg .vsd-slide .vsd-mermaid { display:flex; justify-content:center; align-items:center; flex:1; min-height:0; margin:8px 0; }",
+    "#vs-graph-bg .vsd-slide .vsd-mermaid svg { max-width:100%; max-height:100%; width:auto; height:auto; }",
+    // a slide that carries a diagram anchors its title at top so the diagram
+    // gets the rest of the card (no vertical crush)
+    "#vs-graph-bg .vsd-slide:has(.vsd-mermaid) { justify-content:flex-start; }",
     "#vs-graph-bg .vsd-slide .vsd-fence { font:13px ui-monospace,monospace; white-space:pre-wrap; color:#5a6068; }",
     "@keyframes vs-mfade { from { opacity:0; } to { opacity:1; } }",
     "#vs-stagebox { position:absolute; inset:0; display:grid; place-items:center; pointer-events:none; }",
@@ -697,7 +704,9 @@
           primaryColor: "#efe9fb", primaryBorderColor: "#121316", primaryTextColor: "#121316",
           secondaryColor: "#fff3d6", tertiaryColor: "#ffffff",
           lineColor: "#121316", textColor: "#121316",
-          fontFamily: "ui-monospace, Menlo, monospace", fontSize: "16px",
+          // SANS (not monospace) — narrower, so long node labels wrap far less
+          // and fit their boxes; monospace was over-wrapping + clipping
+          fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: "15px",
           // gantt: purple task bars with ink borders on the paper
           taskBkgColor: "#cfc3ec", taskBorderColor: "#121316", taskTextColor: "#121316",
           taskTextOutsideColor: "#121316", taskTextLightColor: "#121316",
@@ -1910,6 +1919,68 @@
     if (micVad) { try { micVad.pause(); } catch (e) {} try { micVad.destroy && micVad.destroy(); } catch (e) {} micVad = null; }
   }
 
+  // ── PUSH-TO-TALK: hold to record (no VAD), live Moonshine partials while
+  //    held, final transcript on release. Holding INTERRUPTS the agent. ──
+  var pttStream = null, pttCtx = null, pttNode = null, pttSrc = null;
+  var pttRec = false, pttFrames = [], pttPartialT = null, pttPartialBusy = false, pttOnPartial = null;
+  async function pttEnsure() {
+    if (pttNode) return true;
+    pttStream = await navigator.mediaDevices.getUserMedia({
+      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+    });
+    pttCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+    if (pttCtx.state === "suspended") await pttCtx.resume();
+    pttSrc = pttCtx.createMediaStreamSource(pttStream);
+    pttNode = pttCtx.createScriptProcessor(4096, 1, 1);   // WebKit-safe raw capture
+    pttNode.onaudioprocess = function (e) {
+      if (pttRec) pttFrames.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+    };
+    pttSrc.connect(pttNode); pttNode.connect(pttCtx.destination);
+    return true;
+  }
+  function pttMerge() {
+    var n = 0, i;
+    for (i = 0; i < pttFrames.length; i++) n += pttFrames[i].length;
+    var buf = new Float32Array(n), off = 0;
+    for (i = 0; i < pttFrames.length; i++) { buf.set(pttFrames[i], off); off += pttFrames[i].length; }
+    return buf;
+  }
+  function pttPartial() {
+    if (!pttRec || pttPartialBusy || !pttFrames.length) return;
+    pttPartialBusy = true;
+    var blob = wavFromRaw({ audio: pttMerge(), sampling_rate: pttCtx.sampleRate });
+    fetch("/voice/dictate/live", { method: "POST",
+      headers: { authorization: "Bearer " + TOKEN, "content-type": "audio/wav" }, body: blob })
+      .then(function (r) { return r.status === 200 ? r.text() : ""; })
+      .then(function (t) { pttPartialBusy = false; t = (t || "").trim(); if (t && pttOnPartial) pttOnPartial(t); })
+      .catch(function () { pttPartialBusy = false; });
+  }
+  async function pttStart(onPartial) {
+    if (playing) stopPerform();      // holding to talk INTERRUPTS the agent
+    stopThink();
+    pttOnPartial = onPartial || null;
+    try { await pttEnsure(); } catch (e) { return false; }
+    pttFrames = []; pttRec = true;
+    setBrows("raised");
+    clearInterval(pttPartialT);
+    pttPartialT = later(setInterval(pttPartial, 550));
+    return true;
+  }
+  async function pttStop() {
+    pttRec = false;
+    clearInterval(pttPartialT);
+    setBrows("none");
+    var buf = pttMerge(); pttFrames = [];
+    if (!buf.length || buf.length < (pttCtx ? pttCtx.sampleRate * 0.25 : 4000)) return "";  // too short
+    var blob = wavFromRaw({ audio: buf, sampling_rate: pttCtx.sampleRate });
+    try {
+      var r = await fetch("/voice/dictate", { method: "POST",
+        headers: { authorization: "Bearer " + TOKEN, "content-type": "audio/wav" }, body: blob });
+      var text = (await r.text()).trim();
+      return (r.ok && text && !/^refused:/.test(text)) ? text : "";
+    } catch (e) { return ""; }
+  }
+
   // ────────────────────────── mount / unmount ──────────────────────────
   function buildDOM() {
     root = document.createElement("div");
@@ -2210,6 +2281,11 @@
       // the thinking beat — cloud + upward gaze while the brain works
       // (perform() clears it automatically when the next line starts)
       think: function (on) { if (mounted) (on !== false ? startThink() : stopThink()); },
+      // push-to-talk: pttStart(onPartial) begins recording (interrupts the
+      // agent); pttStop() resolves the final Moonshine transcript.
+      pttStart: function (onPartial) { return mounted ? pttStart(onPartial) : Promise.resolve(false); },
+      pttStop: function () { return mounted ? pttStop() : Promise.resolve(""); },
+      isSpeaking: function () { return !!playing; },
       // ── the deck: the character authors reveal.js slides (the "pitch"); the
       //    accumulated markdown is the plan artifact. slide() appends + shows.
       slide: function (md) { return mounted ? deckAdd(md) : Promise.resolve(); },

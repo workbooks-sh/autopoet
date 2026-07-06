@@ -162,3 +162,17 @@
 /* during the conversation the pinned question + deck + voice carry the text —
    the transient floating caption is redundant and overlapped the pinned bar */
 body.pm-convo #vs-caption { display:none !important; }
+/* push-to-talk keycap under the input: HOLD [space] to talk / to interrupt */
+.pm-ptt { display:flex; align-items:center; justify-content:center; gap:7px; padding:8px 0 10px;
+  font:600 11px ui-monospace,monospace; letter-spacing:.04em; color:#9aa0a8; user-select:none; }
+.pm-ptt-lead, .pm-ptt-verb { text-transform:uppercase; }
+.pm-key { display:inline-flex; align-items:center; justify-content:center; min-width:58px; height:22px;
+  padding:0 10px; border:1.4px solid #c9cdd2; border-bottom-width:3px; border-radius:7px; background:#fff;
+  color:#3a3f47; font:700 10.5px ui-monospace,monospace; letter-spacing:.12em; text-transform:uppercase;
+  box-shadow:0 1px 0 rgba(22,22,26,.04); }
+.pm-bar.ptt-live { box-shadow:0 0 0 2px #16161a, 0 6px 24px rgba(22,22,26,.14); }
+.pm-bar.ptt-live .pm-key { border-color:#16161a; background:#16161a; color:#fff; animation:pm-ptt-pulse 1s ease-in-out infinite; }
+.pm-bar.ptt-live .pm-ptt-lead::before { content:"● "; color:#e0483a; }
+.pm-bar.ptt-live .pm-ptt-verb { color:#16161a; }
+@keyframes pm-ptt-pulse { 50% { transform:translateY(-1px); } }
+.pm-bub.pm-live { opacity:.85; font-style:italic; }
