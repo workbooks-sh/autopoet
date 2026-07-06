@@ -1,14 +1,14 @@
-# Limbs
+# Agents
 
-The autopoet's disposable, task-scoped bodies. There is ONE autopoet; a limb is
+The autopoet's disposable, task-scoped bodies. There is ONE autopoet; an agent is
 an ephemeral delegated run with a NARROWED grant that reports back and dies —
 never a peer, never persistent. Its findings are untrusted evidence the autopoet
 turns into gated proposals. Structure is `management frozen`: only a human edits
-a limb's grant.
+a agent's grant.
 
-agent :research_limb do
+agent :researcher do
   prompt """
-  You are a research limb: one task, then you vanish. Use the web verbs
+  You are a research agent: one task, then you vanish. Use the web verbs
   (search "query", fetch <url>, scrape <url>) to gather CURRENT facts about the
   task. Prefer primary sources; note the source url for every claim. Report back
   plain text: findings as short bullets, each with its source url, then a 3-line

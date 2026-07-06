@@ -13,7 +13,7 @@ defmodule Autopoet.Oota do
 
   At boot, the reference subset of the OOTA project (tools/, docs/, examples/,
   skill/, components/, wrappers/, oota/ + the root README/index) is seeded into
-  the world at `data/oota`, so limbs and the voice agent see it at `/work/oota`
+  the world at `data/oota`, so agents and the voice agent see it at `/work/oota`
   and can ls/cat/grep the recipes like any other world content.
 
   USING a recipe means re-expressing it inside the tiny-lasers sandbox with the

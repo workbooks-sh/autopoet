@@ -52,10 +52,13 @@ defmodule Autopoet.Spine do
       ] ++
         desktop_io() ++
         [
-          Autopoet.Watchdog,
+          # Autopoet.Watchdog is now a `worker :watchdog` block (backend/watchdog.work) —
+          # the nexus Worker.Supervisor owns it, started at bringup, so it is NOT a spine
+          # child anymore (P3).
           Autopoet.Requests,
           Autopoet.Capture,
-          Autopoet.Snapshot,
+          # Autopoet.Snapshot is now a `worker :snapshot` block (backend/snapshot.work) —
+          # the nexus Worker.Supervisor owns it (P3).
           Autopoet.Shadow.Hebb,
           Autopoet.Shadow.Surprise,
           Autopoet.Shadow.Outcomes,

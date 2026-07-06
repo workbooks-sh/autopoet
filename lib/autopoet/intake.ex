@@ -9,7 +9,7 @@ defmodule Autopoet.Intake do
       workspace pages, REAL `agent :` blocks (policy from the leash/pings/oops
       answers), rules staged `#proposed`, a briefing page carrying the human's
       dictated notes verbatim. Zero network, zero keys, always completes.
-      Applied via `Body.apply` (undoable) + `Limbs.register_from_body()`.
+      Applied via `Body.apply` (undoable) + `Agents.register_from_body()`.
     * IGNITION: if keys exist, the first agent takes its first canned task
       (`plan.firstrun`) so the graph is MOVING at first paint.
     * LANE B (optional): one brain-shaped pass (`Brain.propose`) rewrites the
@@ -22,7 +22,7 @@ defmodule Autopoet.Intake do
   async and never blocks the caller.
   """
 
-  @limb_model "xiaomi/mimo-v2.5"
+  @agent_model "xiaomi/mimo-v2.5"
 
   def marker, do: Path.join([Autopoet.Discovery.home(), "data", "bootstrapped"])
   def ran?, do: File.exists?(marker())
@@ -47,7 +47,7 @@ defmodule Autopoet.Intake do
     Autopoet.Log.puts("intake: building your starting world (#{plan.workspace.name})")
     files = skeleton(profile, plan)
     {:ok, _} = Autopoet.Body.apply(files)
-    Autopoet.Limbs.register_from_body()
+    Autopoet.Agents.register_from_body()
     seed_prior(plan)
     Autopoet.Log.puts("intake: #{map_size(files)} pages live — agents registered")
 
@@ -139,7 +139,7 @@ defmodule Autopoet.Intake do
     """
     # the scout
 
-    A disposable limb for enrichment: it reads ONLY what the human explicitly
+    A disposable agent for enrichment: it reads ONLY what the human explicitly
     picked at setup (repos, zones, docs), writes what it learned into
     intake/context pages, and vanishes. It never widens its own scope.
 
@@ -153,7 +153,7 @@ defmodule Autopoet.Intake do
       agent serving them should know. Never fetch anything not named in your
       task. Report back the briefs, one per pick.
       \"\"\"
-      model "#{@limb_model}"
+      model "#{@agent_model}"
       tools coreutils
       grant net
       management frozen
@@ -192,7 +192,7 @@ defmodule Autopoet.Intake do
           If anything is missing, broken, or beyond your grant:
           `request self '<what needs to change>'` and continue. Never wait.
           \"\"\"
-          model "#{@limb_model}"
+          model "#{@agent_model}"
           tools coreutils
           management frozen
         end
@@ -279,14 +279,14 @@ defmodule Autopoet.Intake do
   defp ignite(%{agents: []}), do: :skip
 
   defp ignite(plan) do
-    # :ignition (app env, default true) — eval harnesses set false: a live limb
+    # :ignition (app env, default true) — eval harnesses set false: a live agent
     # dispatched at intake is REAL agent work whose spend rides Nexus.Llm, not
     # the harness's brain-wrapped cost meter (found live: the long rehearsal's
-    # intake ignited a shopkeeper limb outside the spend cap)
+    # intake ignited a shopkeeper agent outside the spend cap)
     if Application.get_env(:autopoet, :ignition, true) and Autopoet.Providers.openrouter?() do
       first = hd(plan.agents)
 
-      Autopoet.Limbs.dispatch(
+      Autopoet.Agents.dispatch(
         first.slug,
         """
         FIRST RUN. #{plan.firstrun}
@@ -325,7 +325,7 @@ defmodule Autopoet.Intake do
       list ->
         if Autopoet.Providers.openrouter?() do
           for {provider, picks} <- list do
-            Autopoet.Limbs.dispatch(
+            Autopoet.Agents.dispatch(
               "intake_scout",
               """
               Consent-scoped enrichment. Provider: #{provider}.

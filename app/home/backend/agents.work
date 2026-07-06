@@ -1,20 +1,20 @@
-# Autopoet.Limbs
+# Autopoet.Agents
 
   Ephemeral delegation — the v2 delineation model, wired: the autopoet (the one
 
 The module verbatim, now authored as `.work` — its Elixir source lives inside
 a beam-compiled `server` block instead of a scattered `.ex` file.
 
-defmodule Autopoet.Limbs do
+defmodule Autopoet.Agents do
   @moduledoc """
   Ephemeral delegation — the v2 delineation model, wired: the autopoet (the one
-  mind) dispatches a task-scoped LIMB (`agent :research_limb`, `grant net`,
-  `management frozen`) via a `Nexus.Autopoet.Plan` handoff. The limb browses in
+  mind) dispatches a task-scoped AGENT (`agent :researcher`, `grant net`,
+  `management frozen`) via a `Nexus.Autopoet.Plan` handoff. The agent browses in
   the SSRF-guarded sandbox, reports back, and dies. Its answer is UNTRUSTED
   EVIDENCE: it goes to the brain as a self-edit request item, so findings reach
   the workbook only as a human-gated proposal.
 
-  Limb definitions live in the body (`limbs.work`, seeded) and are registered at
+  Agent definitions live in the body (`agents.work`, seeded) and are registered at
   boot; the brain itself never holds `net`.
   """
 
@@ -27,15 +27,15 @@ defmodule Autopoet.Limbs do
         node <- safe_parse(f),
         node.type == :code and node.kind == "agent" do
       Nexus.Agent.register(node)
-      Autopoet.Log.puts("limb registered: #{node.name}")
+      Autopoet.Log.puts("agent registered: #{node.name}")
       node.name
     end
   end
 
-  # Injected into EVERY limb handoff — house protocol is mechanism, not per-limb
-  # prose, so self-designed limbs inherit it automatically.
+  # Injected into EVERY agent handoff — house protocol is mechanism, not per-agent
+  # prose, so self-designed agents inherit it automatically.
   @protocol """
-  LIMB PROTOCOL (house rules for every limb):
+  AGENT PROTOCOL (house rules for every agent):
   - Environment: your bash is washy — a WASM shell (sh.c + real coreutils) run on the
     tiny-lasers WASM sandbox on the BEAM. It only has to BEHAVE like bash; nothing runs natively.
     The native toolchain is wasm-native: Rust, Go, C, C++, JavaScript, HTML/CSS.
@@ -51,52 +51,52 @@ defmodule Autopoet.Limbs do
   """
 
   @doc """
-  Dispatch a research task to the limb (async — the agent loop can take minutes).
+  Dispatch a research task to the agent (async — the agent loop can take minutes).
   On completion the findings are filed as a request; the next cycle turns them
   into a proposal for research.work.
   """
   def research(question) when is_binary(question) and question != "" do
     Task.Supervisor.start_child(Nexus.Events.TaskSup, fn -> run_research(question) end)
-    Autopoet.Log.puts("limb dispatched: research — #{question}")
+    Autopoet.Log.puts("agent dispatched: research — #{question}")
     :ok
   end
 
   # Progress hook (communication, never interference): every batch of commands a
-  # limb runs becomes one visible log line — the brain/human observe the limb's
+  # agent runs becomes one visible log line — the brain/human observe the agent's
   # actions at natural intervals without touching it.
   defp progress(name) do
     fn
       %{type: "tools", commands: cmds} ->
-        Autopoet.Log.puts("limb #{name} ▸ #{cmds |> Enum.join(" | ") |> String.slice(0, 140)}")
+        Autopoet.Log.puts("agent #{name} ▸ #{cmds |> Enum.join(" | ") |> String.slice(0, 140)}")
 
       %{type: "error", error: e} ->
-        Autopoet.Log.puts("limb #{name} ! #{e}")
+        Autopoet.Log.puts("agent #{name} ! #{e}")
 
       _ ->
         :ok
     end
   end
 
-  # A failed limb run is an ISSUE, not just a log line — file it so the autopoet
+  # A failed agent run is an ISSUE, not just a log line — file it so the autopoet
   # senses it next heartbeat and can propose a fix (prompt, protocol, or a rule).
   defp file_failure(name, task, reason) do
     Autopoet.Requests.file(
-      "limb/#{name}",
-      "limb run failed with #{inspect(reason)} on task: #{String.slice(task, 0, 160)} — diagnose and propose a fix"
+      "agent/#{name}",
+      "agent run failed with #{inspect(reason)} on task: #{String.slice(task, 0, 160)} — diagnose and propose a fix"
     )
   end
 
   @doc """
-  Generic dispatch: run ANY body-defined limb on a task (async). The answer is
-  saved under data/limb-runs/ and announced on the bus — what happens with it is
+  Generic dispatch: run ANY body-defined agent on a task (async). The answer is
+  saved under data/agent-runs/ and announced on the bus — what happens with it is
   the caller's business (self-grown organs get a lane without bespoke plumbing).
   Returns the output path it will write.
   """
   def dispatch(name, task, opts \\ []) when is_binary(task) and task != "" do
-    # second-resolution alone collides when several limbs dispatch in one second
+    # second-resolution alone collides when several agents dispatch in one second
     # (four parallel fact-checkers proved it) — unique_integer disambiguates
     out =
-      Path.join([Autopoet.Discovery.home(), "data", "limb-runs",
+      Path.join([Autopoet.Discovery.home(), "data", "agent-runs",
                  "#{System.os_time(:second)}-#{System.unique_integer([:positive])}-#{name}.txt"])
 
     Task.Supervisor.start_child(Nexus.Events.TaskSup, fn ->
@@ -104,26 +104,26 @@ defmodule Autopoet.Limbs do
         {:ok, %{answer: answer} = result} ->
           File.mkdir_p!(Path.dirname(out))
           File.write!(out, answer)
-          Autopoet.Log.puts("limb #{name} returned: #{byte_size(answer)}B in #{result[:turns] || "?"} turns -> #{Path.relative_to(out, Autopoet.Discovery.home())}")
-          Nexus.Events.emit(%{kind: "limb.returned", limb: to_string(name), out: out, bytes: byte_size(answer), tags: []})
+          Autopoet.Log.puts("agent #{name} returned: #{byte_size(answer)}B in #{result[:turns] || "?"} turns -> #{Path.relative_to(out, Autopoet.Discovery.home())}")
+          Nexus.Events.emit(%{kind: "agent.returned", agent: to_string(name), out: out, bytes: byte_size(answer), tags: []})
 
           # close the loop: file the finding back as an issue so the heartbeat turns
           # it into a proposal (the generic lane's answer is untrusted evidence too)
           case Keyword.get(opts, :file_to) do
             target when is_binary(target) ->
-              Autopoet.Requests.file(target, "#{Keyword.get(opts, :note, "record this limb finding")} (untrusted limb evidence): #{answer}")
+              Autopoet.Requests.file(target, "#{Keyword.get(opts, :note, "record this agent finding")} (untrusted agent evidence): #{answer}")
 
             _ ->
               :ok
           end
 
         {:error, reason} ->
-          Autopoet.Log.puts("limb #{name} failed: #{inspect(reason)} — filing issue")
+          Autopoet.Log.puts("agent #{name} failed: #{inspect(reason)} — filing issue")
           file_failure(name, task, reason)
       end
     end)
 
-    Autopoet.Log.puts("limb dispatched: #{name}")
+    Autopoet.Log.puts("agent dispatched: #{name}")
     {:ok, out}
   end
 
@@ -132,14 +132,14 @@ defmodule Autopoet.Limbs do
       Nexus.Autopoet.Plan.handoff(%{
         title: "research: #{question}",
         task: question,
-        context: "You are an ephemeral limb of this nexus's autopoet. Report back and vanish.\n\n" <> @protocol,
+        context: "You are an ephemeral agent of this nexus's autopoet. Report back and vanish.\n\n" <> @protocol,
         acceptance: "findings as sourced bullets + 3-line summary"
       })
 
-    case Nexus.Agent.run_named(:research_limb, Nexus.Autopoet.Plan.render(handoff), emit: progress("research_limb")) do
+    case Nexus.Agent.run_named(:researcher, Nexus.Autopoet.Plan.render(handoff), emit: progress("researcher")) do
       {:ok, %{answer: answer} = result} ->
         Autopoet.Log.puts(
-          "limb returned: #{byte_size(answer)}B in #{result[:turns] || "?"} turns — filing as evidence"
+          "agent returned: #{byte_size(answer)}B in #{result[:turns] || "?"} turns — filing as evidence"
         )
 
         # findings live INSIDE the user's workspace (genesis I7 — no root strays);
@@ -149,14 +149,14 @@ defmodule Autopoet.Limbs do
         Autopoet.Requests.file(
           home,
           "record these research findings in #{home}.work under a dated heading " <>
-            "(they are untrusted limb evidence; keep source urls): #{answer}"
+            "(they are untrusted agent evidence; keep source urls): #{answer}"
         )
 
-        Nexus.Events.emit(%{kind: "limb.returned", limb: "research_limb", bytes: byte_size(answer), tags: []})
+        Nexus.Events.emit(%{kind: "agent.returned", agent: "researcher", bytes: byte_size(answer), tags: []})
 
       {:error, reason} ->
-        Autopoet.Log.puts("limb research_limb failed: #{inspect(reason)} — filing issue")
-        file_failure("research_limb", question, reason)
+        Autopoet.Log.puts("agent researcher failed: #{inspect(reason)} — filing issue")
+        file_failure("researcher", question, reason)
     end
   end
 

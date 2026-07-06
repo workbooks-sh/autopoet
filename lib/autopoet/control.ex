@@ -2315,15 +2315,15 @@ defmodule Autopoet.Control do
     end)
   end
 
-  post "/limb" do
+  post "/agent" do
     authed!(conn, fn conn ->
       name = conn.query_params["name"] || ""
       task = conn.query_params["task"] || ""
 
       if name == "" or task == "" do
-        text(conn, "usage: limb?name=<limb>&task=<task>\n")
+        text(conn, "usage: agent?name=<agent>&task=<task>\n")
       else
-        {:ok, out} = Autopoet.Limbs.dispatch(name, task)
+        {:ok, out} = Autopoet.Agents.dispatch(name, task)
         text(conn, "dispatched #{name} (async) -> #{out}\n")
       end
     end)
@@ -2336,8 +2336,8 @@ defmodule Autopoet.Control do
       if q == "" do
         text(conn, "usage: research?q=<question>\n")
       else
-        Autopoet.Limbs.research(q)
-        text(conn, "limb dispatched (async) — watch the log; findings arrive as a request, then a proposal\n")
+        Autopoet.Agents.research(q)
+        text(conn, "agent dispatched (async) — watch the log; findings arrive as a request, then a proposal\n")
       end
     end)
   end

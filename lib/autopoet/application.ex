@@ -62,8 +62,8 @@ defmodule Autopoet.Application do
     # the OOTA recipe library, mirrored read-only into the world (/work/oota) — a
     # LIBRARY agents read, never a host process (canon: no native execution)
     Autopoet.Oota.seed_reference()
-    seed_limbs()
-    Autopoet.Limbs.register_from_body()
+    seed_agents()
+    Autopoet.Agents.register_from_body()
     wire_brain()
     # Phase E: the app.execute effect (connected tools) rides the open effect
     # registry — the runtime stays neutral, the app supplies the integration.
@@ -88,10 +88,10 @@ defmodule Autopoet.Application do
     end)
   end
 
-  # Limb definitions ship in priv/seed and land in the body once (never overwrite —
-  # after that, limbs.work is human-editable body content; its agents re-register
+  # Agent definitions ship in priv/seed and land in the body once (never overwrite —
+  # after that, agents.work is human-editable body content; its agents re-register
   # from the body at every boot).
-  defp seed_limbs do
+  defp seed_agents do
     src = Path.join(:code.priv_dir(:autopoet), "seed")
     root = Nexus.Paths.data_dir()
 

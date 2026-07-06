@@ -4,7 +4,7 @@ defmodule Autopoet.Requests do
   one lane:
 
     * humans, via `./autopoetctl request <target> <change>`
-    * ANY agent/limb, via the ungated `request` bash verb inside its run
+    * ANY agent/agent, via the ungated `request` bash verb inside its run
       (metacognition is deliberately grant-free in the runtime)
 
   Both paths produce a `Nexus.Autopoet.Request` → a `self_edit.requested` bus
@@ -50,7 +50,7 @@ defmodule Autopoet.Requests do
   @impl true
   def handle_info({:event, %{kind: "self_edit.requested"} = ev}, q) do
     # ONE pending request per TARGET — the latest wins. Rapid vault saves collapse
-    # to the newest content; repeated limb failures collapse to the latest reason.
+    # to the newest content; repeated agent failures collapse to the latest reason.
     # Distinct intents belong on distinct targets.
     key = fname(to_string(ev[:target]))
     entry = %{target: ev[:target], change: ev[:change], why: ev[:why], evidence: ev[:evidence]}

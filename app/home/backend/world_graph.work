@@ -9,7 +9,7 @@ defmodule Autopoet.WorldGraph do
   @moduledoc """
   The autopoet's world as a graph — the data behind the desktop UI's force view.
   Center: the self (the face). Around it: the body's `.work` docs (with real
-  backlink edges between them, from the parser's refs), the limbs, recent
+  backlink edges between them, from the parser's refs), the agents, recent
   proposals (colored by verdict), and pending requests. Every node carries a
   short `detail` for the click panel. JSON here is a genuine HTTP boundary
   (same class as Nexus.Desktop's discovery file) — never config.
@@ -20,19 +20,19 @@ defmodule Autopoet.WorldGraph do
   # server-side so every frontend (fresh browser profile, voice surface) inherits it.
   @default_hidden ~w(guide system library)
 
-  # Infra limbs the app itself seeds/uses — plumbing, not crew. The user's own agents
+  # Infra agents the app itself seeds/uses — plumbing, not crew. The user's own agents
   # (shopkeeper, producer, …) stay visible: they ARE the product's face.
-  @system_limbs ~w(research_limb intake_scout)
+  @system_agents ~w(researcher intake_scout)
 
   @doc """
   The SINGLE source of truth for a body doc's graph class (genesis I2/I3):
-  `guide` (reference pages), `system` (machinery — the limbs registry, intake
+  `guide` (reference pages), `system` (machinery — the agents registry, intake
   plumbing), `doc` (the user's world — visible).
   """
   def classify(rel) do
     cond do
       String.contains?(rel, "guide/") -> "guide"
-      rel == "limbs.work" or String.starts_with?(rel, "intake/") -> "system"
+      rel == "agents.work" or String.starts_with?(rel, "intake/") -> "system"
       true -> "doc"
     end
   end
@@ -73,14 +73,14 @@ defmodule Autopoet.WorldGraph do
         %{source: "doc:#{rel}", target: dst, kind: "ref"}
       end
 
-    limb_nodes =
+    agent_nodes =
       for node <- Nexus.Agent.all() do
         d = safe_def(node)
 
         %{
-          id: "limb:#{node.name}",
+          id: "agent:#{node.name}",
           label: to_string(node.name),
-          type: if(to_string(node.name) in @system_limbs, do: "system", else: "limb"),
+          type: if(to_string(node.name) in @system_agents, do: "system", else: "agent"),
           detail:
             "model: #{inspect(d[:model])}\ngrant: #{inspect(d[:grant])}\nmanagement: #{Nexus.Agent.management(node)}\n\n#{String.slice(d[:system] || "", 0, 400)}"
         }
@@ -134,7 +134,7 @@ defmodule Autopoet.WorldGraph do
     # reaches at /work/oota. Omitted when the library isn't seeded.
     oota_nodes = oota_node()
 
-    nodes = [self_node | doc_nodes ++ limb_nodes ++ oota_nodes ++ proposal_nodes ++ request_nodes]
+    nodes = [self_node | doc_nodes ++ agent_nodes ++ oota_nodes ++ proposal_nodes ++ request_nodes]
 
     # everything tethers to the self unless it already hangs off another doc
     ref_targets = MapSet.new(ref_links, & &1.target)

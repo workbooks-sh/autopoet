@@ -4109,7 +4109,7 @@ client :s05_part5 do
   <script>
 // ══ THE WORLD (graph) ═══════════════════════════════════════════════════
 const COLORS = {
-  self: "#223", doc: "#4a90d9", guide: "#8e7cc3", limb: "#e07a5f", request: "#d96ba0",
+  self: "#223", doc: "#4a90d9", guide: "#8e7cc3", agent: "#e07a5f", request: "#d96ba0",
   library: "#2aa198", cluster: "#5a6472", system: "#9aa5b1",
   proposal: { pending:"#f2c14e", accepted:"#6aa84f", rejected:"#cc4125",
               "rejected-by-gate":"#a61c00", reverted:"#999" }
@@ -4984,7 +4984,7 @@ new EventSource("/sse").onmessage = e => {
   // any edit anywhere → the timeline re-reads the real jj DAG (debounced)
   if (/history:|body: |vault: /.test(e.data)) histRefresh();
 
-  if (/PROPOSAL|ACCEPTED|REVERTED|rejected|limb|ATTENTION|request queued/.test(e.data)) {
+  if (/PROPOSAL|ACCEPTED|REVERTED|rejected|agent|ATTENTION|request queued/.test(e.data)) {
     recentEvents.unshift(e.data);
     if (recentEvents.length > 20) recentEvents.pop();
     renderNotifications();
@@ -4992,7 +4992,7 @@ new EventSource("/sse").onmessage = e => {
     if (commState === "voice" && voiceSpeaker)
       authedPost("/speak", e.data.replace(/^\d\d:\d\d:\d\d /, ""));
   }
-  if (/PROPOSAL|ACCEPTED|REVERTED|rejected|limb registered/.test(e.data)) draw();
+  if (/PROPOSAL|ACCEPTED|REVERTED|rejected|agent registered/.test(e.data)) draw();
   // the agent authored/undid its body — refresh the world + the undo/redo buttons
   if (/body: (wrote|undone|redone)/.test(e.data)) { draw(); refreshUndoState(); }
 };
@@ -5911,18 +5911,18 @@ let pickerRows = [], pickerType = null, pickerActive = 0;
 const SLASH = [
   { name: "cycle", icon: "heart-pulse", hint: "run a heartbeat now",
     run: async () => { await authedPost("/cycle", ""); addMsg("ap", "cycle triggered — watch the console."); } },
-  { name: "research", icon: "globe", hint: "research <topic> — dispatch the limb",
+  { name: "research", icon: "globe", hint: "research <topic> — dispatch the agent",
     run: async arg => {
       if (!arg) return addMsg("ap", "give me a topic: /research <topic>");
       await authedPost("/research", arg);
-      addMsg("ap", "research limb dispatched: " + arg);
+      addMsg("ap", "research agent dispatched: " + arg);
     } },
   { name: "status", icon: "activity", hint: "runtime status",
     run: async () => addMsg("ap", "```\n" + (await (await fetch("/status")).text()).trim() + "\n```") },
   { name: "proposals", icon: "bell", hint: "open notifications",
     run: () => { document.getElementById("cb-bell").click(); } }
 ];
-const MENTION_KINDS = { limb: "#e07a5f", doc: "#4a90d9", guide: "#8e7cc3" };
+const MENTION_KINDS = { agent: "#e07a5f", doc: "#4a90d9", guide: "#8e7cc3" };
 const mentionCandidates = () =>
   worldData.nodes.filter(n => MENTION_KINDS[n.type])
     .map(n => ({ name: n.label, kind: n.type, id: n.id }));
@@ -5943,11 +5943,11 @@ function updatePicker() {
   pick.classList.toggle("on", pickerRows.length > 0);
   if (!pickerRows.length) return;
   document.getElementById("pickerhead").innerHTML = pickerType === "mention"
-    ? `<i data-lucide="at-sign"></i> mention a page or limb`
+    ? `<i data-lucide="at-sign"></i> mention a page or agent`
     : `<i data-lucide="terminal"></i> run a command`;
   document.getElementById("pickerrows").innerHTML = pickerRows.map((r, i) => {
     const c = pickerType === "mention" ? MENTION_KINDS[r.kind] : "#67707c";
-    const icon = pickerType === "mention" ? (r.kind === "limb" ? "cpu" : "file-text") : r.icon;
+    const icon = pickerType === "mention" ? (r.kind === "agent" ? "cpu" : "file-text") : r.icon;
     return `<button class="prow ${i === pickerActive ? "act" : ""}" data-i="${i}">
       <span class="pic" style="color:${c};background:${c}22"><i data-lucide="${icon}"></i></span>
       <span><span class="sig">${pickerType === "command" ? "/" : "@"}</span>${esc(r.name)}</span>

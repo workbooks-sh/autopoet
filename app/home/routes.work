@@ -570,7 +570,7 @@ server :dev do
   end
 end
 
-## Avatar svg, history, voices, limbs
+## Avatar svg, history, voices, agents
 
 server :ops2 do
   route "GET /avatar", :avatar_svg, auth: :public
@@ -580,7 +580,7 @@ server :ops2 do
   route "GET /voices/default.json", :voices_default_json, auth: :public
   route "POST /voices/verdict", :voices_verdict, auth: :public
   route "POST /request", :request_change, auth: :public
-  route "POST /limb", :limb, auth: :public
+  route "POST /agent", :agent, auth: :public
   route "POST /research", :research, auth: :public
 
   defp t(s), do: {200, "text/plain; charset=utf-8", s}
@@ -631,21 +631,21 @@ server :ops2 do
     end
   end
 
-  def limb(req) do
+  def agent(req) do
     name = req.query["name"] || ""
     task = req.query["task"] || ""
 
     if name == "" or task == "" do
-      t("usage: limb?name=<limb>&task=<task>\n")
+      t("usage: agent?name=<agent>&task=<task>\n")
     else
-      {:ok, out} = Autopoet.Limbs.dispatch(name, task)
+      {:ok, out} = Autopoet.Agents.dispatch(name, task)
       t("dispatched #{name} (async) -> #{out}\n")
     end
   end
 
   def research(req) do
     q = req.query["q"] || ""
-    if q == "", do: t("usage: research?q=<question>\n"), else: (Autopoet.Limbs.research(q); t("researching: #{q}\n"))
+    if q == "", do: t("usage: research?q=<question>\n"), else: (Autopoet.Agents.research(q); t("researching: #{q}\n"))
   end
 end
 

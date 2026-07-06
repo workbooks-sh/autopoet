@@ -7,7 +7,7 @@ defmodule Autopoet.VoiceBrain do
   else Groq (llama-3.3-70b-versatile). AUTOPOET_VOICE_MODEL overrides the
   model name either way.
 
-  NOTE: `Autopoet.Providers` decrees "no Groq" for the LIMB/planner lanes —
+  NOTE: `Autopoet.Providers` decrees "no Groq" for the AGENT/planner lanes —
   that decree stands there. This module is the deliberate, user-requested
   exception for the realtime voice widget only, where Groq's latency is the
   point. Same discipline as the other providers: key via `Nexus.Secrets`
@@ -122,7 +122,7 @@ defmodule Autopoet.VoiceBrain do
   RAW completion on the fast conversational lane (Cerebras→Groq) — the
   caller owns the entire message list (no voice-widget system prompt).
   Built for latency-sensitive conversational callers (the plan session's
-  turns); the planner decree ("no Groq") still stands for LIMB/planner lanes.
+  turns); the planner decree ("no Groq") still stands for AGENT/planner lanes.
   """
   def complete(messages, opts \\ []) when is_list(messages) do
     # ladder across EVERY configured fast provider (Cerebras → Groq), not just
