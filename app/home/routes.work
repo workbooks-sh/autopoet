@@ -569,3 +569,82 @@ server :dev do
     end
   end
 end
+
+## Avatar svg, history, voices, limbs
+
+server :ops2 do
+  route "GET /avatar", :avatar_svg, auth: :public
+  route "POST /history/merge", :history_merge, auth: :public
+  route "POST /history/restore", :history_restore, auth: :public
+  route "POST /voice/moods/save", :moods_save, auth: :public
+  route "GET /voices/default.json", :voices_default_json, auth: :public
+  route "POST /voices/verdict", :voices_verdict, auth: :public
+  route "POST /request", :request_change, auth: :public
+  route "POST /limb", :limb, auth: :public
+  route "POST /research", :research, auth: :public
+
+  defp t(s), do: {200, "text/plain; charset=utf-8", s}
+
+  def avatar_svg(_req), do: {200, "image/svg+xml", Autopoet.Avatar.svg()}
+
+  def history_merge(_req) do
+    case Autopoet.History.merge_heads() do
+      {:ok, n} -> t("merged #{n} heads\n")
+      {:error, r} -> t("refused: #{inspect(r)}\n")
+    end
+  end
+
+  def history_restore(req) do
+    case Autopoet.History.restore(req.query["rev"] || "") do
+      {:ok, n} -> t("restored #{n} vault file(s)\n")
+      {:error, r} -> t("refused: #{inspect(r)}\n")
+    end
+  end
+
+  def moods_save(req) do
+    File.write!(Path.join([Autopoet.Discovery.home(), "data", "voice-moods.txt"]), String.trim(to_string(req.raw_body || "")) <> "\n")
+    t("ok\n")
+  end
+
+  def voices_default_json(_req) do
+    case File.read(Path.join([Autopoet.Discovery.home(), "data", "voices", "default"])) do
+      {:ok, body} ->
+        case String.split(String.trim(body), " ", parts: 2) do
+          [engine, name] when engine in ["qwen-clone", "qwen-design", "kokoro"] -> %{engine: engine, name: name}
+          _ -> %{}
+        end
+
+      _ ->
+        %{}
+    end
+  end
+
+  def voices_verdict(req) do
+    Autopoet.VoiceRoster.set(req.query["name"] || "", req.query["state"] || "")
+    t("ok\n")
+  end
+
+  def request_change(req) do
+    case Autopoet.Requests.file(req.query["target"], req.query["change"]) do
+      :ok -> t("filed: #{req.query["target"]} — #{req.query["change"]}\n")
+      {:error, r} -> t("refused: #{inspect(r)}\n")
+    end
+  end
+
+  def limb(req) do
+    name = req.query["name"] || ""
+    task = req.query["task"] || ""
+
+    if name == "" or task == "" do
+      t("usage: limb?name=<limb>&task=<task>\n")
+    else
+      {:ok, out} = Autopoet.Limbs.dispatch(name, task)
+      t("dispatched #{name} (async) -> #{out}\n")
+    end
+  end
+
+  def research(req) do
+    q = req.query["q"] || ""
+    if q == "", do: t("usage: research?q=<question>\n"), else: (Autopoet.Limbs.research(q); t("researching: #{q}\n"))
+  end
+end
