@@ -1,0 +1,102 @@
+# Autopoet — your onboarding companion
+
+Autopoet is the desktop app where a new owner meets their autopoet: a 3D cube
+avatar that greets them, gets to know them, and sets up their whole nexus
+environment — workspace, agents, rules, integrations, cadence — while drafting
+the plan as a deck. This is that app, authored **entirely as `.work`**.
+
+Everything here is one literate tree: prose narrates, `design` blocks carry the
+look, `client` blocks are the browser UI (the grid-paper world, the 3D cube, the
+onboarding conversation, the deck), and `server` blocks are the brain + voice on
+the nexus. Woven by `work`, served by `Nexus.Server`, shipped as the Elixir
+desktop app. No stray `.js`, no hand-authored `.html` — the workbook IS the app.
+
+app :autopoet do
+  title       "Autopoet"
+  description "The onboarding companion — meet, design, and set up your autopoet."
+  home        "shell"
+end
+
+## The world
+
+The avatar's world is **grid paper** — light or ink per theme. The cube performs
+on it; the graph layer reveals behind it; the onboarding surfaces (the pinned
+question, the deck, the designer) compose around it. These tokens + the stage
+geometry are the whole visual foundation every other surface builds on.
+
+design :shell do
+  :root {
+    --page: #ffffff; --ink: #121316; --card: #ffffff;
+    --line: rgba(18,19,22,.07); --border: rgba(18,19,22,.14);
+    --dim: rgba(18,19,22,.45); --edge: rgba(18,19,22,.38);
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  :root[data-theme="dark"] {
+    --page: #101318; --ink: #e4e7ec; --card: #171a20;
+    --line: rgba(220,230,245,.06); --border: rgba(220,230,245,.14);
+    --dim: rgba(220,230,245,.5); --edge: rgba(220,230,245,.42);
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--page);
+    background-image:
+      linear-gradient(var(--line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 22px 22px;
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    overflow: hidden;
+  }
+
+  /* the graph layer: D2 output, revealed piece by piece behind the cube */
+  #graph-bg {
+    position: fixed; left: 50%; top: 42%; transform: translate(-50%, -50%);
+    width: min(86vw, 1080px); z-index: 0; pointer-events: none;
+    opacity: 0; transition: opacity .5s ease-out;
+  }
+  #graph-bg.on { opacity: 1; }
+  #graph-bg svg { width: 100%; height: auto; display: block; }
+  #graph-bg .shape rect, #graph-bg .shape path { fill: var(--card); stroke: var(--ink); stroke-width: 1.3; }
+  #graph-bg text { fill: var(--ink) !important; font-family: var(--mono) !important; font-size: 15px !important; }
+  #graph-bg path.connection { stroke: var(--edge) !important; }
+  #graph-bg marker path, #graph-bg marker polygon { fill: var(--edge); stroke: var(--edge); }
+
+  /* the avatar stage — extruded-squircle cube with a baked toon outline */
+  .stagebox { position: fixed; inset: 0; display: grid; place-items: center; pointer-events: none; z-index: 1; }
+  .scene {
+    width: 132px; height: 132px; pointer-events: auto;
+    --toon: 1.6px;
+    filter: drop-shadow(var(--toon) 0 0 var(--ink)) drop-shadow(calc(-1 * var(--toon)) 0 0 var(--ink))
+            drop-shadow(0 var(--toon) 0 var(--ink)) drop-shadow(0 calc(-1 * var(--toon)) 0 var(--ink))
+            drop-shadow(0 16px 26px rgba(18,19,22,.04));
+    transform: translate(var(--sx, 0px), var(--sy, 0px));
+    transition: transform .8s cubic-bezier(.3, 1, .35, 1);
+  }
+  .cube {
+    width: 100%; height: 100%; position: relative; transform-style: preserve-3d;
+    transform: rotateX(calc(var(--rx, 0deg) + var(--nod, 0deg) + var(--br, 0deg)))
+               rotateY(var(--ry, 0deg)) rotateZ(var(--rz, 0deg));
+    transition: transform .12s ease-out; cursor: pointer;
+  }
+  .cube .layer { position: absolute; inset: 0; border-radius: 35px; }
+  .cube .face-layer { background: #fff; display: grid; place-items: center; }
+  .face-layer svg { display: block; width: 100%; height: 100%; }
+
+  /* hands ride every body rotation; the scene toon outline traces them too */
+  .hand {
+    position: absolute; left: 0; top: 0; width: 30px; height: 40px;
+    pointer-events: none; opacity: var(--po, 0);
+    transform-origin: 15px 20px;
+    transform: translate(var(--hx, 51px), var(--hy, 120px)) translateZ(67px)
+               rotate(var(--hr, 0deg)) scale(var(--hs, 0));
+    transition: transform .3s cubic-bezier(.34,1.45,.4,1), opacity .18s ease-out;
+  }
+  .hand svg { width: 100%; height: 100%; display: block; }
+  .hand.left svg { transform: scaleX(-1); }
+  #ref-overlay { position: fixed; inset: 0; pointer-events: none; z-index: 1; }
+  #ref-overlay path {
+    fill: none; stroke: var(--dim); stroke-width: 2; stroke-linecap: round;
+    stroke-dasharray: 5 6; animation: ants .6s linear infinite;
+  }
+  @keyframes ants { to { stroke-dashoffset: -11; } }
+end

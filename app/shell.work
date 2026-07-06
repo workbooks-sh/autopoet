@@ -1,0 +1,22 @@
+# The shell DOM
+
+The grid-paper stage the cube is adopted into. The graph layer sits behind it,
+the cube performs at center, and the onboarding surfaces (pinned question, deck,
+designer, composer) mount into `#stage-root`. The 3D body + the performer hydrate
+this skeleton — the same one `#self-cube` the whole app shares (never rebuilt).
+
+client :shell do
+  <div id="graph-bg" aria-hidden="true"></div>
+
+  <div class="stagebox">
+    <div class="scene" id="self-scene">
+      <div class="cube" id="self-cube">
+        <div class="layer face-layer" id="self-face"></div>
+      </div>
+    </div>
+  </div>
+
+  <svg id="ref-overlay" aria-hidden="true"></svg>
+
+  <div id="stage-root"></div>
+end
