@@ -40,7 +40,12 @@ defmodule Autopoet.Capture do
   @impl true
   def handle_call(:count, _from, s), do: {:reply, s.n, s}
 
-  # Daily rotation by filename, switched lazily at write time.
+  # Daily rotation by filename, switched lazily at write time. `mkdir_p!` on every
+  # (re)open so a recorder whose `data/traces` dir was removed UNDER it — a test
+  # harness wiping the trace corpus between runs, an operator clearing traces —
+  # recreates it and keeps recording instead of crashing on the next event (which
+  # would drop that event: the first post-wipe write hit a missing parent dir,
+  # File.open → :enoent → crash, losing exactly one event before init's restart).
   defp ensure_io(%{day: day} = s) do
     today = Date.to_iso8601(Date.utc_today())
 
@@ -48,6 +53,7 @@ defmodule Autopoet.Capture do
       s
     else
       if s.io, do: File.close(s.io)
+      File.mkdir_p!(dir())
       {:ok, io} = File.open(Path.join(dir(), today <> ".etfs"), [:append, :binary, :raw])
       %{s | io: io, day: today}
     end
