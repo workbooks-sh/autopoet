@@ -60,11 +60,23 @@ defmodule Autopoet.Window do
 
     :wxFrame.connect(frame, :close_window)
     if drag, do: :wxFrame.connect(frame, :size)
-    :wxTopLevelWindow.maximize(frame)
+
+    # Open zoomed to fill the USABLE area (below the menu bar, beside the dock) — a real
+    # macOS "maximize"/zoom, not a fullscreen Space. Driven by setSize rather than wx
+    # Maximize() so the custom green button can TOGGLE it reliably against our own state
+    # (Cocoa's isMaximized is unreliable for a borderless frame, which is why the button
+    # felt stuck "full screen" — it never restored). restore_rect is where a restore lands.
+    area = usable_area()
+    :wxWindow.setSize(frame, area)
     :wxFrame.show(frame)
 
-    {:ok, %{frame: frame, view: view, drag: drag, drag_offset: nil}}
+    {:ok, %{frame: frame, view: view, drag: drag, drag_offset: nil, maximized: true, restore_rect: centered_rect(area, 1280, 820)}}
   end
+
+  # The primary display's usable area — {x, y, w, h} minus the menu bar and the dock.
+  defp usable_area, do: :wxDisplay.getClientArea(:wxDisplay.new())
+
+  defp centered_rect({ax, ay, aw, ah}, w, h), do: {ax + div(aw - w, 2), ay + div(ah - h, 2), w, h}
 
   defp resize_content(frame, view) do
     {w, h} = :wxWindow.getClientSize(frame)
@@ -217,12 +229,20 @@ defmodule Autopoet.Window do
     {:noreply, s}
   end
 
+  # The custom green button: toggle macOS-style ZOOM (fill the usable area ⇄ restore the
+  # previous rect). State-tracked, because a borderless frame's Cocoa isMaximized is
+  # unreliable — the old `not isMaximized` toggle never flipped back, so the window read
+  # as stuck "full screen". setSize is unambiguous and never enters a fullscreen Space.
+  def handle_cast(:maximize, %{maximized: true} = s) do
+    :wxWindow.setSize(s.frame, s.restore_rect)
+    {:noreply, %{s | maximized: false}}
+  end
+
   def handle_cast(:maximize, s) do
-    # Same shape here: maximize/2 wants [{maximize, bool}], not a raw bool — the
-    # old bare-boolean call crashed this GenServer (restart: :temporary, so it
-    # never came back and the wx frame died with it, taking the window with it).
-    :wxTopLevelWindow.maximize(s.frame, maximize: not :wxTopLevelWindow.isMaximized(s.frame))
-    {:noreply, s}
+    {px, py} = :wxWindow.getPosition(s.frame)
+    {sw, sh} = :wxWindow.getSize(s.frame)
+    :wxWindow.setSize(s.frame, usable_area())
+    {:noreply, %{s | maximized: true, restore_rect: {px, py, sw, sh}}}
   end
 
   # Repaint the native chrome to match the page theme. The webview draws its own
