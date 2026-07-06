@@ -1215,7 +1215,58 @@
     serious: ["neutral", "skeptical"], worried: ["neutral", "worried"],
     neutral: ["neutral", "none"]
   };
-  var playing = null, timer = null;
+  var playing = null, timer = null, performDone = null;
+  // the entrance. ADOPT mode (live call from the dashboard): release the self
+  // cube from its node footprint and glide it to center stage. STANDALONE mode
+  // (onboarding + /voice/widget): the stage owns its own cube — scale it in at
+  // center. Either runs at mount OR on demand via board.enter() (held cube).
+  function playEntrance(done) {
+    if (!mounted) { if (done) done(); return; }
+    root.classList.add("on");
+    var performer = (vmode === "voice");
+
+    if (adopt && appHooks) {
+      var settle = entranceSettle;
+      later(setTimeout(function () { appHooks.hideWorld(); }, Math.max(0, settle - 350)));
+      later(setTimeout(function () {
+        if (!mounted) { if (done) done(); return; }
+        var spot = appHooks.selfSpot();
+        scene.dataset.free = "1";                       // the app stops node-tracking
+        scene.style.setProperty("--toon", "1.6px");     // full-size line while free
+        scene.classList.add("vs-free");
+        scene.style.transform = "";                     // the class + vars own it now
+        scene.style.transition = "none";
+        scene.style.setProperty("--sx", spot.sx + "px");
+        scene.style.setProperty("--sy", spot.sy + "px");
+        scene.style.setProperty("--sc", spot.sc.toFixed(4));
+        scene.style.opacity = "";
+        stagePos = { x: spot.sx, y: spot.sy };
+        void scene.offsetWidth;                         // commit the start frame
+        scene.style.transition = "";                    // .vs-free transition resumes
+        moveTo(0, 0);                                   // glide to center stage…
+        scene.style.setProperty("--sc", "1");           // …growing to full size
+        if (performer) { capStatus(kokoro ? "ready — just talk" : "loading local voice…"); startVAD(); }
+        later(setTimeout(function () { if (mounted && !playing) wave(); }, 900));
+        if (done) later(setTimeout(done, 1150));
+      }, settle));
+    } else {
+      // standalone: the cube pops in at center (scale + fade), then waves
+      stagePos = { x: 0, y: 0 };
+      if (scene) {
+        scene.style.transition = "none";
+        scene.style.transformOrigin = "50% 60%";
+        scene.style.transform = "scale(.5)";
+        scene.style.opacity = "0";
+        void scene.offsetWidth;
+        scene.style.transition = "opacity .45s ease, transform .62s cubic-bezier(.34,1.5,.4,1)";
+        scene.style.transform = "scale(1)";
+        scene.style.opacity = "1";
+      }
+      if (performer) { capStatus(kokoro ? "ready — just talk" : "loading local voice…"); startVAD(); }
+      later(setTimeout(function () { if (mounted && !playing) wave(); }, 620));
+      if (done) later(setTimeout(done, 900));
+    }
+  }
   function tokenize(text) {
     var stream = [], re = /\[([^\]]+)\]|(\S+)/g, t;
     while ((t = re.exec(text))) {
@@ -1234,10 +1285,11 @@
     if (mounted) moveTo(0, 0);
     mood = "neutral"; setMouth("neutral"); setBrows("none");
   }
-  async function perform(script) {
+  async function perform(script, onDone) {
     stopPerform();
     var runId = {};
     playing = runId;
+    performDone = onDone || null;
     var narration = script, g = script.match(/@graph\s*([\s\S]*?)@end/);
     var mm = script.match(/@mermaid\s*([\s\S]*?)@end/);
     // @slide blocks (any number) append to the session deck and take the stage
@@ -1361,7 +1413,14 @@
       if (playing !== runId) return;
       if (sIdx >= groups.length) {
         revealAll();   // whatever the cues missed, the finished diagram shows whole
-        later(setTimeout(function () { if (playing === runId) { stopPerform(); if (kokoro && vmode === "voice") capStatus("ready — just talk"); } }, 700));
+        later(setTimeout(function () {
+          if (playing === runId) {
+            var cb = performDone; performDone = null;
+            stopPerform();
+            if (kokoro && vmode === "voice") capStatus("ready — just talk");
+            if (cb) cb();   // narration finished → the auto-runner advances
+          }
+        }, 700));
         return;
       }
       var g2 = groups[sIdx], sentNo = sIdx; sIdx++;
@@ -1773,6 +1832,7 @@
 
   var appHooks = null;   // { selfSpot, hideWorld, showWorld, resync } from the real app
   var adopt = null;      // { scene, cube, prefix } — the app's own self-node cube
+  var entranceSettle = 600;
   // ── THE STAGE — one entrance, two types ────────────────────────────────────
   //   type:"voice" — the full call: mic (Moonshine VAD), Kokoro TTS, the brain.
   //   type:"plan"  — the SAME stage + performer (adopted cube, hands, pointAt,
@@ -1800,6 +1860,7 @@
     callbarEl = opts.callbar || (voice ? document.getElementById("callbar") : null);
     callinEl = opts.callin || (voice ? document.getElementById("callin") : null);
     adopt = opts.adopt || null;
+    entranceSettle = opts.settleMs !== undefined ? opts.settleMs : 600;
     appHooks = (opts.selfSpot && opts.hideWorld && opts.showWorld)
       ? { selfSpot: opts.selfSpot, hideWorld: opts.hideWorld, showWorld: opts.showWorld,
           resync: opts.resync || function () {} }
@@ -1818,45 +1879,17 @@
     startGaze();
     bootKokoro();   // both types: plan speaks by default (tts opt-out)
 
-    if (adopt && appHooks) {
-      // SEAMLESS RELEASE: the camera is settling on the head (the app's
-      // zoomTo). When it lands, the world recedes and the SAME cube that
-      // lives as the self node is released to float free — no copy, no swap.
+    // HOLD MODE (onboarding): the grid comes up but the cube waits offstage
+    // while the requisition form is filled — board.enter() plays the entrance.
+    if (!adopt) stageEl.classList.add("vs-whiteboard");   // standalone owns its paper+grid
+    if (opts.hold) {
       root.classList.add("on");
-      var settle = opts.settleMs !== undefined ? opts.settleMs : 600;
-      later(setTimeout(function () { appHooks.hideWorld(); }, Math.max(0, settle - 350)));
-      later(setTimeout(function () {
-        if (!mounted) return;
-        var spot = appHooks.selfSpot();
-        scene.dataset.free = "1";                       // the app stops node-tracking
-        scene.style.setProperty("--toon", "1.6px");     // full-size line while free
-        scene.classList.add("vs-free");
-        scene.style.transform = "";                     // the class + vars own it now
-        scene.style.transition = "none";
-        scene.style.setProperty("--sx", spot.sx + "px");
-        scene.style.setProperty("--sy", spot.sy + "px");
-        scene.style.setProperty("--sc", spot.sc.toFixed(4));
-        stagePos = { x: spot.sx, y: spot.sy };
-        void scene.offsetWidth;                         // commit the start frame
-        scene.style.transition = "";                    // .vs-free transition resumes
-        moveTo(0, 0);                                   // glide to center stage…
-        scene.style.setProperty("--sc", "1");           // …growing to full size
-        if (voice) {
-          capStatus(kokoro ? "ready — just talk" : "loading local voice…");
-          startVAD();
-        }
-        later(setTimeout(function () { if (mounted && !playing) wave(); }, 900));
-      }, settle));
-    } else {
-      // standalone (the /voice/widget page): own paper, own cube, fade in
+      if (adopt && appHooks) appHooks.hideWorld();
       stagePos = { x: 0, y: 0 };
-      stageEl.classList.add("vs-whiteboard");
-      requestAnimationFrame(function () { root.classList.add("on"); });
-      if (voice) {
-        capStatus(kokoro ? "ready — just talk" : "loading local voice…");
-        startVAD();
-      }
-      later(setTimeout(function () { if (mounted && !playing) wave(); }, 600));
+      if (scene) scene.style.opacity = "0";               // cube waits for enter()
+    } else {
+      // adopt → seamless release from the self node; standalone → cube pops in
+      playEntrance();
     }
 
     if (voice) return null;
@@ -1871,9 +1904,33 @@
         var t = pieces.nodes[name] || pieces.edges[name];
         if (t) pointAt(t, ms || 2600);
       },
-      say: function (text) { if (mounted) perform(text); },
+      // held-cube entrance: adopt → float in from the self-node footprint;
+      // standalone → pop in at center. Resolves once arrived + waved.
+      enter: function () {
+        return new Promise(function (res) {
+          if (!mounted) { res(); return; }
+          playEntrance(res);
+        });
+      },
+      say: function (text) {
+        return new Promise(function (res) {
+          if (mounted) perform(text, res); else res();
+        });
+      },
       caption: function (text) { if (mounted) captionShow("", escT(text)); },
       status: function (text) { if (mounted) capStatus(text); },
+      // ── the deck: the character authors reveal.js slides (the "pitch"); the
+      //    accumulated markdown is the plan artifact. slide() appends + shows.
+      slide: function (md) { return mounted ? deckAdd(md) : Promise.resolve(); },
+      deckReset: function () {
+        deckMd = "";
+        return fetch("/voice/deck/new", { method: "POST",
+          headers: { authorization: "Bearer " + TOKEN } }).catch(function () {});
+      },
+      deckGoto: function (n) { deckGoto(n); },
+      deckPrev: function () { if (deckInst && boardMode === "deck") deckInst.prev(); },
+      deckNext: function () { if (deckInst && boardMode === "deck") deckInst.next(); },
+      deckCount: function () { return deckMd ? deckMd.split(/\n---\n/).length : 0; },
       setTTS: function (on) { tts = !!on; if (tts) bootKokoro(); return tts; },
       ttsOn: function () { return tts; },
       ready: function () { return kokoro; },

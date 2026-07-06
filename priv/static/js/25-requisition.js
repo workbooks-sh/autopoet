@@ -2,20 +2,15 @@
 // The first-run intake: a straight-faced interagency form that pairs the
 // requester with their autopoet. Marks go to the pairing officer (the planner
 // LLM via /onboard/requisition); the reply is the character — name, voice,
-// assignment note — and plan mode later performs its custom intro diagram.
-function showRequisition() {
-  const onboard = document.getElementById("onboard");
-  onboard.classList.remove("hidden");
-  const inner = document.querySelector("#onboard .obinner");
-  if (inner) inner.style.display = "none";
-  ["obslides", "obsteps", "obquiz"].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = "none";
-  });
+// assignment note — and plan mode animates the character in to perform its
+// custom intro. The form is MOUNTED ON THE PLAN STAGE (white card on the
+// grid), not a separate beige screen — PlanMode owns placement now.
 
-  let host = document.getElementById("obreq");
-  if (host) host.remove();
-  host = document.createElement("div");
+// Build the AP-7 card. onResult(identity|null) fires after the pairing lands
+// (the caller animates the character in). Returns the host element.
+window.Requisition = (() => {
+  function buildForm(onResult) {
+  const host = document.createElement("div");
   host.id = "obreq";
   const user = (typeof currentUser !== "undefined" && currentUser) || {};
   const fullName = user.name && user.name !== "demo" ? user.name : "";
@@ -77,7 +72,6 @@ function showRequisition() {
       <button id="rq-submit" class="rq-btn">SUBMIT REQUISITION →</button>
     </div>
   </div>`;
-  onboard.appendChild(host);
 
   const nameEl = host.querySelector("#rq-name");
   nameEl.addEventListener("input", () => {
@@ -117,19 +111,41 @@ function showRequisition() {
       return fetch("/voice/tts/qwen/boot?model=" + model, { method: "POST",
         headers: { authorization: "Bearer " + TOKEN } });
     }).catch(() => {});
+    // the stamp lands, the sheet lifts off the grid, and the caller brings
+    // the character in — the sheet's exit IS the character's cue
+    stamp.className = "rq-stamp on ok";
+    stamp.textContent = identity && identity.name ? "APPROVED" : "FILED";
     if (identity && identity.name) {
-      stamp.className = "rq-stamp on ok";
-      stamp.textContent = "APPROVED";
       const note = document.createElement("div");
       note.className = "rq-note";
-      note.textContent = `assignment: ${identity.name} · voice: ${identity.voice} — ${identity.blurb || ""}`;
+      note.textContent = `assignment: ${identity.name} · voice: ${identity.voice}`;
       btn.replaceWith(note);
-      setTimeout(() => { host.remove(); showPower(); }, 2600);
-    } else {
-      // the department never loses a form — proceed regardless
-      stamp.className = "rq-stamp on ok";
-      stamp.textContent = "FILED";
-      setTimeout(() => { host.remove(); showPower(); }, 1200);
     }
+    setTimeout(() => {
+      host.classList.add("rq-lift");                 // the sheet flies off
+      setTimeout(() => { host.remove(); onResult && onResult(identity); }, 620);
+    }, identity && identity.name ? 1200 : 700);
   };
-}
+  return host;
+  }
+
+  // dev/standalone: mount the form on the plain onboarding overlay, then hand
+  // off to the power gate (kept for /restart-onboarding without the stage)
+  function showStandalone() {
+    const onboard = document.getElementById("onboard");
+    onboard.classList.remove("hidden");
+    const inner = document.querySelector("#onboard .obinner");
+    if (inner) inner.style.display = "none";
+    ["obslides", "obsteps", "obquiz"].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = "none";
+    });
+    const old = document.getElementById("obreq");
+    if (old) old.remove();
+    const host = buildForm(() => { if (typeof showPower === "function") showPower(); });
+    host.classList.add("rq-standalone");
+    onboard.appendChild(host);
+  }
+
+  return { buildForm, showStandalone };
+})();

@@ -16,6 +16,23 @@
     background:#fff; cursor:pointer; color:#1c2230; }
   .pm-ico:hover { border-color:#b9c2cd; }
   .pm-ico svg { width:15px; height:15px; }
+  /* NO NAVIGATION — the intro auto-runs. Only a tiny utility cluster (sound +
+     dev voice lab) floats bottom-left; it is not a nav bar. */
+  .pm-tools-float { position:fixed; left:16px; bottom:16px; z-index:64; display:flex; gap:8px;
+    align-items:center; }
+  .pm-tools-float .pm-ico { box-shadow:0 2px 8px rgba(22,22,26,.08); }
+  .pm-enter { font:700 12.5px ui-monospace,monospace; letter-spacing:.06em; padding:10px 18px;
+    border-radius:10px; border:0; background:#16161a; color:#fff; cursor:pointer; margin-left:6px;
+    animation:pm-enter-in .5s cubic-bezier(.34,1.5,.4,1) both; }
+  .pm-enter:hover { background:#2e2e34; }
+  @keyframes pm-enter-in { from { opacity:0; transform:translateY(8px) scale(.9); } }
+  /* the deck arrows — browse the pitch slides (the only nav the user gets) */
+  .pm-deck-nav { position:fixed; right:18px; bottom:16px; z-index:64; display:flex; gap:8px;
+    animation:pm-enter-in .5s cubic-bezier(.34,1.5,.4,1) both; }
+  .pm-arrow { width:40px; height:40px; border-radius:11px; border:1px solid #e2e6ec; background:#fff;
+    color:#1c2230; font:400 22px/1 ui-monospace,monospace; cursor:pointer; display:grid; place-items:center;
+    box-shadow:0 2px 8px rgba(22,22,26,.08); }
+  .pm-arrow:hover { border-color:#b9c2cd; background:#f6f8fa; }
   /* the caption sits above the widget while plan mode is on */
   body:has(.pm-widget) #vs-caption { bottom:132px; }
   /* PLAN SCREEN — onboarding owns the viewport: no dashboard chrome, just the

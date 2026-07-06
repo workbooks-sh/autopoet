@@ -35,7 +35,10 @@ window.BehaviorLab = (() => {
           note.textContent = "restarting…";
           try { PlanMode.teardown(); } catch (_) {}
           close();
-          showPlanMode();
+          // PREVIEW: reuse the existing pairing (skip the form) so we just hear
+          // the intro in the newly-chosen voice
+          fetch("/onboard/pairing.json").then(r => (r.ok ? r.json() : null)).catch(() => null)
+            .then(pairing => showPlanMode(pairing));
         }).catch(() => setTimeout(poll, 800));
       })();
     };

@@ -557,7 +557,7 @@ function loadScript(src) {
     document.head.appendChild(s);
   });
 }
-async function showPlanMode() {
+async function showPlanMode(previewPairing) {
   if (_slideCleanup) { _slideCleanup(); _slideCleanup = null; }
   document.getElementById("onboard").classList.remove("hidden");
   document.getElementById("obslides").style.display = "none";
@@ -565,21 +565,16 @@ async function showPlanMode() {
   document.getElementById("obquiz").style.display = "none";
   document.querySelector("#onboard .obinner").style.display = "none";
   try {
-    // plan mode performs on the REAL stage with the REAL adopted self cube —
-    // the IDENTICAL entrance the voice call uses (VoiceStage.stage), just
-    // type:"plan" (no audio). Same avatar by construction.
+    // ONBOARDING is its OWN stage — a standalone whiteboard (own grid, own
+    // cube), fully SEPARATE from the dashboard vault graph. No adopt hooks:
+    // the requisition form lands on this grid, then the character enters and
+    // performs its intro. (The live in-dashboard voice call still adopts the
+    // real self node — that path is untouched.)
     await loadScript("/static/planmode.js");
-    await ensureSelfCube();
-    zoomTo("self", false);            // camera settles on the head, like a call
     hideOnboard();                    // the overlay yields to the whiteboard
-    const pairing = await fetch("/onboard/pairing.json")
-      .then(r => (r.ok ? r.json() : null)).catch(() => null);
     const ok = PlanMode.start({
-      pairing,
-      stage: { token: TOKEN, stage: document.getElementById("stage"),
-               adopt: { scene: selfCube, cube: selfCubeInner, prefix: "ap-" },
-               selfSpot: vsSelfSpot, hideWorld: vsHideWorld, showWorld: vsShowWorld,
-               resync: syncSelfCube, settleMs: 620 },
+      pairing: previewPairing || null,   // lab preview skips the form
+      stage: { token: TOKEN, stage: document.getElementById("stage"), settleMs: 620 },
       refreshIcons,
       onDone: obDone
     });
@@ -597,10 +592,11 @@ async function showPlanMode() {
 // poll the subscription until it's active. The SAME flow the dashboard exposes.
 function showQuiz() { showPower(); }
 function showSlides() {
-  // FORM AP-7 replaced the deck: the requisition IS the introduction now.
-  // (the old GSAP deck stays below as showSlidesDeck for dev spelunking)
-  if (typeof showRequisition === "function") { showRequisition(); return; }
-  showSlidesDeck();
+  // The GSAP deck is retired: the character's own intro in plan mode IS the
+  // introduction now (form AP-7 → pairing → the cube enters and performs).
+  // Straight to the compute/inference gates, which lead into plan mode.
+  // (showSlidesDeck stays below for dev spelunking.)
+  showPower();
 }
 function showSlidesDeck() {
   // pre-warm the DEFAULT voice's engine while the deck plays — the first plan

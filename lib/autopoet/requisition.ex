@@ -28,34 +28,24 @@ defmodule Autopoet.Requisition do
             into: %{},
             do: {k, v}
 
-      steps =
-        case File.read(path("pairing-steps")) do
-          {:ok, s} ->
-            for line <- String.split(s, "\n", trim: true) do
-              case String.split(line, "|", parts: 3) do
-                [say, reveal, point] ->
-                  %{
-                    say: String.trim(say),
-                    reveal: reveal |> String.trim() |> String.split(",", trim: true),
-                    point: point |> String.trim()
-                  }
-
-                _ ->
-                  %{say: String.trim(line), reveal: [], point: ""}
-              end
-            end
-
-          _ ->
-            []
+      says =
+        case File.read(path("pairing-says")) do
+          {:ok, s} -> String.split(s, "\n", trim: true)
+          _ -> []
         end
 
-      d2 =
-        case File.read(path("pairing.d2")) do
-          {:ok, src} -> src
-          _ -> ""
+      mds =
+        case File.read(path("pairing-deck.md")) do
+          {:ok, deck} -> deck |> String.split(~r/\n\s*---\s*\n/, trim: true) |> Enum.map(&String.trim/1)
+          _ -> []
         end
 
-      {:ok, Map.merge(kv, %{"steps" => steps, "d2" => d2})}
+      slides =
+        says
+        |> Enum.zip(mds)
+        |> Enum.map(fn {say, md} -> %{"say" => say, "md" => md} end)
+
+      {:ok, Map.put(kv, "slides", slides)}
     end
   end
 
@@ -105,9 +95,10 @@ defmodule Autopoet.Requisition do
 
     prompt = """
     You are the AUTOPOET DEPARTMENT's pairing officer. A requester filed form
-    AP-7 (personality requisition). Pair them with ONE voice from the roster
-    and invent their autopoet's character. Reply with STRICT JSON only — no
-    markdown fences, no commentary.
+    AP-7 (personality requisition). Pair them with ONE voice from the roster,
+    invent their autopoet's character, and author its opening PITCH DECK —
+    reveal.js markdown slides the autopoet presents while introducing itself.
+    Reply with STRICT JSON only — no markdown fences around the JSON, no commentary.
 
     FORM (the requester's marks):
     #{Jason.encode!(form)}
@@ -115,25 +106,29 @@ defmodule Autopoet.Requisition do
     VOICE ROSTER (choose exactly one "voice" from these names):
     #{roster_txt}
 
-    Also author the intro the autopoet performs on its whiteboard: a D2
-    diagram (simple ids, `a -> b: label` edges, at most 9 nodes, shaped by
-    the requester's marks — their deployment areas become the build nodes)
-    plus exactly 4 narration steps that progressively reveal it. Every id in
-    "reveal" must be an edge that appears in the d2 source, written as
-    "a->b". "point" must be a node id from the d2.
+    THE DECK is how the autopoet shows what it understands and what it will do,
+    built ENTIRELY from the requester's marks — this is emergent, so every slide
+    reflects THEIR answers, not a template. Author 3 to 5 slides. Each slide is
+    reveal.js markdown (use `# Title`, `## Subhead`, `- bullets`). ONE slide
+    SHOULD contain a mermaid diagram of the plan as a fenced block:
+    ```mermaid
+    flowchart LR
+      you[you] --> ap[your autopoet] --> ship[what ships]
+    ```
+    Keep slides tight — a title and 2 to 4 bullets, or the diagram. Each slide
+    pairs with a `say`: <=30 words of narration the autopoet speaks over it.
 
     JSON shape:
     {"ap_name": "one lowercase word, quirky but dignified",
      "voice": "<roster name>",
-     "greeting": "<=25 words, in character, greets the requester by first name, introduces itself by name",
+     "greeting": "<=25 words, in character, greets the requester by first name, introduces itself by name, says it drew up a plan",
      "blurb": "<=18 words, the department's dry assignment note for this pairing",
-     "d2": "<d2 source, \\n separated>",
-     "steps": [{"say": "<=28 words", "reveal": ["a->b"], "point": "b"}, ...]}
+     "slides": [{"say": "<=30 words of narration", "md": "# Slide title\\n\\n- point one\\n- point two"}, ...]}
     """
 
     with {:ok, %{content: content}} <-
            Autopoet.Providers.openrouter([%{role: "user", content: prompt}],
-             max_tokens: 1400,
+             max_tokens: 1800,
              temperature: 0.6
            ),
          {:ok, raw} <- Jason.decode(strip_fences(content)),
@@ -154,79 +149,58 @@ defmodule Autopoet.Requisition do
   defp validate(raw, form, roster) do
     names = MapSet.new(roster, & &1.name)
     voice = raw["voice"]
-    d2 = raw["d2"] || ""
 
-    steps =
-      for s <- List.wrap(raw["steps"]),
-          is_binary(s["say"]) and s["say"] != "" do
-        reveal =
-          for e <- List.wrap(s["reveal"]),
-              is_binary(e),
-              edge_in_d2?(e, d2),
-              do: e
-
-        %{say: s["say"], reveal: reveal, point: to_string(s["point"] || "")}
+    slides =
+      for s <- List.wrap(raw["slides"]),
+          is_binary(s["say"]) and s["say"] != "",
+          is_binary(s["md"]) and String.trim(s["md"]) != "" do
+        %{say: s["say"], md: s["md"]}
       end
 
     cond do
       not MapSet.member?(names, voice) -> :error
-      d2 == "" or steps == [] -> :error
-      true -> {:ok, build(raw["ap_name"], voice, raw["greeting"], raw["blurb"], d2, steps, form, roster)}
-    end
-  end
-
-  defp edge_in_d2?(edge, d2) do
-    case String.split(edge, "->", parts: 2) do
-      [a, b] -> Regex.match?(~r/#{Regex.escape(String.trim(a))}\s*->\s*#{Regex.escape(String.trim(b))}/, d2)
-      _ -> false
+      slides == [] -> :error
+      true -> {:ok, build(raw["ap_name"], voice, raw["greeting"], raw["blurb"], slides, form, roster)}
     end
   end
 
   # deterministic pairing — the onboarding never blocks on a provider
   defp fallback(form, roster) do
     first = form |> Map.get("name", "") |> to_string() |> String.split(" ") |> List.first() |> to_string()
-    areas = form |> Map.get("areas", []) |> List.wrap() |> Enum.take(3)
+    who = if first == "", do: "you", else: first
+    areas = form |> Map.get("areas", []) |> List.wrap() |> Enum.take(4)
+    area_bullets = if areas == [], do: "- whatever you bring me", else: Enum.map_join(areas, "\n", &"- #{&1}")
+    flow_nodes = if areas == [], do: "ap --> work[your work]", else: Enum.map_join(Enum.with_index(areas), "\n  ", fn {a, i} -> "ap --> n#{i}[#{a}]" end)
 
-    build_nodes =
-      areas
-      |> Enum.with_index()
-      |> Enum.map(fn {a, i} -> {"b#{i}", to_string(a)} end)
-
-    d2 =
-      """
-      you: #{if first == "", do: "you", else: first}
-      ap: your autopoet
-      mission: your mission
-      #{Enum.map_join(build_nodes, "\n", fn {id, label} -> "#{id}: #{label}" end)}
-      you -> ap: works with
-      ap -> mission: serves
-      #{Enum.map_join(build_nodes, "\n", fn {id, _} -> "ap -> #{id}: weaves" end)}
-      """
-
-    steps =
-      [
-        %{say: "everything starts with the two of us.", reveal: ["you->ap"], point: "ap"},
-        %{say: "and hangs off a mission — yours, in your words.", reveal: ["ap->mission"], point: "mission"}
-      ] ++
-        Enum.map(build_nodes, fn {id, label} ->
-          %{say: "you marked #{label} — so that's where i'll weave first.", reveal: ["ap->#{id}"], point: id}
-        end)
+    slides = [
+      %{
+        say: "here's the shape of what we're doing together.",
+        md: "# the plan\n\n- you bring the words\n- i weave the system\n- it ships, and wakes up every morning"
+      },
+      %{
+        say: "you told the department where to point me — so that's where we start.",
+        md: "## where i'll weave first\n\n#{area_bullets}"
+      },
+      %{
+        say: "and here's how the pieces connect. this diagram grows as we talk.",
+        md: "## how it fits\n\n```mermaid\nflowchart LR\n  you[#{who}] --> ap[your autopoet]\n  #{flow_nodes}\n```"
+      }
+    ]
 
     voice = if Enum.any?(roster, &(&1.name == "rosalind")), do: "rosalind", else: List.first(roster).name
 
     build(
       "quill",
       voice,
-      "hi#{if first != "", do: " " <> String.downcase(first)} — i'm quill, your autopoet. the department matched us. let me show you how this works.",
+      "hi#{if first != "", do: " " <> String.downcase(first)} — i'm quill, your autopoet. the department matched us, and i already sketched a plan.",
       "requisition approved. pairing: standard-issue poet, above-average curiosity.",
-      d2,
-      steps,
+      slides,
       form,
       roster
     )
   end
 
-  defp build(ap_name, voice, greeting, blurb, d2, steps, _form, roster) do
+  defp build(ap_name, voice, greeting, blurb, slides, _form, roster) do
     entry = Enum.find(roster, &(&1.name == voice))
     engine = if entry && entry.pinned, do: "qwen-clone", else: "qwen-design"
 
@@ -236,8 +210,7 @@ defmodule Autopoet.Requisition do
       "engine" => engine,
       "greeting" => to_string(greeting || ""),
       "blurb" => to_string(blurb || ""),
-      "d2" => d2,
-      "steps" => steps
+      "slides" => slides
     }
   end
 
@@ -254,14 +227,19 @@ defmodule Autopoet.Requisition do
           do: "#{k} #{String.replace(identity[k] || "", "\n", " ")}"
 
     File.write!(path("pairing"), Enum.join(kv, "\n") <> "\n")
-    File.write!(path("pairing.d2"), identity["d2"])
 
-    steps_txt =
-      Enum.map_join(identity["steps"], "\n", fn s ->
-        "#{String.replace(s.say, "|", "/")} | #{Enum.join(s.reveal, ",")} | #{s.point}"
-      end)
+    # slides persist as the pitch deck markdown, one slide per reveal.js
+    # separator — this file IS the plan artifact (the "inform 7" the agent
+    # later compiles toward the .work). A parallel index keeps the narration.
+    deck_md =
+      identity["slides"]
+      |> Enum.map(& &1.md)
+      |> Enum.join("\n\n---\n\n")
 
-    File.write!(path("pairing-steps"), steps_txt <> "\n")
+    File.write!(path("pairing-deck.md"), deck_md <> "\n")
+
+    says = Enum.map_join(identity["slides"], "\n", fn s -> String.replace(s.say, "\n", " ") end)
+    File.write!(path("pairing-says"), says <> "\n")
   end
 
   # the paired voice IS the default voice from here on — every bare synth
