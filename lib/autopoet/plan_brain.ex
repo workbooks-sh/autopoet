@@ -226,13 +226,10 @@ defmodule Autopoet.PlanBrain do
     {"move":"ask","say":"...ends with your question","title":"optional","md":"optional slide to add first"}
     {"move":"slide","say":"...","title":"...","md":"# Title\\n\\n- point\\n- point"}
     {"move":"search","say":"...a short line that you're looking it up","query":"web search terms"}
+    {"move":"bash","say":"...a short line about what you're checking","cmd":"cat skills/skill--drive-the-browser.md"}
     {"move":"complete","say":"...","title":"...","md":"# Title\\n\\n- point"}
 
-    YOU CAN BROWSE THE WEB. If a CURRENT external fact would genuinely help set them
-    up well — what tools/standards/competitors are common in THEIR field, a real
-    integration's specifics — emit a "search" move: a short say that you're checking,
-    and web query terms in "query". Use it SPARINGLY and only when it truly helps;
-    most of what you need comes from THEM, not the web. Never search to fill silence.
+    #{tools_briefing()}
 
     HARD RULES:
     - THIS IS ONBOARDING, AN INTERVIEW. Your questions get to know THEM and what
@@ -296,6 +293,12 @@ defmodule Autopoet.PlanBrain do
       move == "search" ->
         query = to_string(raw["query"] || "")
         if query == "", do: :error, else: {:ok, %{"move" => "search", "say" => say, "query" => query}}
+
+      # bash — the brain's full agent shell (read skills/docs, grep, search/scrape).
+      # Client runs it via /plan/bash, shows a working bubble, feeds stdout back.
+      move == "bash" ->
+        cmd = to_string(raw["cmd"] || raw["command"] || "")
+        if cmd == "", do: :error, else: {:ok, %{"move" => "bash", "say" => say, "cmd" => cmd}}
 
       # fork is retired — any stray fork becomes a plain question
       move == "fork" ->
@@ -475,6 +478,31 @@ defmodule Autopoet.PlanBrain do
     Then TAILOR: for a non-technical owner, teach more and keep it plain; for a
     developer, go faster and speak their terms. Fold this in as normal
     conversation, not an interview. Knowing them shapes the whole plan.
+    """
+  end
+
+  # TOOLS the brain can actually use mid-conversation (via the bash/search moves),
+  # plus the live skills catalog so it KNOWS what skills exist and can read them.
+  defp tools_briefing do
+    catalog = Autopoet.PlanTools.skills_catalog()
+
+    """
+    YOUR TOOLS — you are a REAL autopoet agent, not just a chatbot. You run the
+    SAME bash shell every autopoet agent runs, mid-conversation, via the "bash"
+    move. Through it you can:
+      • READ SKILLS — the autopoet skill library is mounted at skills/. Read one
+        with `cat skills/<name>.md`. CONSULT the relevant skill before setting up
+        something it covers, so your plan matches how the system truly works.
+      • READ DOCS — the platform guide is at guide/ (`ls guide`, `cat guide/<x>.md`).
+      • SEARCH/BROWSE THE WEB — `search <query>` and `scrape <url>` (real browser),
+        or the dedicated "search" move.
+      • ls / cat / grep / head across that world.
+    AVAILABLE SKILLS (read the relevant one with `cat skills/<name>.md`):
+    #{catalog}
+
+    Use tools SPARINGLY and only when they genuinely help you set them up well — a
+    skill you'll rely on, a fact you need. Most of the session is talking with THEM,
+    not tooling. Never run a tool to fill silence.
     """
   end
 

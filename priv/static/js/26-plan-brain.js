@@ -250,6 +250,19 @@ window.PlanBrain = (() => {
         continue;
       }
 
+      // BASH move: the agent's full shell — read a skill, grep docs, search/scrape.
+      // The thought bubble reflects what it's doing; stdout feeds back next turn.
+      if (move.move === "bash") {
+        state.history.push({ role: "assistant", content: move.say });
+        setComposer("speaking"); clearComposer();
+        if (move.say) { if (board.warm) board.warm(move.say); await board.say(move.say); }
+        if (board.think) board.think(true, bashLabel(move.cmd));
+        const out = await postBash(move.cmd);
+        if (board.think) board.think(false);
+        state.history.push({ role: "system", content: `$ ${move.cmd}\n${out}` });
+        continue;
+      }
+
       // voice first: the say's clips start synthesizing IMMEDIATELY (the deck
       // compile and everything else overlaps the synth, not the other way)
       if (move.say && board.warm) board.warm(move.say);
@@ -312,6 +325,28 @@ window.PlanBrain = (() => {
       if (!d.results || !d.results.length) return "(no results found)";
       return d.results.map((x, i) => `${i + 1}. ${x.title || ""} — ${(x.snippet || "").slice(0, 200)} [${x.url || ""}]`).join("\n");
     } catch (_) { return "(search failed)"; }
+  }
+
+  // run one agent bash line through the Nexus shell (files/skills/web), return stdout
+  async function postBash(cmd) {
+    try {
+      const r = await fetch("/plan/bash", {
+        method: "POST",
+        headers: { authorization: "Bearer " + TOKEN, "content-type": "application/json" },
+        body: JSON.stringify({ command: cmd })
+      });
+      if (!r.ok) return "(tool unavailable)";
+      const d = await r.json();
+      return (d.output || "").slice(0, 3000) || "(no output)";
+    } catch (_) { return "(tool failed)"; }
+  }
+  // label the thought bubble by what the command is doing
+  function bashLabel(cmd) {
+    cmd = (cmd || "").trim();
+    if (/^(search|scrape|render|screenshot|fetch|navigate)\b/.test(cmd)) return "searching the web…";
+    if (/skills?\//.test(cmd) || /\bskill--/.test(cmd)) return "reading a skill…";
+    if (/^(ls|cat|grep|head|tail)\b/.test(cmd)) return "checking my notes…";
+    return "thinking…";
   }
 
   // ── completion → processing → the build lane (vault + graph fill) ──
