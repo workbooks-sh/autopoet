@@ -38,3 +38,7 @@ eval/live-runs/
 /eval/desks/
 /eval/venture/
 /guide/skill--*.work
+
+# model weights — never commit (downloaded to disk)
+desktop_ml/models/
+*.gguf

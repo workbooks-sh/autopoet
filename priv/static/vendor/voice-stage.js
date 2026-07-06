@@ -85,6 +85,26 @@
     "#vs-graph-bg .m-pop { animation:vs-mpop .45s cubic-bezier(.34,1.5,.4,1) both; transform-box:fill-box; transform-origin:center; }",
     "@keyframes vs-mpop { from { opacity:0; transform:scale(.55);} to { opacity:1; transform:scale(1);} }",
     "#vs-graph-bg .m-fade { animation:vs-mfade .5s ease-out both; }",
+    // ── the lightweight deck: ONE slide visible at a time, a white card on the
+    //    grid. .cur is shown; the rest are display:none (guaranteed pagination).
+    "#vs-graph-bg .vsd-wrap { position:relative; width:100%; height:100%; background:#fff;",
+    "  border:1.7px solid #121316; border-radius:18px; box-shadow:6px 8px 0 rgba(18,19,22,.10); overflow:hidden; }",
+    "#vs-graph-bg .vsd-slide { position:absolute; inset:0; display:none; flex-direction:column;",
+    "  justify-content:center; padding:44px 54px; box-sizing:border-box; text-align:left; }",
+    "#vs-graph-bg .vsd-slide.cur { display:flex; animation:vs-mfade .4s ease-out both; }",
+    "#vs-graph-bg .vsd-slide h1 { font:800 34px/1.15 ui-sans-serif,system-ui; color:#16161a; margin:0 0 14px; }",
+    "#vs-graph-bg .vsd-slide h2 { font:800 26px/1.2 ui-sans-serif,system-ui; color:#16161a; margin:0 0 12px; }",
+    "#vs-graph-bg .vsd-slide h3 { font:700 20px/1.2 ui-sans-serif,system-ui; color:#2a2f37; margin:0 0 10px; }",
+    "#vs-graph-bg .vsd-slide p { font:400 19px/1.5 ui-sans-serif,system-ui; color:#2a2f37; margin:6px 0; }",
+    "#vs-graph-bg .vsd-slide ul { margin:8px 0 0; padding-left:24px; }",
+    "#vs-graph-bg .vsd-slide li { font:400 19px/1.55 ui-sans-serif,system-ui; color:#2a2f37; margin:7px 0; }",
+    "#vs-graph-bg .vsd-slide blockquote { margin:8px 0; padding-left:14px; border-left:3px solid #c9cdd2;",
+    "  font:italic 18px/1.5 ui-sans-serif,system-ui; color:#5a6068; }",
+    "#vs-graph-bg .vsd-slide b { color:#16161a; } #vs-graph-bg .vsd-slide code { font:15px ui-monospace,monospace;",
+    "  background:#eef0f2; padding:1px 5px; border-radius:5px; }",
+    "#vs-graph-bg .vsd-slide .vsd-mermaid { display:flex; justify-content:center; margin:10px 0; }",
+    "#vs-graph-bg .vsd-slide .vsd-mermaid svg { max-width:100%; max-height:360px; height:auto; }",
+    "#vs-graph-bg .vsd-slide .vsd-fence { font:13px ui-monospace,monospace; white-space:pre-wrap; color:#5a6068; }",
     "@keyframes vs-mfade { from { opacity:0; } to { opacity:1; } }",
     "#vs-stagebox { position:absolute; inset:0; display:grid; place-items:center; pointer-events:none; }",
     // outline follows the SAME theme var the graph nodes use (--face-outline:
@@ -577,7 +597,6 @@
   // ────────────────────────── D2 graph layer ──────────────────────────
   var graphBg = null, pieces = { nodes: {}, edges: {} };
   function mountGraphSVG(svgText) {
-    if (deckInst) { try { deckInst.destroy(); } catch (e) {} deckInst = null; }
     graphBg.style.width = ""; graphBg.style.height = "";
     graphBg.innerHTML = svgText;
     showBoard("d2");
@@ -705,7 +724,6 @@
   async function mountMermaid(mmSrc) {
     await ensureMermaid();
     var out = await mermaid.render("vsmm" + (++mmSeq), mmSrc);
-    if (deckInst) { try { deckInst.destroy(); } catch (e) {} deckInst = null; }
     graphBg.style.width = ""; graphBg.style.height = "";
     graphBg.innerHTML = out.svg;
     showBoard("d2");
@@ -742,77 +760,100 @@
     // mermaid shows WHOLE — reveals are no-ops here (nothing is m-hidden)
   }
 
-  // ── the session deck: reveal.js over a server-kept markdown scratch file.
-  //    The agent adds slides with @slide blocks; the deck persists across
-  //    turns, is browsable ([slide N]), and exports at /voice/deck/export. ──
-  var revealReady = null, deckInst = null, deckMd = "";
-  function ensureReveal() {
-    if (revealReady) return revealReady;
-    revealReady = (async function () {
-      if (!document.getElementById("vs-reveal-css")) {
-        var l = document.createElement("link");
-        l.id = "vs-reveal-css"; l.rel = "stylesheet"; l.href = "/static/vendor/reveal.css";
-        document.head.appendChild(l);
-      }
-      if (!window.Reveal) await loadScript("/static/vendor/reveal.js");
-      if (!window.RevealMarkdown) await loadScript("/static/vendor/reveal-markdown.js");
-      await ensureMermaid();
-    })();
-    return revealReady;
-  }
-  var boardMode = null;         // what currently occupies the board: "deck" | "d2" | null
+  // ── the session deck: a LIGHTWEIGHT markdown slide renderer (reveal.js is
+  //    retired — it re-inited the whole deck + re-ran every mermaid on EVERY
+  //    add, an O(n²) freeze, and failed to paginate in the webview → plain
+  //    text). This appends ONLY the new slide, renders its mermaid ONCE, shows
+  //    one slide at a time via a .cur class. Fully in our control. ──
+  var deckMd = "", deckSlides = [], deckCur = 0, deckWrap = null, boardMode = null;
   function showBoard(which) {
     boardMode = which;
     if (graphBg) graphBg.classList.toggle("on", which != null);
   }
-  async function renderDeck(md, gotoIdx) {
-    await ensureReveal();
-    var deckEl = graphBg;                          // the deck lives on the d2 board
-    if (!deckEl || !mounted) return;
-    if (deckInst) { try { deckInst.destroy(); } catch (e) {} deckInst = null; }
-    deckEl.style.width = "940px";                  // reveal needs a sized container
-    deckEl.style.height = "570px";
-    deckEl.innerHTML =
-      '<div class="reveal"><div class="slides">' +
-      '<section data-markdown data-separator="^\n---\n$"><textarea data-template></textarea></section>' +
-      '</div></div>';
-    // the markdown plugin reads the template from the DOM text node — .value
-    // does not touch it (that was the invisible-empty-deck bug)
-    deckEl.querySelector("textarea").textContent = md;
-    deckInst = new Reveal(deckEl.querySelector(".reveal"), {
-      embedded: true, plugins: [RevealMarkdown],
-      width: 920, height: 560, margin: 0.02,
-      controls: false, progress: false, keyboard: false, touch: false,
-      transition: "fade", backgroundTransition: "none", hash: false
-    });
-    await deckInst.initialize();
-    // mermaid fences → live ink diagrams at slide scale
-    var fences = deckEl.querySelectorAll("code.language-mermaid, code.mermaid");
-    for (var i = 0; i < fences.length; i++) {
-      var f = fences[i];
-      try {
-        var out = await mermaid.render("vsdk" + (++mmSeq), f.textContent);
-        var holder = document.createElement("div");
-        holder.className = "mm-slide";
-        holder.innerHTML = out.svg;
-        var pre = f.closest("pre") || f;
-        pre.parentNode.replaceChild(holder, pre);
-      } catch (e) { /* leave the fence as code */ }
-    }
-    if (deckInst.layout) deckInst.layout();
-    if (typeof gotoIdx === "number") deckInst.slide(gotoIdx);
-    showBoard("deck");
+  function dEsc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+  function dSpan(s) {
+    return dEsc(s)
+      .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+      .replace(/\*([^*]+)\*/g, "<i>$1</i>")
+      .replace(/`([^`]+)`/g, "<code>$1</code>");
   }
-  function deckGoto(n) {
-    if (deckInst && boardMode === "deck") deckInst.slide(Math.max(0, n - 1));
+  function dInline(text) {
+    var lines = text.split("\n"), out = [], inList = false;
+    var closeList = function () { if (inList) { out.push("</ul>"); inList = false; } };
+    lines.forEach(function (ln) {
+      var t = ln.trim();
+      if (!t) { closeList(); return; }
+      var h = t.match(/^(#{1,4})\s+(.*)/);
+      if (h) { closeList(); var lv = h[1].length; out.push("<h" + lv + ">" + dSpan(h[2]) + "</h" + lv + ">"); return; }
+      var b = t.match(/^[-*]\s+(.*)/);
+      if (b) { if (!inList) { out.push("<ul>"); inList = true; } out.push("<li>" + dSpan(b[1]) + "</li>"); return; }
+      var q = t.match(/^>\s+(.*)/);
+      if (q) { closeList(); out.push("<blockquote>" + dSpan(q[1]) + "</blockquote>"); return; }
+      closeList();
+      out.push("<p>" + dSpan(t) + "</p>");
+    });
+    closeList();
+    return out.join("");
+  }
+  function slideHtml(md) {
+    // pull ```mermaid fences out; everything else is inline markdown
+    var parts = String(md || "").split(/```mermaid\s*\n([\s\S]*?)```/);
+    var html = "";
+    for (var i = 0; i < parts.length; i++) {
+      if (i % 2 === 1) html += '<div class="vsd-mermaid" data-src="' + encodeURIComponent(parts[i]) + '"></div>';
+      else html += dInline(parts[i]);
+    }
+    return html;
+  }
+  function ensureDeckWrap() {
+    if (deckWrap && deckWrap.parentNode && graphBg && graphBg.contains(deckWrap)) return deckWrap;
+    if (!graphBg) return null;
+    graphBg.style.width = "940px";
+    graphBg.style.height = "570px";
+    graphBg.innerHTML = '<div class="vsd-wrap"></div>';
+    deckWrap = graphBg.querySelector(".vsd-wrap");
+    deckSlides = []; deckCur = 0;
+    return deckWrap;
+  }
+  async function renderMermaidIn(el) {
+    var holders = el.querySelectorAll(".vsd-mermaid");
+    for (var i = 0; i < holders.length; i++) {
+      var src = decodeURIComponent(holders[i].getAttribute("data-src") || "");
+      try {
+        await ensureMermaid();
+        var out = await mermaid.render("vsd" + (++mmSeq), src.trim());
+        holders[i].innerHTML = out.svg;
+      } catch (e) { holders[i].innerHTML = "<pre class='vsd-fence'>" + dEsc(src) + "</pre>"; }
+    }
+  }
+  async function deckAppend(md) {
+    if (!ensureDeckWrap()) return;
+    var s = document.createElement("div");
+    s.className = "vsd-slide";
+    s.innerHTML = slideHtml(md);
+    deckWrap.appendChild(s);
+    deckSlides.push(s);
+    showBoard("deck");
+    deckShow(deckSlides.length - 1);   // reveal the new slide immediately (text)
+    await renderMermaidIn(s);          // its diagram fills in a beat later
+  }
+  function deckShow(n) {
+    if (!deckSlides.length) return;
+    deckCur = Math.max(0, Math.min(deckSlides.length - 1, n));
+    deckSlides.forEach(function (sl, i) { sl.classList.toggle("cur", i === deckCur); });
+  }
+  function deckGoto(n) { deckShow((n || 1) - 1); }
+  function deckResetLocal() {
+    deckMd = ""; deckSlides = []; deckCur = 0;
+    if (deckWrap) { deckWrap.innerHTML = ""; }
+    showBoard(null);
   }
   async function deckAdd(slideMd) {
     var r = await fetch("/voice/deck/add", { method: "POST",
       headers: { authorization: "Bearer " + TOKEN, "content-type": "text/plain" }, body: slideMd });
     if (!r.ok) throw new Error("deck " + r.status);
     deckMd = await r.text();
-    var count = deckMd.split(/\n---\n/).length;
-    await renderDeck(deckMd, count - 1);
+    await deckAppend(slideMd);   // ONLY the new slide — no full re-render
   }
 
   var d2Cache = new Map();
@@ -2007,7 +2048,7 @@
     buildDOM();
     mounted = true;
     lockEngine();
-    deckMd = ""; deckInst = null;
+    deckMd = ""; deckResetLocal();
     if (voice) {
       fetch("/voice/deck/new", { method: "POST",
         headers: { authorization: "Bearer " + TOKEN } }).catch(function () {});
@@ -2147,14 +2188,14 @@
       //    accumulated markdown is the plan artifact. slide() appends + shows.
       slide: function (md) { return mounted ? deckAdd(md) : Promise.resolve(); },
       deckReset: function () {
-        deckMd = "";
+        deckResetLocal();
         return fetch("/voice/deck/new", { method: "POST",
           headers: { authorization: "Bearer " + TOKEN } }).catch(function () {});
       },
       deckGoto: function (n) { deckGoto(n); },
-      deckPrev: function () { if (deckInst && boardMode === "deck") deckInst.prev(); },
-      deckNext: function () { if (deckInst && boardMode === "deck") deckInst.next(); },
-      deckCount: function () { return deckMd ? deckMd.split(/\n---\n/).length : 0; },
+      deckPrev: function () { deckShow(deckCur - 1); },
+      deckNext: function () { deckShow(deckCur + 1); },
+      deckCount: function () { return deckSlides.length; },
       setTTS: function (on) { tts = !!on; if (tts) bootKokoro(); return tts; },
       ttsOn: function () { return tts; },
       ready: function () { return kokoro; },
@@ -2228,7 +2269,6 @@
         if (gbEl && gbEl.parentNode) gbEl.parentNode.removeChild(gbEl);
         var ppEl = stageEl && stageEl.querySelector(".vs-paper");
         if (ppEl && ppEl.parentNode) ppEl.parentNode.removeChild(ppEl);
-        if (deckInst) { try { deckInst.destroy(); } catch (e) {} deckInst = null; }
         if (oRef && oRef.parentNode) oRef.parentNode.removeChild(oRef);
         if (adopted && handRefs) {
           [handRefs.r, handRefs.l].forEach(function (h) {
