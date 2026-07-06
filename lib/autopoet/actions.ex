@@ -243,7 +243,11 @@ defmodule Autopoet.Actions do
   defp status_of(_), do: :error
 
   defp emit(kind, action, status) do
-    Nexus.Events.emit(%{kind: kind, action: action.name, source: to_string(action.source), status: status, tags: []})
+    # carry the action's semantic content as decision context (features), so an
+    # `action.proposed` is a training row, not just a name — parallels the
+    # `proposal.recorded` context.
+    ctx = %{desc: action |> Map.get(:description, "") |> to_string() |> String.slice(0, 200)}
+    Nexus.Events.emit(%{kind: kind, action: action.name, source: to_string(action.source), status: status, context: ctx, tags: []})
   rescue
     _ -> :ok
   end

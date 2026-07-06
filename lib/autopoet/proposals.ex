@@ -34,10 +34,40 @@ defmodule Autopoet.Proposals do
     end
 
     n = map_size(changes) + map_size(appends)
-    Nexus.Events.emit(%{kind: "proposal.recorded", proposal: id, target: item[:target], tags: []})
+
+    # DECISION FEATURES captured at propose-time — the CONTEXT the decision was
+    # made in, so the captured event is a training row (the X), not just a label.
+    # Without this the trace records WHAT was decided but not WHY, and the context
+    # is lost forever (unlogged features can't be backfilled). Kept compact: every
+    # emit is written to the trace corpus.
+    Nexus.Events.emit(%{
+      kind: "proposal.recorded",
+      proposal: id,
+      target: item[:target],
+      context: decision_context(item, changes, appends),
+      tags: []
+    })
+
     Autopoet.Log.puts("PROPOSAL #{id} recorded for #{item[:target]} (#{n} file(s)) — autopoetctl accept #{id}")
     id
   end
+
+  # Compact, structured features of the decision (why it arose + what it touches).
+  defp decision_context(item, changes, appends) do
+    %{
+      sensed: to_string(item[:kind] || item[:source] || "?"),
+      reasons: norm_reasons(item[:reasons]),
+      summary: item[:summary] |> to_string() |> String.slice(0, 200),
+      files: map_size(changes) + map_size(appends),
+      paths: (Map.keys(changes) ++ Map.keys(appends)) |> Enum.map(&to_string/1) |> Enum.take(12)
+    }
+  end
+
+  defp norm_reasons(nil), do: []
+  defp norm_reasons(r) when is_list(r), do: r |> Enum.map(&stringify/1) |> Enum.take(8)
+  defp norm_reasons(r), do: [stringify(r)]
+  defp stringify(x) when is_binary(x), do: String.slice(x, 0, 200)
+  defp stringify(x), do: x |> inspect() |> String.slice(0, 200)
 
   def list do
     for base <- Path.wildcard(Path.join(dir(), "p*")), File.dir?(base) do
