@@ -1,0 +1,172 @@
+# Substrate Learning — go-forward plan
+
+How the autopoet turns its own runs into training data that makes its resident
+models (`Autopoet.Micro` decision limb, `Shadow.Profile` companion, the online
+minGRU assessor) better at PERCEIVING and ACTING — without a human reading
+everything, and without the loop rotting. #plan #substrate #learning
+
+This plan is grounded in the systems that already exist (verified, not assumed):
+[[market]] (ground-truth reward), [[sim_human]] (the AI-judge proxy + Goodhart
+reconcile), [[proposals]] (the labeled accept/reject stream), [[shadow]]
+(Hebb/Surprise/Outcomes + the new Trace/Profile companion), and the batched
+review digest in [[control]]. One piece I have NOT read line-by-line: the Python
+eval harness (`evals/*.py`) — its internals are inferred, so the eval section is a
+design target, not a description of today.
+
+## 0. The one idea
+
+Design the DATA-GENERATING PROCESS, not just the model. Every eval and every
+default loop is a training-data factory. Judge them by the data they emit —
+varied, labeled, consequential, higher-order — not by pass/fail alone. The
+lesson from the 450k eval corpus stands: deterministic replay loops are worthless
+to a learner (nothing to generalize), and volume without structure is noise.
+
+## 1. The label hierarchy (the load-bearing correction)
+
+There is no single "ground truth" label — there is a LADDER, and confusing the
+rungs is how these loops rot (Sakana's AI-Scientist failure; [[sim_human]] cites
+it by name).
+
+- **TRUTH — the market.** [[market]] settles `reward.landed` from unfakeable
+  external signals (real signup = 1.0, view = 0.01, revenue → [[treasury]]).
+  Sparse and delayed, but incorruptible. THIS is the label the assessor is
+  ultimately trained to predict.
+- **PROXY — the AI-judge.** [[sim_human]] `screen/2` returns
+  `:accept | :reject | :revise` suggestions, abundant and cheap, from a model
+  DISTINCT from the brain's planner (anti-collusion). Biased and gameable — a
+  teacher signal, never the objective.
+- **BRIDGE — reconcile.** `SimHuman.reconcile/2` scores every proxy prediction
+  against the market outcome; the YES-but-market-said-NO fraction is the drift
+  alarm. This is already the tripwire that keeps the proxy from quietly becoming
+  the truth. It is ALSO where the scarce human belongs (§4).
+- **CORRECTION — the human.** Precious, slow, not scalable. Spent via active
+  learning ONLY where the ladder disagrees or is uncertain — never on the whole
+  stream.
+
+Training reads the ladder top-down for OBJECTIVE (market), bottom-up for VOLUME
+(proxy), and uses reconcile + human to keep the two honest.
+
+## 2. Data generation — evals, onboarding, default loops
+
+### Evals as data factories
+
+Change what an eval IS: from a pass/fail check to a labeled-trajectory generator.
+
+- **Outcome-labeled trajectory evals** — run a task end-to-end until [[market]]
+  settles a real reward (via the injectable `:source` poller, which evals already
+  feed). Each run emits `(context → decision → market outcome)` triples. Highest
+  value, because it teaches ACTING, not just next-event prediction.
+- **Context-varied decision sweeps** — the fix for the deterministic-loop
+  problem. Vary the HISTORY leading into the same decision-locus so the model
+  sees each decision under many contexts. Fixed-scenario replay produced the
+  worthless 450k corpus; varied context is what creates learnable higher-order
+  structure.
+- **Adversarial / counterfactual evals** — deliberately construct
+  context-conditioned cases (right-action-depends-on-N-back, plus the
+  wrong-in-context variant) to produce labeled ± examples of the higher-order
+  patterns — direct training data for collapse/anomaly detection.
+- **Long-horizon evals** — multi-step tasks where later decisions genuinely
+  depend on earlier state, so higher-order structure ARISES from real complexity
+  rather than being manufactured.
+- **Eval scoring gains a data-quality metric** — every eval run also reports
+  `Shadow.Trace.order_gate` + `Shadow.Profile` on its OWN trace: decision-point
+  entropy and higher-order signal. An eval that emits only deterministic loops is
+  flagged low training-value. Data quality becomes a first-class eval output.
+
+### Onboarding ([[intake]]) — a structured, moving start
+
+- **Seed a connected world, not a flat one.** Ventures/desks WITH relationships,
+  so "what to do next" depends on graph state (conditional decisions =
+  higher-order by construction). Intake already stages `plan.firstrun` so the
+  graph is moving at first paint — bias it toward CONSEQUENTIAL activity that can
+  reach a real market outcome.
+- **Arm a few bounded decision-bearing loops at onboarding** — not just schedules
+  and pulses (those are deterministic-spine, boring data). Small advisory/gated
+  autopoiesis loops that make context-dependent choices, so ordinary usage emits
+  DECISION events.
+- **Instrument choice points richly** — the event at a decision must carry the
+  context (recent state, options considered) needed to reconstruct it. You cannot
+  learn from a feature you did not capture.
+
+### Default systems / loops / recursion
+
+- **The self-edit autopoiesis loop is the ideal generator** — (state → proposal →
+  screen/accept → market outcome) IS (context → decision → labeled outcome). Arm
+  a bounded, human-gated version by default; it maximizes the labeled stream.
+- **Recursion must condition on accumulated state** — a loop that does the same
+  fixed thing each tick is dead data; a loop that reads the Hebbian graph /
+  Outcomes ledger and adapts its action is gold (its decisions are conditional).
+- **Close the loop — outcomes flow back as labels.** Extend [[shadow]]
+  `Outcomes` to LINK each decision event to its downstream outcome
+  (screen verdict → accept/reject → market reward/revert) into persisted training
+  triples. The pieces exist (target-keyed rewards, accept/reject events, the
+  proxy verdict); they are not yet stitched into `(decision, context, outcome)`
+  records. THIS is the first thing to build.
+
+## 3. The training pipeline (proxy-distill → market-calibrate → human-correct)
+
+1. **Distill on the proxy for volume.** Train the small assessor on the abundant
+   AI-judge labels — the big judge is the teacher (this is the on-policy /
+   knowledge-distillation path we already researched). Cheap, plentiful, gets the
+   model into the right neighborhood.
+2. **Calibrate on the market for objective.** The sparse `reward.landed` stream is
+   the real target. Re-weight / fine-tune / conformal-calibrate the assessor
+   against market outcomes so it predicts what actually earns, not what the judge
+   liked.
+3. **Correct with the human at the divergence.** Route scarce human labels via
+   `reconcile/2` — exactly the cases where proxy and market disagree (or the
+   assessor is most uncertain). Those corrections retrain both the proxy's
+   calibration and the assessor.
+4. **The data-quality gate governs.** `order_gate`/`Profile` on the accumulating
+   corpus decide WHEN there is enough real structure to train at all. Measure,
+   don't assume — a learned model ships only when it beats the first-order
+   detector on the gate.
+
+## 4. Human-in-the-loop, made easy (the part that must fit your time)
+
+The batched digest already exists (locked decision #4: pending proposals grouped
+by project, pull-not-push, never pinged). The go-forward makes it ACTIVE-LEARNING
+PRIORITIZED so a few minutes of your attention buys the most correction:
+
+- **Rank the queue by leverage, not recency** — surface first the items where
+  (a) proxy and market diverge (`reconcile`), (b) the assessor is most uncertain,
+  (c) the impact/ceiling is highest. Low-leverage items stay batched or
+  auto-resolve via market outcome.
+- **One-glance decisions** — each surfaced item shows the decision, the context,
+  the proxy's verdict, and the predicted outcome, reducible to a single
+  accept/reject/skip. No reading full files unless you choose to drill in.
+- **The market auto-labels the rest** — most decisions never need you; the market
+  outcome settles them. You are the correction signal for the AMBIGUOUS few, by
+  design.
+- **Escalation budget** — a hard cap on how many items can ask for you per digest,
+  so the system must SPEND your attention wisely (it self-prioritizes under the
+  cap rather than dumping everything).
+
+## 5. Guardrails (do not skip)
+
+- **Reconcile is mandatory** — any expansion of the AI-judge's authority must be
+  matched by market reconciliation; a proxy whose drift is not scored WILL be
+  gamed.
+- **Anti-collusion holds** — the judge, the brain, and the assessor must not
+  collapse into one model grading itself. Keep the distinct-model rule.
+- **Consent / privacy** — the training corpus inherits the [[genome]] FLEET-prior
+  boundaries (k-anonymity, template-relative loci); tenant-authored content is
+  unaggregatable by construction. No pipeline that leaks a tenant.
+- **Don't manufacture structure** — enrich the TASK so genuine higher-order
+  structure emerges; hand-crafted patterns for the model to memorize reproduce
+  the worthless-eval-corpus failure.
+
+## 6. Sequencing (what to build, in order)
+
+1. **Decision→outcome linking in `Shadow.Outcomes`** — persist
+   `(decision, context, proxy-verdict, market-outcome)` triples. Turns the
+   always-on capture from a raw log into a labeled dataset. Unblocks everything.
+2. **Data-quality metric on eval runs** — `order_gate`/`Profile` reported per
+   eval, so we can SEE which evals generate learnable data and fix the ones that
+   don't.
+3. **Active-learning digest** — reconcile/uncertainty ranking + escalation budget
+   on the existing pending-proposal surface. Makes your time count.
+4. **Context-varied + outcome-labeled eval types** — the data factories from §2.
+5. **Onboarding enrichment** — connected-world seed + bounded decision loops.
+6. **The training pipeline** — proxy-distill → market-calibrate, gated by §3.4.
+   Only after 1–5 have produced a corpus the gate says is worth it.

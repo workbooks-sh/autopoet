@@ -2,7 +2,7 @@ defmodule Autopoet.Micro do
   @moduledoc """
   The resident micro-brain — a small local LLM (MiniCPM5-1B, Q8 GGUF via
   llama-server) that makes DEFINITIVE PROCEDURAL TOOL DECISIONS across the
-  substrate. Net-new for autopoet (wb spike): NOT the planner (that stays
+  substrate. It is the substrate's decision limb: NOT the planner (that stays
   OpenRouter/Gemini) and NOT a nominator (a 1B echoes lists instead of ranking —
   the shipped hashed embedder keeps that job). Its one proven skill is picking
   the correct next ACTION from a fixed toolset given a situation.

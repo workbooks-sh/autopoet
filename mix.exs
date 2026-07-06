@@ -133,6 +133,10 @@ defmodule Autopoet.MixProject do
     else
       [
         {:bumblebee, "~> 0.7"},
+        # Scholar — native-Nx classical ML (GMM/logistic/KNN/Mahalanobis) for the
+        # shadow-layer companion analysis. Pure defn (no native build), desktop-only
+        # like the rest of ml_deps; the cloud brain doesn't run offline profiling.
+        {:scholar, "~> 0.4"},
         # runtime: false — XLA's dylib bundles protobuf/absl symbols that SEGFAULT onnxruntime if XLA loads
         # first; the Ortex lane must bind before :exla starts (whisper fallback starts :exla lazily, Stt).
         {:exla, "~> 0.12", runtime: false},
