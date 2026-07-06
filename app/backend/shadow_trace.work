@@ -1,0 +1,311 @@
+# Autopoet.Shadow.Trace
+
+  Analysis surface over the ALREADY-CAPTURED event corpus (`Autopoet.Capture`
+
+The module verbatim, now authored as `.work` — its Elixir source lives inside
+a beam-compiled `server` block instead of a scattered `.ex` file.
+
+server :shadow_trace do
+defmodule Autopoet.Shadow.Trace do
+  @moduledoc """
+  Analysis surface over the ALREADY-CAPTURED event corpus (`Autopoet.Capture`
+  writes `data/traces/<utc-date>.etfs` on every boot). This module reads that
+  corpus back and answers the ONE question that gates the learned-recurrent-model
+  direction: does the REAL substrate stream contain HIGHER-ORDER structure that
+  the first-order `Shadow.Surprise` detector is blind to?
+
+  It is the real-data counterpart of `spike/higher_order_signal.exs` (which proved
+  the mechanism on synthetic data). No labels exist on real traces, so instead of
+  AUROC we measure held-out PREDICTIVE ENTROPY (bits/event) of k-order Markov
+  models: if conditioning on more history materially lowers bits WHERE we have the
+  context, a recurrent model (minGRU) can exploit that; if not, keep the hand-tuned
+  first-order stack (ICSE "How Far Are We?" — learned must beat simple).
+
+  Pure/instrument-honest: it reuses `Shadow.workload?/1` + `Shadow.signal/1` — the
+  exact filter and signal the live learners see — and the same framed-ETF format
+  `Autopoet.Capture` writes, read crash-tolerantly (a torn tail frame is skipped).
+  """
+
+  @doc "The trace directory (mirrors `Autopoet.Capture.dir/0`); override for tests."
+  def dir(root \\ nil), do: Path.join([root || default_root(), "data", "traces"])
+
+  defp default_root do
+    # Prefer the app's configured home; fall back to cwd so the spike/test can run
+    # without the full application started.
+    try do
+      Autopoet.Discovery.home()
+    rescue
+      _ -> File.cwd!()
+    end
+  end
+
+  @doc """
+  All events across the date-named `*.etfs` files, in capture order. `telemetry`
+  and any non-date file are skipped (different stream). Torn tail frames dropped.
+  """
+  def events(trace_dir) do
+    trace_dir
+    |> date_files()
+    |> Enum.flat_map(&decode_frames(File.read!(&1)))
+  end
+
+  # Only YYYY-MM-DD.etfs — the daily event rotation, sorted chronologically.
+  defp date_files(trace_dir) do
+    case File.ls(trace_dir) do
+      {:ok, names} ->
+        names
+        |> Enum.filter(&Regex.match?(~r/^\d{4}-\d{2}-\d{2}\.etfs$/, &1))
+        |> Enum.sort()
+        |> Enum.map(&Path.join(trace_dir, &1))
+
+      _ ->
+        []
+    end
+  end
+
+  # Frame format (Autopoet.Capture): repeated <<size::32, term_to_binary(ev)>>.
+  defp decode_frames(bin), do: decode_frames(bin, [])
+
+  defp decode_frames(<<size::32, blob::binary-size(size), rest::binary>>, acc) do
+    case safe_term(blob) do
+      {:ok, ev} -> decode_frames(rest, [ev | acc])
+      :error -> Enum.reverse(acc)
+    end
+  end
+
+  # torn/short tail (crash-truncated write) → stop, keep what we have
+  defp decode_frames(_tail, acc), do: Enum.reverse(acc)
+
+  defp safe_term(blob) do
+    {:ok, :erlang.binary_to_term(blob)}
+  rescue
+    _ -> :error
+  end
+
+  @doc """
+  The ordered WORKLOAD signal stream. `level`:
+
+    * `:doc` (default) — the exact `Shadow.signal/1` the live learners see
+      (`doc || target || kind`); high-cardinality (per-document loci), needs a
+      large corpus before higher-order contexts are dense.
+    * `:kind` — just the event KIND (~25 types); low-cardinality, so higher-order
+      structure shows up with far less data. The coarser lens on the same stream.
+  """
+  def signals(events, level \\ :doc) do
+    events
+    |> Enum.filter(&Autopoet.Shadow.workload?/1)
+    |> Enum.map(fn ev ->
+      case level do
+        :kind -> to_string(ev[:kind])
+        _ -> Autopoet.Shadow.signal(ev)
+      end
+    end)
+  end
+
+  @doc """
+  Link decisions to their outcomes into TRAINING TRIPLES from the captured corpus.
+  Joins `proposal.recorded` (the decision + its `context` features) to its verdict
+  (`proposal.accepted|rejected|reverted`, by proposal id) and to the market reward
+  on the same target (`reward.landed` `:amount`, summed — the ground-truth label).
+
+  Each triple: `%{proposal, target, context, verdict, reward, feature_complete?}`.
+  `verdict` is `"accepted"|"rejected"|"reverted"|"pending"`; `reward` is the summed
+  market amount (0.0 if none); `feature_complete?` is true only when the decision
+  actually carried context features (false for pre-enrichment events — the honest
+  "before" marker).
+  """
+  def triples(events) do
+    by = fn k -> Enum.filter(events, &(to_string(&1[:kind]) == k)) end
+
+    verdicts =
+      for e <- events,
+          k = to_string(e[:kind]),
+          k in ~w(proposal.accepted proposal.rejected proposal.reverted),
+          pid = e[:proposal],
+          not is_nil(pid),
+          into: %{},
+          do: {pid, String.replace_prefix(k, "proposal.", "")}
+
+    reward_by_target =
+      by.("reward.landed")
+      |> Enum.reduce(%{}, fn e, acc ->
+        t = to_string(e[:target])
+        Map.update(acc, t, num(e[:amount]), &(&1 + num(e[:amount])))
+      end)
+
+    # CAUSE-CHAIN join: market rewards often don't share a target string with the
+    # decision (a trade decision is keyed on the action/locus; its PnL reward is
+    # keyed on the symbol). But events chain by `:cause`, so walk a reward back to
+    # the decision that caused it and attribute the amount to that proposal id.
+    by_id = for e <- events, id = e[:id], not is_nil(id), into: %{}, do: {id, e}
+
+    reward_by_decision =
+      by.("reward.landed")
+      |> Enum.reduce(%{}, fn r, acc ->
+        case walk_to_decision(r[:cause], by_id) do
+          %{} = d -> Map.update(acc, d[:proposal], num(r[:amount]), &(&1 + num(r[:amount])))
+          _ -> acc
+        end
+      end)
+
+    for d <- by.("proposal.recorded") do
+      pid = d[:proposal]
+      target = to_string(d[:target])
+      ctx = d[:context] || %{}
+      via_cause = Map.get(reward_by_decision, pid, 0.0)
+      via_target = Map.get(reward_by_target, target, 0.0)
+      # prefer the precise cause-linked reward; fall back to target-match
+      {reward, reward_via} =
+        cond do
+          via_cause > 0.0 -> {via_cause, :cause}
+          via_target > 0.0 -> {via_target, :target}
+          true -> {0.0, :none}
+        end
+
+      %{
+        proposal: pid,
+        target: target,
+        context: ctx,
+        verdict: Map.get(verdicts, pid, "pending"),
+        reward: reward,
+        reward_via: reward_via,
+        feature_complete?: feature_complete?(ctx)
+      }
+    end
+  end
+
+  # Walk `:cause` links (bounded) to the nearest decision event, or nil.
+  @decision_kinds ~w(proposal.recorded action.proposed)
+  defp walk_to_decision(cause, by_id) do
+    Enum.reduce_while(1..32, cause, fn _, c ->
+      case Map.get(by_id, c) do
+        nil -> {:halt, nil}
+        e -> if to_string(e[:kind]) in @decision_kinds, do: {:halt, e}, else: {:cont, e[:cause]}
+      end
+    end)
+  end
+
+  @doc "Summary of the labeled dataset the triples form — the training-readiness scorecard."
+  def label_stats(triples) do
+    n = length(triples)
+    proxy = Enum.count(triples, &(&1.verdict != "pending"))
+
+    %{
+      decisions: n,
+      proxy_labeled: proxy,
+      verdicts: Enum.frequencies_by(triples, & &1.verdict),
+      market_labeled: Enum.count(triples, &(&1.reward > 0.0)),
+      feature_complete: Enum.count(triples, & &1.feature_complete?)
+    }
+  end
+
+  # A decision carries real features iff its context has non-default reasons,
+  # summary, or paths (not just the empty defaults the enrichment falls back to).
+  defp feature_complete?(ctx) when is_map(ctx) do
+    (is_list(ctx[:reasons]) and ctx[:reasons] != []) or
+      (is_binary(ctx[:summary]) and ctx[:summary] != "") or
+      (is_list(ctx[:paths]) and ctx[:paths] != [])
+  end
+
+  defp feature_complete?(_), do: false
+
+  defp num(n) when is_number(n), do: n
+  defp num(_), do: 0.0
+
+  @doc "Corpus shape: total events, workload signals, distinct loci, top loci."
+  def stats(signals) do
+    freq = Enum.frequencies(signals)
+
+    %{
+      n: length(signals),
+      vocab: map_size(freq),
+      top: freq |> Enum.sort_by(fn {_, c} -> -c end) |> Enum.take(8)
+    }
+  end
+
+  @doc """
+  The higher-order gate on real signals. Temporal 80/20 split (no leakage). For
+  each order `k` in `1..max_k`, over test positions whose k-context was SEEN in
+  train (>= `min_ctx` times — so data volume and structure don't confound),
+  mean predictive bits/event with add-α smoothing. Also `coverage` = fraction of
+  test positions that met the seen-context bar (low coverage ⇒ need more traces).
+
+  Returns `%{k => %{bits, coverage, seen}}` plus `:verdict`.
+  """
+  def order_gate(signals, opts \\ []) do
+    max_k = Keyword.get(opts, :max_k, 3)
+    min_ctx = Keyword.get(opts, :min_ctx, 3)
+    alpha = Keyword.get(opts, :alpha, 0.5)
+
+    n = length(signals)
+    split = trunc(n * 0.8)
+    {train, test} = Enum.split(signals, split)
+    vocab = train |> MapSet.new() |> MapSet.size() |> max(1)
+    test_arr = List.to_tuple(test)
+
+    per_k =
+      for k <- 1..max_k, into: %{} do
+        {joint, ctx} = counts(train, k)
+
+        {bits_sum, seen} =
+          Enum.reduce(k..(tuple_size(test_arr) - 1)//1, {0.0, 0}, fn i, {bs, sn} ->
+            context = for j <- (i - k)..(i - 1), do: elem(test_arr, j)
+            nxt = elem(test_arr, i)
+            ctx_total = Map.get(ctx, context, 0)
+
+            if ctx_total >= min_ctx do
+              c = Map.get(joint, {context, nxt}, 0)
+              p = (c + alpha) / (ctx_total + alpha * vocab)
+              {bs + -:math.log2(p), sn + 1}
+            else
+              {bs, sn}
+            end
+          end)
+
+        test_positions = max(tuple_size(test_arr) - k, 1)
+        bits = if seen > 0, do: bits_sum / seen, else: nil
+        {k, %{bits: bits, coverage: seen / test_positions, seen: seen}}
+      end
+
+    per_k
+    |> Map.put(:verdict, verdict(per_k, max_k))
+    |> Map.put(:meta, %{events: n, vocab: vocab, train: length(train), test: length(test)})
+  end
+
+  # k-order counts: joint {context, next} and context totals.
+  defp counts(stream, k) do
+    stream
+    |> Enum.chunk_every(k + 1, 1, :discard)
+    |> Enum.reduce({%{}, %{}}, fn chunk, {joint, ctx} ->
+      context = Enum.take(chunk, k)
+      nxt = List.last(chunk)
+      {Map.update(joint, {context, nxt}, 1, &(&1 + 1)), Map.update(ctx, context, 1, &(&1 + 1))}
+    end)
+  end
+
+  # Compare first-order against the BEST higher-order model — the one with the
+  # lowest bits among k>=2 that still has adequate coverage. (Bug fixed: an
+  # earlier version only looked at k=2 and missed a large k=3 improvement.)
+  defp verdict(per_k, max_k) do
+    b1 = get_in(per_k, [1, :bits])
+    cov1 = get_in(per_k, [1, :coverage]) || 0.0
+
+    higher =
+      for k <- 2..max_k,
+          r = per_k[k],
+          not is_nil(r.bits),
+          r.coverage >= 0.2,
+          do: {r.bits, r.coverage}
+
+    cond do
+      is_nil(b1) -> :insufficient_data
+      cov1 < 0.2 -> :need_more_traces
+      higher == [] -> :need_more_traces
+      true ->
+        {best_bits, _} = Enum.min_by(higher, fn {bits, _} -> bits end)
+        # a >=0.3 bit/event reduction (≈ a 25%+ perplexity cut) is material
+        if b1 - best_bits >= 0.3, do: :higher_order_signal_present, else: :first_order_sufficient
+    end
+  end
+end
+end

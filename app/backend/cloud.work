@@ -1,0 +1,136 @@
+# Autopoet.Cloud
+
+  AutoPoet's link to **Workbooks Cloud** (the control plane).
+
+The module verbatim, now authored as `.work` — its Elixir source lives inside
+a beam-compiled `server` block instead of a scattered `.ex` file.
+
+server :cloud do
+defmodule Autopoet.Cloud do
+  @moduledoc """
+  AutoPoet's link to **Workbooks Cloud** (the control plane).
+
+  Sign-in is a **browser device flow**: we open the cloud login with `?device=autopoet&cb=<localhost>`;
+  after you authenticate, the cloud mints a `wbk_` PAT and redirects to our localhost callback. We store
+  that PAT and use it as a Bearer token for `/api/cloud/*` (provision, machine lifecycle) and
+  `/api/platform/*` (account, usage). The target cloud is configurable — `WORKBOOKS_CLOUD_URL` (or
+  `config :autopoet, :cloud_url`), defaulting to the local dev server for now.
+  """
+  # the DEPLOYED cloud (not localhost) — the device-flow login lives here and
+  # honors ?device=&cb=. Env-overridable (WORKBOOKS_CLOUD_URL) for local dev.
+  @default_url "https://app.workbooks.sh"
+
+  @doc "The Workbooks Cloud base URL (no trailing slash)."
+  def base_url do
+    (Application.get_env(:autopoet, :cloud_url) || System.get_env("WORKBOOKS_CLOUD_URL") || @default_url)
+    |> to_string()
+    |> String.trim_trailing("/")
+  end
+
+  defp token_path, do: Path.join([Autopoet.Discovery.home(), "data", "cloud", "token"])
+
+  @doc "Store the PAT from the device-flow callback."
+  def put_token(pat) when is_binary(pat) do
+    case String.trim(pat) do
+      "" ->
+        {:error, :empty}
+
+      t ->
+        File.mkdir_p!(Path.dirname(token_path()))
+        File.write!(token_path(), t)
+        _ = File.chmod(token_path(), 0o600)
+        :ok
+    end
+  end
+
+  @doc "The stored PAT, or nil."
+  def token do
+    with {:ok, raw} <- File.read(token_path()),
+         t = String.trim(raw),
+         true <- t != "" do
+      t
+    else
+      _ -> nil
+    end
+  end
+
+  def signed_in?, do: is_binary(token())
+  def disconnect, do: File.rm(token_path())
+
+  @doc """
+  Full sign-out from Workbooks Cloud: best-effort revoke the PAT server-side
+  (so a copied token dies too), then drop the local token. Never raises — a
+  cloud-unreachable revoke still clears the local session.
+  """
+  def sign_out do
+    if t = token() do
+      _ = request(:delete, "/api/platform/tokens/current", %{token: t})
+    end
+
+    disconnect()
+    :ok
+  rescue
+    _ ->
+      disconnect()
+      :ok
+  end
+
+  @doc "The browser cloud-logout URL — clears the session cookie for a truly fresh re-login."
+  def logout_url, do: base_url() <> "/login/?logout=1"
+
+  @doc "The signed-in account (GET /api/platform/me), or nil if not signed in / unreachable."
+  def account do
+    case get("/api/platform/me") do
+      {:ok, %{"user" => u} = me} ->
+        %{
+          email: u["email"] || "",
+          name: u["name"] || "",
+          # avatar from the GitHub/Google profile — synced into desktop onboarding
+          avatar: u["avatar"] || u["picture"] || u["avatar_url"],
+          org: me["active_org"],
+          role: me["role"]
+        }
+
+      _ ->
+        nil
+    end
+  end
+
+  # ── the cloud HTTP API (Bearer PAT) ──────────────────────────────────────────────────────────────
+  def get(path), do: request(:get, path, nil)
+  def post(path, body), do: request(:post, path, body)
+
+  defp request(method, path, body) do
+    case token() do
+      nil ->
+        {:error, :not_signed_in}
+
+      tok ->
+        :inets.start()
+        :ssl.start()
+        url = String.to_charlist(base_url() <> path)
+        auth = {~c"authorization", String.to_charlist("Bearer " <> tok)}
+
+        req =
+          if is_map(body),
+            do: {url, [auth], ~c"application/json", Jason.encode!(body)},
+            else: {url, [auth]}
+
+        case :httpc.request(method, req, [timeout: 20_000], body_format: :binary) do
+          {:ok, {{_, code, _}, _h, resp}} when code in 200..299 -> {:ok, decode(resp)}
+          {:ok, {{_, code, _}, _h, resp}} -> {:error, {code, decode(resp)}}
+          {:error, e} -> {:error, e}
+        end
+    end
+  end
+
+  defp decode(""), do: %{}
+
+  defp decode(bin) when is_binary(bin) do
+    case Jason.decode(bin) do
+      {:ok, v} -> v
+      _ -> %{}
+    end
+  end
+end
+end
