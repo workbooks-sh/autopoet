@@ -23,40 +23,36 @@ defmodule Autopoet.Application do
     # dep here (its own Application doesn't boot Config), so we boot it ourselves.
     Nexus.Config.boot()
     port = port()
+    root = Path.join([Autopoet.Discovery.home(), "app", "home"])
 
-    # Cloud profile: the SAME build runs on a vendored Fly machine as the 24/7
-    # agent — no window, no mic STT, no realtime Voice (those are desktop-only
-    # I/O), and it binds all interfaces (the machine's own network), not just
-    # loopback. The desktop profile keeps everything and stays loopback-only.
-    io = if cloud?(), do: {0, 0, 0, 0}, else: {127, 0, 0, 1}
+    # Compile the `.work` BEAM tier NOW — before the supervision tree — so every
+    # server-block module the app supervises, `Autopoet.Spine` first among them, is a
+    # loaded module by the time its child slot starts. This makes the dependency
+    # EXPLICIT rather than relying on Nexus.Server's own bringup side-effect firing at
+    # the right moment; Nexus.Server (child 1) re-runs bringup, but the nexus compile
+    # cache is content-addressed, so that second pass is a cache hit, not a recompile.
+    Nexus.Compile.workbook(root)
 
+    # v0-nexus tree — three top-level boundaries; the fat domain child list now
+    # lives in the `.work`-authored `Autopoet.Spine` (app/home/backend/spine.work):
+    #
+    #   1. Nexus.Server — owns HTTP on the port the window points at, serves the
+    #      `.work` app surface (app/home) at `/`. All ~166 routes are server blocks
+    #      (P1); Autopoet.Control + its Bandit are RETIRED — the runtime owns HTTP.
+    #   2. Autopoet.Spine — the app's own domain/brain processes (P2). Handed as an
+    #      explicit map spec (start: mfa, no upfront `child_spec/1`) so the Supervisor
+    #      never touches the module until its slot actually starts.
+    #   3. Autopoet.Window — the desktop kill-switch (closing it halts the BEAM).
     children =
       [
-        Autopoet.Log,
-        Autopoet.History,
-        Autopoet.Auth,
-        Autopoet.Profile
-      ] ++
-        desktop_io() ++
-        [
-          Autopoet.Watchdog,
-          Autopoet.Requests,
-          Autopoet.Capture,
-          Autopoet.Snapshot,
-          Autopoet.Shadow.Hebb,
-          Autopoet.Shadow.Surprise,
-          Autopoet.Shadow.Outcomes,
-          # Autopoet runs ON the nexus: Nexus.Server owns the port the window
-          # points at and serves the `.work` app surface (app/home — client
-          # islands + server blocks) at `/`. All 166 routes migrated to server
-          # blocks (P1), so the legacy `Autopoet.Control` Plug + its Bandit are
-          # RETIRED — the runtime owns HTTP now.
-          {Nexus.Server, root: Path.join([Autopoet.Discovery.home(), "app", "home"]), port: port},
-          {Autopoet.Discovery, port}
-        ] ++ [Autopoet.Desks] ++ desk() ++ window()
+        {Nexus.Server, root: root, port: port},
+        %{
+          id: Autopoet.Spine,
+          start: {Autopoet.Spine, :start_link, [%{port: port}]},
+          type: :supervisor
+        }
+      ] ++ window()
 
-    # max_restarts headroom: tests hard-kill the three shadow learners to force
-    # cold/reboot paths — three near-simultaneous restarts must not take down the tree
     result =
       Supervisor.start_link(children,
         strategy: :one_for_one,
@@ -117,35 +113,12 @@ defmodule Autopoet.Application do
     File.mkdir_p!(Nexus.Paths.data_dir())
   end
 
-  # Desktop-only I/O children (mic STT + realtime Voice) — dropped in the cloud.
-  # Filtered to modules that actually exist so a mid-refactor tree (a renamed or
-  # deleted I/O module) degrades to missing audio, never a boot crash.
-  defp desktop_io do
-    if cloud?() do
-      []
-    else
-      # Qwen3-TTS is the product engine. Kokoro is booted ONLY when the dev
-      # toggle asks for it (WB_VOICE=kokoro or data/voice-engine) — a comparison
-      # lens, never the default.
-      base = [Autopoet.Stt, Autopoet.Voice, Autopoet.QwenTts, Autopoet.Affect]
-      base = if Autopoet.VoiceEngine.kokoro?(), do: [Autopoet.Kokoro | base], else: base
-
-      Enum.filter(base, fn mod ->
-        Code.ensure_loaded?(mod) ||
-          (IO.puts("autopoet: desktop I/O child #{inspect(mod)} missing — skipped") && false)
-      end)
-    end
-  end
+  # The domain child list (log/history/shadow/desktop-I/O/discovery/desks) now lives in
+  # the `.work`-authored `Autopoet.Spine` (app/home/backend/spine.work) — this module is
+  # just the OTP bootstrap + one-shot world seeds.
 
   @doc "Is this the cloud profile (a vendored Fly machine), not the desktop?"
   def cloud?, do: System.get_env("AUTOPOET_TARGET") == "cloud"
-
-  # The always-on trading desk (day/night market cycle) — opt-in via AUTOPOET_DESK=1
-  # (machine-identity enablement, like PORT/WB_DATA). Never on in tests by default.
-  defp desk do
-    if System.get_env("AUTOPOET_DESK") == "1", do: [Autopoet.Desk], else: []
-  end
-
 
   defp window do
     headless? =
