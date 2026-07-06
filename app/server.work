@@ -25,6 +25,12 @@ server :onboard do
   route "GET /voice/engine", :voice_engine_get, auth: :public
   route "POST /voice/engine", :voice_engine_set, auth: :public
 
+  # the current pairing (skip the form), the compile-to-vault seam, and the eval judges
+  route "GET /onboard/pairing.json", :pairing_get, auth: :public
+  route "POST /plan/finalize", :plan_finalize, auth: :public
+  route "POST /plan/judge_vault", :judge_vault, auth: :public
+  route "GET /voice/tts/status", :tts_status, auth: :public
+
   def plan_turn(req) do
     state = if is_map(req.body), do: req.body, else: %{}
 
@@ -84,5 +90,36 @@ server :onboard do
       :ok -> %{engine: Autopoet.VoiceEngine.current()}
       _ -> {400, %{error: "bad engine"}}
     end
+  end
+
+  def pairing_get(_req) do
+    case Autopoet.Requisition.pairing() do
+      {:ok, identity} -> identity
+      _ -> {404, %{}}
+    end
+  end
+
+  # deck (the human-readable plan) → plan.* contract → the Intake builds the vault
+  def plan_finalize(req) do
+    body = if is_map(req.body), do: req.body, else: %{}
+
+    case Autopoet.PlanCompile.from_deck(body["deck"], body["pairing"], body["form"]) do
+      {:ok, result} -> result
+      {:error, reason} -> {500, %{error: to_string(reason)}}
+    end
+  end
+
+  def judge_vault(req) do
+    session = if is_map(req.body), do: req.body, else: %{}
+
+    case Autopoet.PlanBrain.judge_vault(session) do
+      {:ok, scores} -> scores
+      _ -> {503, %{error: "judge unavailable"}}
+    end
+  end
+
+  def tts_status(_req) do
+    ready = Autopoet.VoiceEngine.kokoro?() and Autopoet.Kokoro.ready?()
+    %{status: if(ready, do: "ready", else: "loading")}
   end
 end
