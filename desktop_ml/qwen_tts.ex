@@ -25,9 +25,10 @@ defmodule Autopoet.QwenTts do
     design: "mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-4bit",
     base: "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-4bit"
   }
-  # fresh process every N generations — quality drifts on a long-lived sidecar
-  # (fresh-boot takes A/B'd clearly better); recycled between utterances only
-  @recycle_after 6
+  # fresh process after N generations — but ONLY after a real idle gap
+  # (mid-conversation recycles caused latency spikes + voice inconsistency)
+  @recycle_after 12
+  @recycle_idle_ms 60_000
 
   def start_link(_), do: GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
 
@@ -78,6 +79,9 @@ defmodule Autopoet.QwenTts do
 
   @impl true
   def init(:ok) do
+    # WARM AT LAUNCH: the default voice's model loads with the app, not when
+    # the first line needs it (owner: latency must not include model boots)
+    send(self(), :boot_default)
     {:ok, %{port: nil, ready: false, seq: 0, waiting: %{}, buf: "", model: :custom, gens: 0}}
   end
 
@@ -120,9 +124,37 @@ defmodule Autopoet.QwenTts do
   end
 
   @impl true
+  def handle_info(:boot_default, s) do
+    model =
+      case File.read(Path.join([Autopoet.Discovery.home(), "data", "voices", "default"])) do
+        {:ok, d} ->
+          case String.split(String.trim(d), " ", parts: 2) do
+            ["qwen-clone", _] -> :base
+            ["qwen-design", _] -> :design
+            _ -> :custom
+          end
+
+        _ ->
+          :custom
+      end
+
+    {:noreply, boot(s, model)}
+  end
+
   def handle_info({port, {:data, chunk}}, %{port: port} = s) do
     {lines, buf} = split_lines(s.buf <> chunk)
     {:noreply, Enum.reduce(lines, %{s | buf: buf}, &handle_line/2)}
+  end
+
+  def handle_info({:idle_recycle, seq_then}, s) do
+    # recycle ONLY if not a single generation happened during the idle window
+    if s.seq == seq_then and map_size(s.waiting) == 0 and s.port != nil do
+      Autopoet.Log.puts("qwen-tts: idle recycle after #{s.gens} generations (60s quiet)")
+      Port.close(s.port)
+      {:noreply, boot(%{s | port: nil, ready: false, buf: ""}, s.model)}
+    else
+      {:noreply, s}
+    end
   end
 
   def handle_info({port, {:exit_status, code}}, %{port: port} = s) do
@@ -160,13 +192,13 @@ defmodule Autopoet.QwenTts do
     end
   end
 
-  # quality drifts over a long-lived process — recycle while IDLE (queue empty)
-  # so the next utterance meets a fresh engine with no user-visible gap
+  # quality drifts over a long-lived process — but recycling mid-conversation
+  # trades drift for stalls. Schedule a check after a REAL idle window; only
+  # recycle if nothing spoke in the meantime.
   defp maybe_recycle(%{gens: g, waiting: w, port: port} = s)
        when g >= @recycle_after and map_size(w) == 0 and port != nil do
-    Autopoet.Log.puts("qwen-tts: idle recycle after #{g} generations")
-    Port.close(port)
-    boot(%{s | port: nil, ready: false, buf: ""}, s.model)
+    Process.send_after(self(), {:idle_recycle, s.seq}, @recycle_idle_ms)
+    s
   end
 
   defp maybe_recycle(s), do: s

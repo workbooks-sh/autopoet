@@ -1150,23 +1150,27 @@
     if (cur) sText[sN] = cur;
     return sText;
   }
-  function kokoroGen(text) {
-    var key = JSON.stringify([ttsVoice, ttsEngine, VOICE_ID]) + "|" + text;
+  // the voice QUERY is captured ONCE per narration (perform start) and rides
+  // every clip of that narration — a mid-flight default/lab switch can never
+  // mix voices within one speech again
+  function voiceQuery() {
+    if (ttsVoice && ttsVoice.engine === "qwen-design")
+      return "engine=qwen-design&persona=" + encodeURIComponent(ttsVoice.persona || "narrator");
+    if (ttsVoice && ttsVoice.engine === "qwen-clone")
+      return "engine=qwen-clone&voice=" + encodeURIComponent(ttsVoice.voice || "");
+    return "";
+  }
+  function kokoroGen(text, vq) {
+    vq = vq === undefined ? voiceQuery() : vq;
+    var key = vq + "|" + text;
     if (genCache.has(key)) return genCache.get(key);
-    var p = kokoroGenRaw(text);
+    var p = kokoroGenRaw(text, vq);
     genCache.set(key, p);
     return p;
   }
-  function kokoroGenRaw(text) {
+  function kokoroGenRaw(text, vq) {
     if (true) {   // ONE lane: the server's Qwen engine (kokoro worker retired)
-      var q;
-      if (ttsVoice && ttsVoice.engine === "qwen-design") {
-        q = "engine=qwen-design&persona=" + encodeURIComponent(ttsVoice.persona || "narrator");
-      } else if (ttsVoice && ttsVoice.engine === "qwen-clone") {
-        q = "engine=qwen-clone&voice=" + encodeURIComponent(ttsVoice.voice || "");
-      } else {
-        q = "";   // no spec → the server resolves the app's default voice
-      }
+      var q = vq === undefined ? voiceQuery() : vq;
       return fetch("/voice/tts" + (q ? "?" + q : ""), {
         method: "POST",
         headers: { authorization: "Bearer " + TOKEN, "content-type": "text/plain" },
@@ -1297,9 +1301,10 @@
 
     // pipeline synthesis: all sentences fired at once, speak on first arrival
     var clips = [], clipP = [];
+    var narrationVoice = voiceQuery();   // FROZEN for this whole narration
     if (tts) {
       for (var s = 0; s < sText.length; s++) {
-        clipP[s] = kokoroGen(sText[s]);   // → clip {buffer, duration} (server or worker)
+        clipP[s] = kokoroGen(sText[s], narrationVoice);
         clipP[s].then((function (idx) { return function (a) { clips[idx] = a; }; })(s));
       }
       clips[0] = await clipP[0];
@@ -1867,7 +1872,11 @@
       setTTS: function (on) { tts = !!on; if (tts) bootKokoro(); return tts; },
       ttsOn: function () { return tts; },
       ready: function () { return kokoro; },
-      warm: function (text) { if (tts) ttsTexts(text).forEach(kokoroGen); },
+      warm: function (text) {
+        if (!tts) return;
+        var vq = voiceQuery();
+        ttsTexts(text).forEach(function (t) { kokoroGen(t, vq); });
+      },
       wave: function () { if (mounted) wave(); },
       nod: function (amp) {
         if (!mounted) return;

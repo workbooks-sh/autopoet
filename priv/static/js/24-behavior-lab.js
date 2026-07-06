@@ -53,7 +53,7 @@ window.BehaviorLab = (() => {
           <input type="range" min="0" max="1" step="0.05" value="${P[k]}" data-k="${k}"></label>`).join("");
       panel.querySelectorAll("input[data-k]").forEach(i => i.oninput = () => P[i.dataset.k] = +i.value);
     };
-    sel.onchange = () => load(sel.value);
+    sel.onchange = () => { load(sel.value); panel.querySelector("#bl-use").click(); };
     load(sel.value);
 
     panel.querySelector("#bl-x").onclick = close;
