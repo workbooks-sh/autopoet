@@ -21,7 +21,4 @@ if [ -f .env ]; then
   set +a
 fi
 
-WORK_BIN="${WORK_BIN:-../cli/zig-out/bin/work}"
-if [ -x "$WORK_BIN" ]; then "$WORK_BIN" weave app priv/static/woven.work.html >/dev/null 2>&1 || true; fi
-
 exec mix run --no-halt

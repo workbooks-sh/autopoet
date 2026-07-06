@@ -237,7 +237,7 @@ server :app_ctl do
                do: Autopoet.Notes.write(rel, content)
         end
 
-        %{ok: true}
+        {200, "text/plain; charset=utf-8", "accepted #{id}\n"}
 
       _ ->
         {404, %{error: "no such proposal"}}
@@ -488,10 +488,12 @@ server :ops do
       nil ->
         {200, "text/plain; charset=utf-8", "unknown project\n"}
 
-      _p ->
+      p ->
         hb = Path.join(Autopoet.Projects.artifacts_dir(slug), "state.txt")
         state = case File.read(hb) do {:ok, t} -> t; _ -> "(no heartbeat yet)\n" end
-        {200, "text/plain; charset=utf-8", state}
+        # header line carries the typed project state (chartered/desk) the status needs;
+        # the migration had returned only the raw heartbeat file, dropping it.
+        {200, "text/plain; charset=utf-8", "#{slug} #{p.status} chartered=#{p.chartered} desk=#{p.desk_running}\n#{state}"}
     end
   end
 
@@ -837,10 +839,26 @@ server :ops5 do
   def projects_new(req) do
     slug = req.query["slug"] || "project-#{System.os_time(:second)}"
     archetype = String.to_atom(req.query["archetype"] || "venture")
+    prompt = to_string(req.raw_body || "")
 
     case Autopoet.Projects.create(slug, archetype: archetype) do
-      {:ok, p} -> %{ok: true, slug: p.slug}
-      {:error, w} -> {422, %{error: inspect(w)}}
+      {:ok, p} ->
+        # conversational creation: the body prompt is the onboarding note, and creating
+        # a project LAUNCHES its desk (genesis begins). Faithful to the retired
+        # Control.post "/projects/new" — the migration had dropped both steps.
+        if String.trim(prompt) != "" do
+          dir = Autopoet.Projects.artifacts_dir(p.slug)
+          File.mkdir_p!(dir)
+          File.write!(Path.join(dir, "onboarding.txt"), prompt)
+        end
+
+        case Autopoet.Desks.launch(p.slug) do
+          {:ok, _} -> {200, "text/plain; charset=utf-8", "created #{p.slug} — desk running, genesis begins\n"}
+          {:error, why} -> {200, "text/plain; charset=utf-8", "created #{p.slug} — desk failed: #{inspect(why)}\n"}
+        end
+
+      {:error, w} ->
+        {422, %{error: inspect(w)}}
     end
   end
 
@@ -867,13 +885,25 @@ server :ops6 do
   route "GET /voice/deck/export", :deck_export, auth: :public
 
   def digest(_req) do
-    pending = Autopoet.Proposals.pending()
+    # group pending proposals by project (or "(organism)" for the self) — the migration
+    # had flattened this to a bare id list, dropping the slug + target the digest needs.
+    grouped =
+      Autopoet.Proposals.pending()
+      |> Enum.group_by(fn {id, _} ->
+        case Autopoet.Proposals.target_of(id) do
+          "projects/" <> rest -> rest |> String.split("/") |> hd()
+          _ -> "(organism)"
+        end
+      end)
 
     body =
-      if pending == [] do
-        "no pending proposals\n"
+      if grouped == %{} do
+        "digest empty — nothing pending\n"
       else
-        Enum.map_join(pending, "\n", fn {id, _} -> "#{id}" end) <> "\n"
+        Enum.map_join(grouped, "\n", fn {proj, items} ->
+          "## #{proj}\n" <>
+            Enum.map_join(items, "\n", fn {id, _} -> "  #{id} → #{Autopoet.Proposals.target_of(id)}" end)
+        end) <> "\n"
       end
 
     {200, "text/plain; charset=utf-8", body}
