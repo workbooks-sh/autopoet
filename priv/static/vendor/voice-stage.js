@@ -1950,6 +1950,8 @@
         scene.classList.add("vs-faceless");       // no face while warming
         scene.style.opacity = "1";
         scene.style.transition = "none";
+        scene.style.transform = "";               // kill the graph-tracker's inline
+        scene.style.setProperty("--toon", "1.6px");   // transform — class + vars own it now
         scene.style.setProperty("--sx", "0px");
         scene.style.setProperty("--sy", "-46px");
         scene.style.setProperty("--sc", "0.34");
