@@ -41,8 +41,20 @@ AUTOPOET_HEADLESS=1 ./run.sh   # no window (CI); ./autopoetctl kill to stop
   EVERYTHING lands as a pending proposal under `data/proposals/`; `autopoetctl
   accept <id>` re-runs the real Eval gate before any file is touched; accept/reject
   events are the labeled B9/B4 stream
-- next: real usage → first real concerns → the brain's first real proposals; then
-  Burrito bundling once the app has earned it
+- v4 ✅ resident micro-brain + BEAM-native companion analysis — the shadow layer
+  runs a local decision limb (`Autopoet.Micro`, a small model served by
+  llama-server on the free/local lane, bills no one) that on a drift alarm picks
+  the first diagnostic action (`Shadow.Triage`, advisory only — same containment
+  rung as `Hebb.recall`; degrades to the prior behaviour when the model is
+  absent). The always-on capture corpus feeds two native-Nx tools — `Shadow.Trace`
+  (the k-order structure gate over the real event stream) and `Shadow.Profile`
+  (Scholar `GaussianMixture` behavioural clustering of loci into spine vs
+  decision bands) — no Python sidecar, ever. A learned assessor earns its place
+  only by beating the first-order detector on the gate; that gate is part of the
+  loop, not a preamble to it.
+- next: grow the organic corpus from real runs → the gate confirms where a
+  learned assessor beats first-order → the online minGRU trainer + `Profile`
+  extended to temporal decision-collapse detection; Burrito bundling once earned
 
 ## The face
 

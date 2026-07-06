@@ -14,5 +14,12 @@ rejects — you never write files yourself.
 - Events are plain maps with `kind` and `tags`; hooks match by `tags:`/`kind:`;
   chained emits carry `cause:` (the causing event's id). Effect runs settle onto
   the bus as `effect.settled` — feedback, not workload.
+- The shadow layer perceives the bus live: a Hebbian pathway graph, a surprise
+  detector, and an outcome ledger learn from workload events (never from
+  feedback). A drift alarm raises `autopoet.attention`; a resident micro-brain
+  turns it into a first diagnostic action (`autopoet.attention.triaged`), and a
+  native-Nx companion profiles the captured event corpus into behavioural bands.
+  All of it is advisory — ranking, suggestion, perception; it never writes. Treat
+  these as hints that inform your proposals, not commands.
 - Prefer appending over rewriting. Never rewrite history sections (journals,
   logs). Keep existing content unless the plan explicitly says otherwise.
