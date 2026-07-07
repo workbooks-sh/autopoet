@@ -15,6 +15,7 @@
 
 #include <erl_nif.h>
 #import <Cocoa/Cocoa.h>
+#import <WebKit/WebKit.h>
 #import <objc/runtime.h>
 
 static NSString *term_to_nsstring(ErlNifEnv *env, ERL_NIF_TERM term) {
@@ -160,6 +161,60 @@ static ERL_NIF_TERM install_reopen_nif(ErlNifEnv *env, int argc, const ERL_NIF_T
   return ok(env);
 }
 
+// Media capture (mic/camera) inside the WKWebView. WebKit asks the webview's
+// UIDelegate via requestMediaCapturePermissionForOrigin:…; wx's delegate doesn't
+// implement it, so WebKit AUTO-DENIES getUserMedia — the page reports "mic blocked"
+// and the app-level TCC prompt never even fires. We wrap the existing UIDelegate
+// with a forwarding proxy that GRANTS (the webview only ever loads our own
+// localhost surface; macOS TCC still gates the actual device with the system
+// prompt, which can now finally appear).
+static id g_orig_uidelegate = nil;
+
+@interface ApWebViewUIDelegate : NSObject <WKUIDelegate>
+@end
+
+@implementation ApWebViewUIDelegate
+- (void)webView:(WKWebView *)webView
+    requestMediaCapturePermissionForOrigin:(WKSecurityOrigin *)origin
+                          initiatedByFrame:(WKFrameInfo *)frame
+                                      type:(WKMediaCaptureType)type
+                           decisionHandler:(void (^)(WKPermissionDecision))decisionHandler {
+  NSLog(@"[ap_mac_window] media capture request (type=%ld, origin=%@) — granting", (long)type, origin.host);
+  decisionHandler(WKPermissionDecisionGrant);
+}
+- (BOOL)respondsToSelector:(SEL)sel {
+  return [super respondsToSelector:sel] || [g_orig_uidelegate respondsToSelector:sel];
+}
+- (id)forwardingTargetForSelector:(SEL)sel {
+  return g_orig_uidelegate;
+}
+@end
+
+static ApWebViewUIDelegate *g_ui_delegate = nil;
+
+static WKWebView *find_webview(NSView *v) {
+  if ([v isKindOfClass:[WKWebView class]]) return (WKWebView *)v;
+  for (NSView *s in v.subviews) {
+    WKWebView *r = find_webview(s);
+    if (r) return r;
+  }
+  return nil;
+}
+
+static ERL_NIF_TERM allow_media_nif(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
+  NSString *title = term_to_nsstring(env, argv[0]);
+  on_main(^{
+    NSWindow *w = find_window(title);
+    WKWebView *wv = w ? find_webview(w.contentView) : nil;
+    if (!wv) { NSLog(@"[ap_mac_window] allow_media: no WKWebView found"); return; }
+    g_orig_uidelegate = wv.UIDelegate;
+    g_ui_delegate = [[ApWebViewUIDelegate alloc] init];
+    wv.UIDelegate = (id)g_ui_delegate;
+    NSLog(@"[ap_mac_window] media-capture grant installed (orig UIDelegate=%@)", g_orig_uidelegate);
+  });
+  return ok(env);
+}
+
 static ErlNifFunc funcs[] = {
   {"loaded", 0, loaded_nif},
   {"apply_inset", 1, apply_inset_nif},
@@ -167,6 +222,7 @@ static ErlNifFunc funcs[] = {
   {"zoom", 1, zoom_nif},
   {"toggle_fullscreen", 1, toggle_fullscreen_nif},
   {"install_reopen", 1, install_reopen_nif},
+  {"allow_media", 1, allow_media_nif},
 };
 
 ERL_NIF_INIT(Elixir.Autopoet.Window.Mac, funcs, NULL, NULL, NULL, NULL)

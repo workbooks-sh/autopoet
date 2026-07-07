@@ -100,6 +100,12 @@ defmodule Autopoet.Window do
       :wxFrame.show(frame)
     end
 
+    # Let getUserMedia through the webview: WebKit's media-capture permission ask
+    # lands on the webview's UIDelegate, which wx never answers → auto-deny, and the
+    # system mic prompt can never fire. The shim grants at the WebKit layer (our own
+    # localhost surface only); macOS TCC still owns the real device prompt.
+    if Autopoet.Window.Mac.available?(), do: Autopoet.Window.Mac.allow_media("autopoet")
+
     {:ok, %{frame: frame, view: view, drag: drag, drag_offset: nil, maximized: true, restore_rect: centered_rect(area, 1280, 820)}}
   end
 

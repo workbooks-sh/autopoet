@@ -30,4 +30,5 @@ defmodule Autopoet.Window.Mac do
   def zoom(_title), do: :not_loaded
   def toggle_fullscreen(_title), do: :not_loaded
   def install_reopen(_title), do: :not_loaded
+  def allow_media(_title), do: :not_loaded
 end
