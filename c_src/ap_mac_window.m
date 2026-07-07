@@ -216,11 +216,16 @@ static ERL_NIF_TERM allow_media_nif(ErlNifEnv *env, int argc, const ERL_NIF_TERM
     // page just sees a rejection. KVC onto the (private) preference keys; each is
     // guarded, so a future WebKit renaming degrades to a no-op rather than a crash.
     WKPreferences *prefs = wv.configuration.preferences;
+    BOOL hadMedia = NO;
+    @try { hadMedia = [[prefs valueForKey:@"mediaDevicesEnabled"] boolValue]; } @catch (NSException *e) {}
     @try { [prefs setValue:@YES forKey:@"mediaDevicesEnabled"]; } @catch (NSException *e) {}
     @try { [prefs setValue:@YES forKey:@"mediaStreamEnabled"]; } @catch (NSException *e) {}
     @try { [prefs setValue:@NO forKey:@"mediaCaptureRequiresSecureConnection"]; } @catch (NSException *e) {}
     NSLog(@"[ap_mac_window] media-capture grant installed (orig UIDelegate=%@, mediaDevices=%@)",
           g_orig_uidelegate, [prefs valueForKey:@"mediaDevicesEnabled"]);
+    // The page's JS context was created BEFORE the preference flip and never gains
+    // navigator.mediaDevices retroactively — reload once so the fresh context sees it.
+    if (!hadMedia) { NSLog(@"[ap_mac_window] reloading webview for media context"); [wv reload]; }
   });
   return ok(env);
 }

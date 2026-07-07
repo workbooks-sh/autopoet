@@ -38,6 +38,14 @@ export AUTOPOET_ESPEAK="$RES/espeak/bin/espeak-ng"   # bundled phonemizer (Kokor
 export AUTOPOET_ESPEAK_DATA="$RES/espeak/share"      # dir CONTAINING espeak-ng-data
 export AUTOPOET_FRAMELESS="${AUTOPOET_FRAMELESS:-1}"   # custom stoplight chrome
 export WB_SESSION_SECRET="$(cat "$SECRET_FILE")"
+
+# Per-install secrets (LLM keys / gateway front): a Dock/Finder launch starts from a
+# BARE launchd environment — a key sitting in some terminal's shell env never reaches
+# the app (it only *looked* like it did when the app was opened from that terminal).
+# Nexus.Secrets' env lane reads these. chmod 600, owner-only, never in the bundle.
+if [ -f "$SUP/secrets.env" ]; then
+  set -a; . "$SUP/secrets.env"; set +a
+fi
 export RELEASE_TMP="$SUP/tmp"            # release scratch — NEVER the read-only bundle
 
 # ── desktop hardening ────────────────────────────────────────────────────────

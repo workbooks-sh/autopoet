@@ -21,6 +21,15 @@ client :shell do
     // synchronously during parse (no flash) and survives location.reload() (which
     // preserves the query string). Replaces the old serve-time __CHROME__ substitution
     // that Autopoet.Control did before the nexus migration served the page verbatim.
+    // page-side truth → the app log: the desktop webview has no visible console, so
+    // uncaught errors and capability gaps were invisible from outside. Every uncaught
+    // error/rejection and the boot capability probe land at POST /client/log.
+    (function () {
+      var plog = function (m) { try { fetch("/client/log", { method: "POST", body: String(m).slice(0, 480) }); } catch (_) {} };
+      window.addEventListener("error", function (e) { plog((e.message || "error") + " @ " + (e.filename || "?") + ":" + (e.lineno || 0)); });
+      window.addEventListener("unhandledrejection", function (e) { plog("unhandled: " + (e.reason && (e.reason.message || e.reason))); });
+      plog("boot mediaDevices=" + !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) + " ua-webview=" + !/Chrome|Firefox/.test(navigator.userAgent));
+    })();
     if (new URLSearchParams(location.search).has("frameless")) {
       document.documentElement.style.setProperty("--chrome-display", "flex");
       // native-fullscreen etiquette: macOS hides traffic lights in fullscreen, so the

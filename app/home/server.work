@@ -25,6 +25,11 @@ server :onboard do
   route "GET /voice/engine", :voice_engine_get, auth: :public
   route "POST /voice/engine", :voice_engine_set, auth: :public
 
+  # page-side truth lands in the app log: the desktop webview has no visible console,
+  # so JS errors + capability probes (mediaDevices) were invisible — this bridge is
+  # how they reach a log a human (or an agent) can actually read
+  route "POST /client/log", :client_log, auth: :public
+
   # the current pairing (skip the form), the compile-to-vault seam, and the eval judges
   route "GET /onboard/pairing.json", :pairing_get, auth: :public
   route "POST /plan/finalize", :plan_finalize, auth: :public
@@ -80,6 +85,11 @@ server :onboard do
   end
 
   def kokoro_voices(_req), do: Autopoet.VoiceEngine.catalog()
+
+  def client_log(req) do
+    Autopoet.Log.puts("page: " <> String.slice(to_string(req.raw_body || ""), 0, 500))
+    %{ok: true}
+  end
 
   def voice_engine_get(_req), do: %{engine: Autopoet.VoiceEngine.current()}
 
