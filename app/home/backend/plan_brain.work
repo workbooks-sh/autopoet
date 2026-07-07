@@ -58,6 +58,11 @@ defmodule Autopoet.PlanBrain do
             "content" => "Your previous reply was NOT valid JSON. Reply with ONLY " <>
               "the single JSON object for this move — no prose, no code fences, no trailing text."}
 
+  # the planner's head start in the ask_llm race: long enough that a healthy
+  # planner turn wins on quality, short enough that a slow one can't hang the
+  # conversation
+  @planner_grace_ms 2_500
+
   defp ask_llm(state, history, fork_done, exchanges) do
     prompt = [%{"role" => "system", "content" => system_prompt(state, fork_done, exchanges)} | trim(history)]
     titles = state["deck_titles"] |> List.wrap() |> Enum.map(&String.downcase(to_string(&1)))
@@ -67,26 +72,54 @@ defmodule Autopoet.PlanBrain do
       |> Enum.reverse()
       |> Enum.find_value("", fn m -> if m["role"] == "assistant", do: m["content"], else: nil end)
 
-    # PLANNER-PRIMARY: gemma-class fast models hold persona + strict JSON
-    # unreliably (the teacher persona failed the eval ~2/3 of runs — fragment
-    # questions, dropped character). The planner (gemini-3.5-flash) is
-    # consistent, and its extra ~1s hides behind the current line's narration
-    # (the client prefetches the next turn) and the TTS synth that paces the
-    # session. So: planner first for QUALITY, the fast lane only as a fallback
-    # if the planner is down, then a repair nudge.
-    #   each attempt is fully guarded — a bad reply is a RETRY, never a 503.
-    attempts = [
-      fn -> planner(prompt) end,
-      fn -> completion(prompt) end,
-      fn -> planner(prompt ++ [@repair]) end
+    # RACED LANES (measured 2026-07-07: planner-only turns swung 2.5s → 11s → 17.9s —
+    # the onboarding "hangs" were literally this one serial call). Both lanes fire
+    # AT ONCE; the planner keeps a short grace window for quality, and the moment it
+    # overruns, the fast conversational lane's reply (already in flight — Cerebras→
+    # Groq, the live-voice widget's lane) speaks instead. The planner stays available
+    # as a late lane, then the repair nudge. Every attempt is fully guarded — a bad
+    # reply is the NEXT lane, never a 503. Worst case is bounded (~30s) instead of
+    # the old 120s-timeout × retries. Each turn logs lane + latency (plan.turn …)
+    # so conversation pacing is never invisible again.
+    t0 = System.monotonic_time(:millisecond)
+    planner_task = Task.async(fn -> try do planner(prompt) rescue _ -> :error catch _, _ -> :error end end)
+    fast_task = Task.async(fn -> try do fast(prompt) rescue _ -> :error catch _, _ -> :error end end)
+
+    yield = fn task, ms ->
+      case Task.yield(task, ms) do
+        {:ok, r} -> r
+        _ -> :error
+      end
+    end
+
+    lanes = [
+      {"planner", fn -> yield.(planner_task, @planner_grace_ms) end},
+      {"fast", fn -> yield.(fast_task, 5_000) end},
+      {"planner-late", fn -> yield.(planner_task, 15_000) end},
+      {"repair", fn -> planner(prompt ++ [@repair]) end}
     ]
 
-    Enum.reduce_while(attempts, :error, fn call, _ ->
-      case try_move(call, fork_done, titles, last_say) do
-        {:ok, move} -> {:halt, {:ok, move}}
-        :error -> {:cont, :error}
-      end
-    end)
+    result =
+      Enum.reduce_while(lanes, :error, fn {lane, call}, _ ->
+        case try_move(call, fork_done, titles, last_say) do
+          {:ok, move} -> {:halt, {:ok, {lane, move}}}
+          :error -> {:cont, :error}
+        end
+      end)
+
+    Task.shutdown(planner_task, :brutal_kill)
+    Task.shutdown(fast_task, :brutal_kill)
+    ms = System.monotonic_time(:millisecond) - t0
+
+    case result do
+      {:ok, {lane, move}} ->
+        Autopoet.Log.puts("plan.turn ok — lane=#{lane} #{ms}ms move=#{move["move"]} exchanges=#{exchanges}")
+        {:ok, move}
+
+      :error ->
+        Autopoet.Log.puts("plan.turn FAILED — all lanes, #{ms}ms")
+        :error
+    end
   end
 
   defp try_move(call, fork_done, titles, last_say) do
@@ -134,24 +167,36 @@ defmodule Autopoet.PlanBrain do
 
   defp dedupe(move, _), do: move
 
-  # LATENCY LANE: conversation turns ride the FAST conversational provider
-  # (Cerebras→Groq, the same lane the live voice widget uses — sub-second
-  # first tokens); ask_llm retries through planner/1 when the fast reply
-  # doesn't survive the strict-JSON parse.
-  defp completion(messages) do
+  # LATENCY LANE: the FAST conversational provider — VoiceBrain (Cerebras→Groq,
+  # the live-voice widget's lane) when a direct key exists; otherwise the SAME
+  # cloud gateway as everything else but on the fast sub model (mimo), 8s hard
+  # ceiling. A gateway-only install (the normal tenant/desktop case) previously
+  # had NO working fast lane at all — VoiceBrain.available? was false and every
+  # turn fell through to the slow planner lanes. PURE — no planner fallback
+  # inside, because ask_llm runs this IN A RACE against the planner and a nested
+  # fallback would double-fire the slow lane.
+  defp fast(messages) do
     if Autopoet.VoiceBrain.available?() do
       case Autopoet.VoiceBrain.complete(messages, max_tokens: 550, temperature: 0.45) do
         {:ok, %{content: content}} -> {:ok, content}
         {:ok, content} when is_binary(content) -> {:ok, content}
-        _ -> planner(messages)
+        _ -> :error
       end
     else
-      planner(messages)
+      case Autopoet.Providers.openrouter(messages,
+             model: Autopoet.Keys.sub_model(), max_tokens: 550, temperature: 0.45,
+             timeout: 8_000, retries: 0) do
+        {:ok, %{content: content}} -> {:ok, content}
+        _ -> :error
+      end
     end
   end
 
+  # BOUNDED: the default LLM lane carries a 120s timeout and 2 internal retries —
+  # measured turns hit 17.9s and the theoretical worst case was minutes of dead
+  # air. One try, 20s hard ceiling; the race's other lanes are the retry story.
   defp planner(messages) do
-    case Autopoet.Providers.openrouter(messages, max_tokens: 550, temperature: 0.4) do
+    case Autopoet.Providers.openrouter(messages, max_tokens: 550, temperature: 0.4, timeout: 20_000, retries: 0) do
       {:ok, %{content: content}} -> {:ok, content}
       _ -> :error
     end
