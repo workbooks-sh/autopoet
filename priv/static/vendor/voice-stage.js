@@ -2142,8 +2142,13 @@
     try {
       if (navigator.permissions && navigator.permissions.query) {
         var st = await navigator.permissions.query({ name: "microphone" });
-        if (st.state === "granted") _micGranted = true;
-        return st.state;   // granted | prompt | denied
+        if (st.state === "granted") { _micGranted = true; return "granted"; }
+        // NEVER report "denied" from the advisory query: WKWebView answers
+        // "denied" for permissions it simply hasn't granted yet, which painted
+        // the "mic blocked" banner without ever ATTEMPTING getUserMedia — the
+        // only call that can fire the real system prompt. The one honest denial
+        // is a real getUserMedia rejection (the enableMic path).
+        return "prompt";
       }
     } catch (e) {}
     return "prompt";

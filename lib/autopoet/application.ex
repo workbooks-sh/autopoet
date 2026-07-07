@@ -22,6 +22,20 @@ defmodule Autopoet.Application do
     # so Nexus.Server rebases the `home` surface to `/`. Nexus runs as a library
     # dep here (its own Application doesn't boot Config), so we boot it ourselves.
     Nexus.Config.boot()
+
+    # Gateway-first inference: when this machine carries the Workbooks AI Gateway
+    # front (CF_AIG_URL + CF_AIG_TOKEN), route ALL LLM traffic through it — with
+    # BYOK the provider keys (Cerebras/OpenRouter/…) live IN the gateway, never on
+    # this machine or in the app bundle. Without the front, Nexus.Llm falls back
+    # to whatever direct key the machine has (the dev-box case).
+    if Nexus.Secrets.has?("CF_AIG_URL") and Nexus.Secrets.has?("CF_AIG_TOKEN") do
+      Application.put_env(
+        :nexus,
+        Nexus.Llm,
+        Keyword.put(Application.get_env(:nexus, Nexus.Llm, []), :gateway_upstream, "openrouter")
+      )
+    end
+
     port = port()
     # The `.work` app SURFACE (app/home) is CODE — it ships with the install, a
     # DIFFERENT root from the BODY/data home (`Discovery.home()`, which tests isolate

@@ -58,10 +58,11 @@ defmodule Autopoet.PlanBrain do
             "content" => "Your previous reply was NOT valid JSON. Reply with ONLY " <>
               "the single JSON object for this move — no prose, no code fences, no trailing text."}
 
-  # the planner's head start in the ask_llm race: long enough that a healthy
-  # planner turn wins on quality, short enough that a slow one can't hang the
-  # conversation
-  @planner_grace_ms 2_500
+  # the planner's head start in the ask_llm race: long enough that a genuinely
+  # quick planner turn wins on quality, short enough that a slow one can't drag
+  # the conversation — telemetry showed the planner rarely beats 2s while the
+  # Cerebras fast lane is ready well inside this window
+  @planner_grace_ms 1_600
 
   defp ask_llm(state, history, fork_done, exchanges) do
     prompt = [%{"role" => "system", "content" => system_prompt(state, fork_done, exchanges)} | trim(history)]
@@ -102,8 +103,12 @@ defmodule Autopoet.PlanBrain do
     result =
       Enum.reduce_while(lanes, :error, fn {lane, call}, _ ->
         case try_move(call, fork_done, titles, last_say) do
-          {:ok, move} -> {:halt, {:ok, {lane, move}}}
-          :error -> {:cont, :error}
+          {:ok, move} ->
+            {:halt, {:ok, {lane, move}}}
+
+          :error ->
+            Autopoet.Log.puts("plan.turn miss — lane=#{lane} @#{System.monotonic_time(:millisecond) - t0}ms")
+            {:cont, :error}
         end
       end)
 
@@ -183,9 +188,19 @@ defmodule Autopoet.PlanBrain do
         _ -> :error
       end
     else
+      # CEREBRAS through the one transport: OpenRouter's provider routing pins the
+      # request to Cerebras hardware (glm-4.7 — the same brain VoiceBrain picks with
+      # a direct key, ~sub-second first token). The `provider` field rides the body,
+      # so when a CF_AIG/Workbooks-gateway front is configured (gateway-first
+      # pass-through in Nexus.Llm) the SAME call flows through the gateway
+      # unchanged. Can't serve on Cerebras → :error → the race's other lanes.
+      # reasoning OFF: glm-4.7 is a hybrid-reasoning model and on real plan prompts
+      # it thought away the ENTIRE token budget (finish="length", empty content) —
+      # the fast lane exists for speed, not deliberation
       case Autopoet.Providers.openrouter(messages,
-             model: Autopoet.Keys.sub_model(), max_tokens: 550, temperature: 0.45,
-             timeout: 8_000, retries: 0) do
+             model: "z-ai/glm-4.7", provider: %{only: ["cerebras"]},
+             reasoning: %{enabled: false},
+             max_tokens: 550, temperature: 0.45, timeout: 8_000, retries: 0) do
         {:ok, %{content: content}} -> {:ok, content}
         _ -> :error
       end
