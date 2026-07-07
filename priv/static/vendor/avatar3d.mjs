@@ -14,12 +14,25 @@
 // #ap-* mouth/viseme/parallax machinery untouched); we just glue its overlay
 // offset to the body's rotation. Ortho camera keeps the brand's flat look.
 import * as THREE from "./three.module.min.js";
+import { GLTFLoader } from "./GLTFLoader.mjs";
 
 const SIZE = 132;          // cube edge in px == world units
 const R = 35;              // squircle corner radius
 const INK = 0x121316;
 const CANVAS = 340;        // oversized so hands + outline never clip
 const OUT = 2.6;           // outline thickness (world units at scale 1)
+
+// ── baked hand assets ──────────────────────────────────────────────────────
+// The hands are a real modelled set ("Hands_Cartoon_Collection", cleaned + baked
+// by vendor/bake-hands.py — recentered, one uniform scale, welded, gestures named).
+// They load by URL exactly like three.js itself, so they stay external through the
+// eventual .work migration; only these three constants point at the asset + list.
+const HANDS_URL = "/static/vendor/hands.glb";
+const HAND_POSES = ["point", "open", "thumb", "fist", "peace", "two", "spread",
+                    "rock", "ily", "palm", "three", "five", "relaxed"];
+const HAND_OUT = 2.4;      // hand outline thickness ≈ the body's OUT (2.6) so the toon
+                           // line weight reads consistently across body and hands. The
+                           // baked mesh is subdivided so this thickness stays clean.
 
 function roundedRectShape(w, h, r) {
   const s = new THREE.Shape(), x = -w / 2, y = -h / 2;
@@ -249,6 +262,42 @@ function buildHandPose(pose, mirror) {
   return g;
 }
 
+// ── baked hands (from HANDS_URL) ────────────────────────────────────────────
+// A right hand mirrored to a left by scale.x=-1 would flip its winding (backface
+// cull hides the front, and the inverted-hull outline inverts). So mirror the
+// GEOMETRY properly: negate X on positions + normals AND reverse the triangle
+// winding, yielding a true left hand the existing FrontSide/BackSide passes read
+// unchanged.
+function mirrorGeometry(geo) {
+  const g = geo.clone();
+  const p = g.attributes.position, n = g.attributes.normal;
+  for (let i = 0; i < p.count; i++) { p.setX(i, -p.getX(i)); if (n) n.setX(i, -n.getX(i)); }
+  p.needsUpdate = true; if (n) n.needsUpdate = true;
+  const idx = g.index;
+  if (idx) { const a = idx.array; for (let i = 0; i < a.length; i += 3) { const t = a[i + 1]; a[i + 1] = a[i + 2]; a[i + 2] = t; } idx.needsUpdate = true; }
+  return g;
+}
+// One pose group: the same matcap body + inverted-hull outline the cube uses.
+// Centered on its own bbox so it anchors and rotates like the capsule poses did.
+function buildBakedPose(srcMesh, mirror) {
+  const geo = mirror ? mirrorGeometry(srcMesh.geometry) : srcMesh.geometry.clone();
+  geo.computeBoundingBox();
+  const c = new THREE.Vector3(); geo.boundingBox.getCenter(c);
+  geo.translate(-c.x, -c.y, -c.z);
+  const body = new THREE.Mesh(geo, bodyMaterial());
+  const g = new THREE.Group();
+  g.add(hullOf(body, HAND_OUT));   // toon outline, same as the body's
+  g.add(body);
+  g.visible = false;
+  return g;
+}
+function disposePoseGroup(g) {
+  g.traverse(o => {
+    if (o.geometry) o.geometry.dispose();
+    if (o.material) { _bodyMats.delete(o.material); _outlineMats.delete(o.material); o.material.dispose(); }
+  });
+}
+
 export function mount(container, cubeEl) {
   // renderer: transparent, oversized, centered on the container
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -277,7 +326,8 @@ export function mount(container, cubeEl) {
   bodyGroup = buildBody();
   rig.add(bodyGroup);
 
-  // hands: three pose groups per side, driven by the controller divs
+  // hands: the procedural capsule poses render IMMEDIATELY (point/open/thumb) so
+  // there's never an empty hand; the richer baked set swaps in when the GLB lands.
   const handRigs = {};
   for (const side of ["r", "l"]) {
     const holder = new THREE.Group();
@@ -297,6 +347,27 @@ export function mount(container, cubeEl) {
 
   let disposed = false;
   const faceEl = container.querySelector(".sc-face");
+
+  // swap the capsule placeholders for the baked hand meshes once the GLB arrives.
+  // Same matcap + inverted-hull shaders; on ANY failure the capsules just stay,
+  // so this is a pure progressive-enhancement — the avatar never regresses.
+  new GLTFLoader().load(HANDS_URL, gltf => {
+    if (disposed) return;
+    const byName = {};
+    gltf.scene.traverse(o => { if (o.isMesh) byName[o.name] = o; });
+    for (const side of ["r", "l"]) {
+      const h = handRigs[side];
+      for (const p in h.poses) { h.holder.remove(h.poses[p]); disposePoseGroup(h.poses[p]); }
+      h.poses = {};
+      for (const name of HAND_POSES) {
+        const src = byName[name];
+        if (!src) continue;
+        const pg = buildBakedPose(src, side === "l");
+        h.poses[name] = pg;
+        h.holder.add(pg);
+      }
+    }
+  }, undefined, () => { /* GLB unavailable → keep the procedural capsules */ });
 
   // SMOOTHING: the drivers step the CSS vars discretely (gestures ~130ms,
   // breathing ~90ms). The old CSS cube had `transition: transform .12s` to
@@ -349,7 +420,12 @@ export function mount(container, cubeEl) {
       h.holder.position.set(hc.x - SIZE / 2, SIZE / 2 - hc.y, 76);
       h.holder.rotation.z = -hc.rot * D;
       h.holder.scale.setScalar(Math.max(0.001, hc.s));
-      const pose = ctrl.dataset.pose || "point";
+      // pick the requested pose; if it isn't available (baked set still loading,
+      // or a name only the capsules lack), fall back so a hand always shows.
+      const want = ctrl.dataset.pose || "point";
+      const pose = h.poses[want] ? want
+                 : h.poses.point ? "point"
+                 : (Object.keys(h.poses)[0] || null);
       for (const p in h.poses) h.poses[p].visible = (p === pose);
     }
 
