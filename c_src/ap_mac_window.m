@@ -210,7 +210,17 @@ static ERL_NIF_TERM allow_media_nif(ErlNifEnv *env, int argc, const ERL_NIF_TERM
     g_orig_uidelegate = wv.UIDelegate;
     g_ui_delegate = [[ApWebViewUIDelegate alloc] init];
     wv.UIDelegate = (id)g_ui_delegate;
-    NSLog(@"[ap_mac_window] media-capture grant installed (orig UIDelegate=%@)", g_orig_uidelegate);
+    // A bare WKWebView ships with media devices DISABLED on macOS (Safari flips a
+    // WebKit preference that embedders must set themselves; wx doesn't). Without it
+    // getUserMedia dies INSIDE WebKit — no permission callback, no TCC prompt, the
+    // page just sees a rejection. KVC onto the (private) preference keys; each is
+    // guarded, so a future WebKit renaming degrades to a no-op rather than a crash.
+    WKPreferences *prefs = wv.configuration.preferences;
+    @try { [prefs setValue:@YES forKey:@"mediaDevicesEnabled"]; } @catch (NSException *e) {}
+    @try { [prefs setValue:@YES forKey:@"mediaStreamEnabled"]; } @catch (NSException *e) {}
+    @try { [prefs setValue:@NO forKey:@"mediaCaptureRequiresSecureConnection"]; } @catch (NSException *e) {}
+    NSLog(@"[ap_mac_window] media-capture grant installed (orig UIDelegate=%@, mediaDevices=%@)",
+          g_orig_uidelegate, [prefs valueForKey:@"mediaDevicesEnabled"]);
   });
   return ok(env);
 }
