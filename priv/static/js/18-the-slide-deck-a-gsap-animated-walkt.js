@@ -571,7 +571,7 @@ async function showPlanMode(previewPairing) {
   // plan mode in designer mode.
   let kokoro = false;
   if (!previewPairing) {
-    try { kokoro = (await fetch("/voice/engine").then(r => r.text())).trim() === "kokoro"; } catch (_) {}
+    try { kokoro = (await fetch("/voice/engine").then(r => r.json())).engine === "kokoro"; } catch (_) {}
     if (kokoro) await warmVoice();
   }
 

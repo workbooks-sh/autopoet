@@ -1,0 +1,48 @@
+# Watchdog — memory rails
+
+  Hard rails independent of the window, authored as the nexus's native `worker` primitive
+  (a supervised, always-on `init`/`tick` process) instead of a hand-rolled GenServer. Every
+  5s the runtime calls `tick/1` with the last state; the `Nexus.Worker.Supervisor` owns the
+  OTP + the 5s clock (`every:`) and restarts it if it crashes (`restart: :permanent`).
+
+  Rails:
+    * memory > soft cap (1200 MB) — disarm the autopoet heartbeat, warn once per breach.
+    * memory > hard cap (1500 MB) — halt the VM. The experiment dies before the laptop.
+
+  Caps override via `AUTOPOET_MEM_SOFT_MB` / `AUTOPOET_MEM_HARD_MB` (integers, MB). Because a
+  `worker` starts at Nexus.Server bringup (before the domain spine), the rails are armed
+  earliest of anything in the app.
+
+worker :watchdog, every: "5s", restart: :permanent do
+  def init, do: %{soft_warned: false}
+
+  def tick(state) do
+    {soft, hard} = caps()
+    mb = div(:erlang.memory(:total), 1_048_576)
+
+    cond do
+      mb > hard ->
+        Autopoet.Log.puts("WATCHDOG: memory #{mb}MB > hard cap #{hard}MB — HALTING VM")
+        :init.stop()
+        state
+
+      mb > soft and not state.soft_warned ->
+        Nexus.Autopoet.Worker.disarm()
+        Autopoet.Log.puts("WATCHDOG: memory #{mb}MB > soft cap #{soft}MB — heartbeat disarmed")
+        %{state | soft_warned: true}
+
+      mb <= soft and state.soft_warned ->
+        Autopoet.Log.puts("WATCHDOG: memory #{mb}MB back under soft cap")
+        %{state | soft_warned: false}
+
+      true ->
+        state
+    end
+  end
+
+  defp caps do
+    soft = String.to_integer(System.get_env("AUTOPOET_MEM_SOFT_MB") || "1200")
+    hard = String.to_integer(System.get_env("AUTOPOET_MEM_HARD_MB") || "1500")
+    {soft, hard}
+  end
+end

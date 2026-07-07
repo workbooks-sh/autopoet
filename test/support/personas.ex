@@ -185,7 +185,7 @@ defmodule Autopoet.Eval.Personas do
         %{kind: "queue.item", target: "queue"},
         %{kind: "doc.touch", doc: "night-shift/queue.work"},
         %{kind: "doc.touch", doc: "night-shift/morning-report.work"},
-        %{kind: "limb.returned", target: "night_researcher"}
+        %{kind: "agent.returned", target: "night_researcher"}
       ]
     }
   end

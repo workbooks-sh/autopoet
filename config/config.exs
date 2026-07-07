@@ -18,7 +18,11 @@ config :nexus, Nexus.Llm,
 if config_env() == :test do
   config :autopoet,
     headless: true,
-    port: 4478,
+    # Port 0 = an OS-assigned ephemeral port. Tests drive routes via Plug.Test conns, not the live
+    # listener, so a FIXED port only caused :eaddrinuse — an immediate `mix test` rerun (or a
+    # concurrent `mix run` dev instance) collided on the bound port and flaked the suite. Ephemeral
+    # binds a free port every boot, so the suite never fights itself or a running dev server.
+    port: 0,
     home: Path.expand("../_build/test_home", __DIR__),
     # tests NEVER go live — keys in the developer's shell env must not leak network
     # calls into the suite; inject :brain_llm instead

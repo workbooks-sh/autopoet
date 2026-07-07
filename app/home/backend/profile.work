@@ -1,0 +1,73 @@
+# Autopoet.Profile
+
+  What we learned about the human during setup — the quiz answers the brain reads
+
+The module verbatim, now authored as `.work` — its Elixir source lives inside
+a beam-compiled `server` block instead of a scattered `.ex` file.
+
+defmodule Autopoet.Profile do
+  @moduledoc """
+  What we learned about the human during setup — the quiz answers the brain reads
+  to personalize the nexus on first load (template, whether they speak code, git
+  discipline, how they trust new work, research appetite).
+
+  Line-based file at `data/profile` (`key: value`, values comma-join multi-picks),
+  same shape as the session file. One profile per install today; keyed storage can
+  slot in when real multi-user auth does.
+  """
+  use Agent
+
+  def start_link(_opts), do: Agent.start_link(fn -> load() end, name: __MODULE__)
+
+  def all, do: Agent.get(__MODULE__, & &1)
+  def get(key), do: Map.get(all(), key)
+
+  @doc "Record one answer (string key/value; overwrites). Persists immediately."
+  def put(key, value) when is_binary(key) and is_binary(value) do
+    Agent.update(__MODULE__, &Map.put(&1, String.trim(key), String.trim(value)))
+    persist()
+    :ok
+  end
+
+  def put(_, _), do: {:error, :bad_answer}
+
+  @doc "Wipe the profile — a fresh quiz run starts from a clean slate."
+  def clear do
+    Agent.update(__MODULE__, fn _ -> %{} end)
+    persist()
+    :ok
+  end
+
+  @doc "The whole profile as the line format it's stored in — what the brain ingests."
+  def render do
+    all()
+    |> Enum.sort()
+    |> Enum.map_join("", fn {k, v} -> "#{k}: #{v}\n" end)
+  end
+
+  # ── persistence ────────────────────────────────────────────────────────────
+  defp file, do: Path.join([Autopoet.Discovery.home(), "data", "profile"])
+
+  defp load do
+    case File.read(file()) do
+      {:ok, body} ->
+        body
+        |> String.split("\n", trim: true)
+        |> Enum.flat_map(fn line ->
+          case String.split(line, ": ", parts: 2) do
+            [k, v] -> [{k, v}]
+            _ -> []
+          end
+        end)
+        |> Map.new()
+
+      _ ->
+        %{}
+    end
+  end
+
+  defp persist do
+    File.mkdir_p!(Path.dirname(file()))
+    File.write!(file(), render())
+  end
+end

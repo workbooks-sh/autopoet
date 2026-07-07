@@ -1,3 +1,0 @@
-#!/bin/sh
-# Launch autopoet from its .app bundle so macOS shows the autopoet name + icon.
-exec "/Users/shinyobjectz/Apps/autopoet/run.sh"

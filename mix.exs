@@ -11,10 +11,20 @@ defmodule Autopoet.MixProject do
       app: :autopoet,
       version: "0.1.0",
       elixir: "~> 1.17",
+      # `:workbooks` runs LAST — weaves app/home's `.work` BEAM tier to real `.beam` in
+      # the compile path AFTER `:elixir` (so `:elixir --force` can't clean the woven
+      # artifacts). The `.ex` bootstrap calls into these woven modules via late-bound
+      # remote calls, so a handful of compile-time "undefined" advisories are expected
+      # and harmless — the modules exist as `.beam` by boot.
+      compilers: Mix.compilers() ++ [:workbooks] ++ mac_nif_compiler(),
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       releases: releases(),
       aliases: aliases(),
+      # Weave the `.work` app surface to `.beam` ahead of time (see
+      # Mix.Tasks.Compile.Workbooks): the domain modules ship as real BEAM the OTP tree
+      # boots from — no runtime bringup-compile for the supervision tree, no `.ex` mirror.
+      workbook_surfaces: ["app/home"],
       preferred_cli_env: [eval: :test, "eval.live": :test, "eval.iso": :test],
       deps: deps()
     ]
@@ -25,6 +35,17 @@ defmodule Autopoet.MixProject do
   defp elixirc_paths(:test), do: base_paths() ++ ["test/support"]
   defp elixirc_paths(_), do: base_paths()
   defp base_paths, do: ["lib" | if(@cloud, do: ["cloud_stubs"], else: ["desktop_ml"])]
+
+  # The native macOS window shim (c_src/ap_mac_window.m → priv/ap_mac_window.so) is
+  # built by elixir_make, but ONLY on a macOS DESKTOP build — never cloud (Linux, no
+  # ObjC toolchain) and never off-Darwin. Off-mac the NIF simply isn't produced and
+  # Autopoet.Window.Mac degrades to a no-op (the window falls back to a native title bar).
+  defp mac_nif_compiler do
+    case {@cloud, :os.type()} do
+      {false, {:unix, :darwin}} -> [:elixir_make]
+      _ -> []
+    end
+  end
 
   # `mix eval` — the whole-system scorecard (wb-q351b.6): every eval dimension in
   # one run, numbers appended to eval/history.log for cross-commit comparison.
@@ -121,7 +142,12 @@ defmodule Autopoet.MixProject do
       # realtime voice: browser ⇄ Plug WebSocket (websock_adapter over Bandit) and
       # Elixir ⇄ Gemini Live wss client (mint_web_socket)
       {:websock_adapter, "~> 0.5"},
-      {:mint_web_socket, "~> 1.0"}
+      {:mint_web_socket, "~> 1.0"},
+      # compiles the native macOS window shim (c_src → priv/*.so). Compile-only; the
+      # `:elixir_make` compiler is added just on a macOS desktop build (mac_nif_compiler/0).
+      {:elixir_make, "~> 0.10", runtime: false},
+      # dependency CVE scanner (advisory DB) — dev/test only, never shipped. `mix deps.audit`.
+      {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false}
     ] ++ ml_deps()
   end
 

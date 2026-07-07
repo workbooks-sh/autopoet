@@ -18,37 +18,46 @@ defmodule Autopoet.Application do
 
   @impl true
   def start(_type, _args) do
+    # Load the .work deploy manifest (WB_DATA/index.work: home=/auth=/database=)
+    # so Nexus.Server rebases the `home` surface to `/`. Nexus runs as a library
+    # dep here (its own Application doesn't boot Config), so we boot it ourselves.
+    Nexus.Config.boot()
     port = port()
+    # The `.work` app SURFACE (app/home) is CODE — it ships with the install, a
+    # DIFFERENT root from the BODY/data home (`Discovery.home()`, which tests isolate
+    # to `_build/test_home` and which holds the user's workspace, not the app source).
+    # Derive it from the install dir: `AUTOPOET_HOME` (run.sh sets it to the project
+    # dir) or the cwd. Using `Discovery.home()` here silently broke `mix test`, where
+    # body ≠ install and `<body>/app/home` does not exist → nothing compiles → the
+    # spine goes undefined.
+    root = Path.join([app_root(), "app", "home"])
 
-    # Cloud profile: the SAME build runs on a vendored Fly machine as the 24/7
-    # agent — no window, no mic STT, no realtime Voice (those are desktop-only
-    # I/O), and it binds all interfaces (the machine's own network), not just
-    # loopback. The desktop profile keeps everything and stays loopback-only.
-    io = if cloud?(), do: {0, 0, 0, 0}, else: {127, 0, 0, 1}
+    # No runtime pre-compile: the `.work` BEAM tier (the spine + every domain module)
+    # is WOVEN to real `.beam` at build time by `Mix.Tasks.Compile.Workbooks`, so the
+    # BEAM has already loaded it from disk before `start/2` runs — the OTP tree boots
+    # from native artifacts, no chicken-and-egg. (A generic cloud nexus that never ran
+    # the weave still works: Nexus.Server's `bringup` runtime-compiles the same `.work`.)
 
+    # v0-nexus tree — three top-level boundaries; the fat domain child list now
+    # lives in the `.work`-authored `Autopoet.Spine` (app/home/backend/spine.work):
+    #
+    #   1. Nexus.Server — owns HTTP on the port the window points at, serves the
+    #      `.work` app surface (app/home) at `/`. All ~166 routes are server blocks
+    #      (P1); Autopoet.Control + its Bandit are RETIRED — the runtime owns HTTP.
+    #   2. Autopoet.Spine — the app's own domain/brain processes (P2). Handed as an
+    #      explicit map spec (start: mfa, no upfront `child_spec/1`) so the Supervisor
+    #      never touches the module until its slot starts (after the pre-compile above).
+    #   3. Autopoet.Window — the desktop kill-switch (closing it halts the BEAM).
     children =
       [
-        Autopoet.Log,
-        Autopoet.History,
-        Autopoet.Auth,
-        Autopoet.Profile
-      ] ++
-        desktop_io() ++
-        [
-          Autopoet.Watchdog,
-          Autopoet.Requests,
-          Autopoet.Capture,
-          Autopoet.Snapshot,
-          Autopoet.Shadow.Hebb,
-          Autopoet.Shadow.Surprise,
-          Autopoet.Shadow.Outcomes,
-          Autopoet.Treasury,
-          {Bandit, plug: Autopoet.Control, ip: io, port: port},
-          {Autopoet.Discovery, port}
-        ] ++ [Autopoet.Desks] ++ desk() ++ window()
+        {Nexus.Server, root: root, port: port},
+        %{
+          id: Autopoet.Spine,
+          start: {Autopoet.Spine, :start_link, [%{port: port}]},
+          type: :supervisor
+        }
+      ] ++ window()
 
-    # max_restarts headroom: tests hard-kill the three shadow learners to force
-    # cold/reboot paths — three near-simultaneous restarts must not take down the tree
     result =
       Supervisor.start_link(children,
         strategy: :one_for_one,
@@ -62,8 +71,8 @@ defmodule Autopoet.Application do
     # the OOTA recipe library, mirrored read-only into the world (/work/oota) — a
     # LIBRARY agents read, never a host process (canon: no native execution)
     Autopoet.Oota.seed_reference()
-    seed_limbs()
-    Autopoet.Limbs.register_from_body()
+    seed_agents()
+    Autopoet.Agents.register_from_body()
     wire_brain()
     # Phase E: the app.execute effect (connected tools) rides the open effect
     # registry — the runtime stays neutral, the app supplies the integration.
@@ -88,10 +97,10 @@ defmodule Autopoet.Application do
     end)
   end
 
-  # Limb definitions ship in priv/seed and land in the body once (never overwrite —
-  # after that, limbs.work is human-editable body content; its agents re-register
+  # Agent definitions ship in priv/seed and land in the body once (never overwrite —
+  # after that, agents.work is human-editable body content; its agents re-register
   # from the body at every boot).
-  defp seed_limbs do
+  defp seed_agents do
     src = Path.join(:code.priv_dir(:autopoet), "seed")
     root = Nexus.Paths.data_dir()
 
@@ -109,35 +118,18 @@ defmodule Autopoet.Application do
     File.mkdir_p!(Nexus.Paths.data_dir())
   end
 
-  # Desktop-only I/O children (mic STT + realtime Voice) — dropped in the cloud.
-  # Filtered to modules that actually exist so a mid-refactor tree (a renamed or
-  # deleted I/O module) degrades to missing audio, never a boot crash.
-  defp desktop_io do
-    if cloud?() do
-      []
-    else
-      # Qwen3-TTS is the product engine. Kokoro is booted ONLY when the dev
-      # toggle asks for it (WB_VOICE=kokoro or data/voice-engine) — a comparison
-      # lens, never the default.
-      base = [Autopoet.Stt, Autopoet.Voice, Autopoet.QwenTts, Autopoet.Affect]
-      base = if Autopoet.VoiceEngine.kokoro?(), do: [Autopoet.Kokoro | base], else: base
+  # The domain child list (log/history/shadow/desktop-I/O/discovery/desks) now lives in
+  # the `.work`-authored `Autopoet.Spine` (app/home/backend/spine.work) — this module is
+  # just the OTP bootstrap + one-shot world seeds.
 
-      Enum.filter(base, fn mod ->
-        Code.ensure_loaded?(mod) ||
-          (IO.puts("autopoet: desktop I/O child #{inspect(mod)} missing — skipped") && false)
-      end)
-    end
-  end
+  # The install dir that holds the `.work` app surface (`app/home`) — CODE, not the
+  # user's body/data home. run.sh exports AUTOPOET_HOME=$PWD (the project/release
+  # dir); `mix test` sets neither, so it falls back to the cwd (the project root).
+  # Distinct from `Discovery.home()` (the body home, isolated per-run in tests).
+  def app_root, do: System.get_env("AUTOPOET_HOME") || File.cwd!()
 
   @doc "Is this the cloud profile (a vendored Fly machine), not the desktop?"
   def cloud?, do: System.get_env("AUTOPOET_TARGET") == "cloud"
-
-  # The always-on trading desk (day/night market cycle) — opt-in via AUTOPOET_DESK=1
-  # (machine-identity enablement, like PORT/WB_DATA). Never on in tests by default.
-  defp desk do
-    if System.get_env("AUTOPOET_DESK") == "1", do: [Autopoet.Desk], else: []
-  end
-
 
   defp window do
     headless? =

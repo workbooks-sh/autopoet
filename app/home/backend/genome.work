@@ -1,0 +1,110 @@
+# Autopoet.Genome
+
+  The template genome (Autopoiesis v3 cold-start, plan §0/D3/D4). Three prior
+
+The module verbatim, now authored as `.work` — its Elixir source lives inside
+a beam-compiled `server` block instead of a scattered `.ex` file.
+
+defmodule Autopoet.Genome do
+  @moduledoc """
+  The template genome (Autopoiesis v3 cold-start, plan §0/D3/D4). Three prior
+  sources, all shipped as SMALL washable pseudo-counts — never frozen weights,
+  so a wrong prior is structurally cheap (the chamber's 0.020-vs-0.201 lesson):
+
+    1. plan-derived edges — the workspace's obvious pathways (Intake.prior_edges).
+    2. SEMANTIC birth edges (D3) — embeddings NOMINATE, counts ELECT: embed each
+       locus's text, add a low-mass edge between the top cosine-nearest pairs.
+       Rides the injectable `Nexus.Embed` seam (Hashed by default, gateway when
+       configured) — no per-user embedding training, ever.
+    3. FLEET prior (D4) — aggregated, clipped, noised, k-anonymous count vectors
+       over TEMPLATE-RELATIVE loci from consenting tenants only. Tenant-authored
+       loci are unaggregatable by construction; nothing else leaves a tenant.
+
+  All three are optional and additive; each has its own eval gate (never worse
+  than blank at birth).
+  """
+
+  alias Nexus.Embed
+
+  # ── D3: semantic nominator ──────────────────────────────────────────────────
+
+  @doc """
+  Nominate semantic edges among `loci` (`[{name, text}]`): embed each, connect
+  every locus to its `k` nearest neighbors above `min_sim`. Returns
+  `[{src_name, dst_name, mass}]` with mass scaled by similarity (× `base_mass`).
+  Embeddings nominate; the returned edges then earn Hebbian weight or decay.
+  """
+  def semantic_edges(loci, opts \\ []) do
+    k = Keyword.get(opts, :k, 2)
+    min_sim = Keyword.get(opts, :min_sim, 0.35)
+    base_mass = Keyword.get(opts, :base_mass, 0.5)
+    embed_opts = Keyword.take(opts, [:provider])
+
+    names = Enum.map(loci, &elem(&1, 0))
+    vecs = loci |> Enum.map(&elem(&1, 1)) |> Embed.embed(embed_opts)
+    indexed = Enum.zip(names, vecs)
+
+    for {name, v} <- indexed,
+        {other, ov} <- indexed,
+        other != name,
+        sim = Embed.cosine(v, ov),
+        sim >= min_sim do
+      {name, other, sim}
+    end
+    |> Enum.group_by(&elem(&1, 0))
+    |> Enum.flat_map(fn {_src, cands} ->
+      cands
+      |> Enum.sort_by(&(-elem(&1, 2)))
+      |> Enum.take(k)
+      |> Enum.map(fn {s, d, sim} -> {s, d, Float.round(sim * base_mass, 4)} end)
+    end)
+  end
+
+  # ── D4: fleet aggregation ───────────────────────────────────────────────────
+
+  @doc """
+  Aggregate per-tenant template-relative edge-count vectors into a fleet prior.
+  Privacy line (plan §0): each tenant's per-edge contribution is CLIPPED to
+  `clip` (bounds sensitivity), Laplace NOISE at scale `clip/epsilon` is added to
+  the sum, and an edge survives only if ≥ `k` DISTINCT tenants reported it
+  (k-anonymity). Only template loci are aggregatable — tenant-authored loci are
+  dropped by `template_loci`. Returns `[{src, dst, mass}]`.
+
+  `contributions` = `[%{edges: %{ {src,dst} => count }}]`, one per consenting
+  tenant. `rng` is an injectable noise function `(scale -> float)` (default
+  deterministic-zero so tests are reproducible; production passes Laplace).
+  """
+  def fleet_prior(contributions, template_loci, opts \\ []) do
+    clip = Keyword.get(opts, :clip, 5.0)
+    epsilon = Keyword.get(opts, :epsilon, 1.0)
+    k = Keyword.get(opts, :k_anon, 3)
+    base_mass = Keyword.get(opts, :base_mass, 0.6)
+    rng = Keyword.get(opts, :noise, fn _scale -> 0.0 end)
+    allowed = MapSet.new(template_loci)
+
+    # per-edge: clipped sum + distinct-tenant count, template loci only
+    acc =
+      for tenant <- contributions,
+          {{src, dst}, count} <- tenant.edges,
+          MapSet.member?(allowed, to_string(src)) and MapSet.member?(allowed, to_string(dst)),
+          reduce: %{} do
+        m ->
+          key = {to_string(src), to_string(dst)}
+          {sum, tenants} = Map.get(m, key, {0.0, 0})
+          Map.put(m, key, {sum + min(count * 1.0, clip), tenants + 1})
+      end
+
+    noise_scale = clip / epsilon
+
+    for {{src, dst}, {sum, tenants}} <- acc, tenants >= k do
+      noised = max(sum + rng.(noise_scale), 0.0)
+      # normalize to a small mass by tenant count so a fleet prior can't dominate
+      {src, dst, Float.round(min(noised / (tenants * clip), 1.0) * base_mass, 4)}
+    end
+  end
+
+  @doc "Laplace noise sampler (production `:noise`): inverse-CDF from a uniform in (0,1)."
+  def laplace(scale, u) when u > 0 and u < 1 do
+    if u < 0.5, do: scale * :math.log(2 * u), else: -scale * :math.log(2 * (1 - u))
+  end
+end

@@ -22,10 +22,12 @@ defmodule Autopoet.Window do
   @doc "Programmatic close — same wx close event the stoplight produces."
   def close, do: GenServer.cast(__MODULE__, :close)
 
-  # wxRESIZE_BORDER only — no wxCAPTION, so macOS draws NO native title bar and NO
-  # native traffic lights; the page draws its own (custom chrome, the elixir-desktop
-  # pattern). Default frame otherwise.
-  @wx_resize_border 0x0040
+  # The frame is ALWAYS a normal titled window (wxDEFAULT_FRAME_STYLE) so macOS makes it
+  # miniaturizable + zoomable — minimize/maximize then work through plain wx. In frameless
+  # mode a native shim (Autopoet.Window.Mac) restyles it INSET afterward: transparent
+  # titlebar, hidden title, full-size content, native traffic lights hidden — so the page's
+  # own stoplights are the only visible controls but the real window actions still fire.
+  # If that shim can't load, we simply keep the native title bar (still fully functional).
   @wx_default_frame_style 0x0009_09FF
 
   # WKWebView swallows every mouse event inside it — `-webkit-app-region:drag` in
@@ -44,12 +46,17 @@ defmodule Autopoet.Window do
   @impl true
   def init(nil) do
     :wx.new()
-    style = if frameless?(), do: @wx_resize_border, else: @wx_default_frame_style
-    frame = :wxFrame.new(:wx.null(), -1, ~c"autopoet", size: {1440, 900}, style: style)
+
+    # INSET mode = the pretty frameless look WITH working native controls, available only
+    # when the native shim loaded. Frameless requested but shim missing → a plain native
+    # title bar (custom stoplights stay hidden so there's no double set of controls).
+    inset? = frameless?() and Autopoet.Window.Mac.available?()
+
+    frame = :wxFrame.new(:wx.null(), -1, ~c"autopoet", size: {1440, 900}, style: @wx_default_frame_style)
     :wxWindow.setBackgroundColour(frame, {251, 251, 249, 255})
 
-    view = attach_view(frame)
-    drag = if frameless?(), do: attach_drag_strip(frame)
+    view = attach_view(frame, inset?)
+    drag = if inset?, do: attach_drag_strip(frame)
 
     # A frame with exactly one child auto-fills it with no sizer needed — that's
     # what attach_view relied on. The drag strip is a SECOND child, which forfeits
@@ -60,11 +67,30 @@ defmodule Autopoet.Window do
 
     :wxFrame.connect(frame, :close_window)
     if drag, do: :wxFrame.connect(frame, :size)
-    :wxTopLevelWindow.maximize(frame)
+
+    # Restyle to the inset (hiddenInset) look. Async on the Cocoa main thread, so it lands
+    # AFTER the initial layout — schedule a :refit to grow the content into the reclaimed
+    # title-bar strip (FullSizeContentView) once it applies.
+    if inset? do
+      Autopoet.Window.Mac.apply_inset("autopoet")
+      Process.send_after(self(), :refit, 150)
+    end
+
+    # Open zoomed to fill the USABLE area (below the menu bar, beside the dock) — a real
+    # macOS "maximize"/zoom, not a fullscreen Space. Driven by setSize so the custom green
+    # button can TOGGLE it reliably against our own `maximized` state (Cocoa's isMaximized
+    # is unreliable here). restore_rect is where a restore lands.
+    area = usable_area()
+    :wxWindow.setSize(frame, area)
     :wxFrame.show(frame)
 
-    {:ok, %{frame: frame, view: view, drag: drag, drag_offset: nil}}
+    {:ok, %{frame: frame, view: view, drag: drag, drag_offset: nil, maximized: true, restore_rect: centered_rect(area, 1280, 820)}}
   end
+
+  # The primary display's usable area — {x, y, w, h} minus the menu bar and the dock.
+  defp usable_area, do: :wxDisplay.getClientArea(:wxDisplay.new())
+
+  defp centered_rect({ax, ay, aw, ah}, w, h), do: {ax + div(aw - w, 2), ay + div(ah - h, 2), w, h}
 
   defp resize_content(frame, view) do
     {w, h} = :wxWindow.getClientSize(frame)
@@ -83,9 +109,18 @@ defmodule Autopoet.Window do
   def set_theme(_), do: :ok
 
   # The app UI: a native WKWebView filling the frame (single child auto-fills).
-  defp attach_view(frame) do
-    url = ~c"http://127.0.0.1:#{Autopoet.Application.port()}/"
-    {:webview, :wxWebView.new(frame, -1, url: url)}
+  defp attach_view(frame, inset?) do
+    # Pass ?frameless=1 ONLY in inset mode, so the page draws its own stoplights over the
+    # hidden native ones. With a native title bar (shim absent / non-frameless) the OS draws
+    # the controls, so the custom chrome stays hidden — no double set. A plain browser tab
+    # hitting localhost also has no flag. Replaces the old serve-time __CHROME__ substitution.
+    q = if inset?, do: "?frameless=1", else: ""
+    url = ~c"http://127.0.0.1:#{Autopoet.Application.port()}/#{q}"
+    wv = :wxWebView.new(frame, -1, url: url)
+    # right-click → Inspect Element in the desktop window: enable the context menu
+    # (WKWebView also needs `defaults write -g WebKitDeveloperExtras -bool true`).
+    try do :wxWebView.enableContextMenu(wv, true) rescue _ -> :ok catch _, _ -> :ok end
+    {:webview, wv}
   rescue
     _ ->
       Autopoet.Log.puts("window: wxWebView unavailable — degrading to text log")
@@ -168,6 +203,24 @@ defmodule Autopoet.Window do
     {:noreply, s}
   end
 
+  # Best-effort bring the window forward — used after an out-of-app flow returns
+  # (the cloud sign-in device flow completes in the SYSTEM browser; on the callback
+  # we raise the window and bounce the dock so the user knows to switch back). macOS
+  # won't let a background app steal focus outright, so requestUserAttention (the
+  # dock bounce) is the honest signal alongside raise().
+  def handle_info(:to_front, s) do
+    :wxWindow.raise(s.frame)
+    try do :wxTopLevelWindow.requestUserAttention(s.frame) rescue _ -> :ok catch _, _ -> :ok end
+    {:noreply, s}
+  end
+
+  # After the inset shim applies FullSizeContentView (async, on the main thread), the
+  # client area grows into the old title-bar strip — refit the webview so it fills it.
+  def handle_info(:refit, s) do
+    resize_content(s.frame, s.view)
+    {:noreply, s}
+  end
+
   def handle_info(_msg, s), do: {:noreply, s}
 
   @impl true
@@ -176,34 +229,29 @@ defmodule Autopoet.Window do
     {:noreply, s}
   end
 
+  # Real minimize (dock genie). This used to be a no-op: a caption-less frame isn't
+  # miniaturizable on macOS. Resolved by the inset shim — the frame is now a proper
+  # titled window (miniaturizable), just visually bare, so wx's iconize maps to a live
+  # -[NSWindow miniaturize:]. iconize/2 wants the OPTIONS keyword form, not a bare bool.
   def handle_cast(:minimize, s) do
-    # wx's Erlang binding takes an OPTIONS keyword list, not a bare boolean —
-    # iconize(frame, true) doesn't exist and raises FunctionClauseError.
-    #
-    # NOTE ON A MACOS PLATFORM CEILING: on macOS, -[NSWindow miniaturize:] (what
-    # this ultimately calls) is a documented no-op for a window without a title
-    # bar. Our frame is deliberately CAPTION-less (@wx_resize_border only) so the
-    # page can draw its own chrome instead of the native one — that's the whole
-    # point of frameless mode. Adding wxMINIMIZE_BOX to the frame style DOES make
-    # the OS honor iconize(), but wxWidgets' Cocoa port brings back the full
-    # native title bar (with its own real traffic lights) the instant any of
-    # CLOSE_BOX/MINIMIZE_BOX/MAXIMIZE_BOX/SYSTEM_MENU is set — verified empirically,
-    # it renders a second, native stoplight stacked above the custom HTML one.
-    # There is no portable wx knob for "titled + miniaturizable but visually
-    # bare" (that needs direct NSWindow access — titlebarAppearsTransparent +
-    # titleVisibility, outside wx/Erlang without native code). So in frameless
-    # mode this call is correct-and-harmless rather than a true dock-genie: it
-    # won't crash, and it's a no-op at the OS level. maximize/close are real.
     :wxTopLevelWindow.iconize(s.frame, iconize: true)
     {:noreply, s}
   end
 
+  # The custom green button: toggle macOS-style ZOOM (fill the usable area ⇄ restore the
+  # previous rect). State-tracked, because a borderless frame's Cocoa isMaximized is
+  # unreliable — the old `not isMaximized` toggle never flipped back, so the window read
+  # as stuck "full screen". setSize is unambiguous and never enters a fullscreen Space.
+  def handle_cast(:maximize, %{maximized: true} = s) do
+    :wxWindow.setSize(s.frame, s.restore_rect)
+    {:noreply, %{s | maximized: false}}
+  end
+
   def handle_cast(:maximize, s) do
-    # Same shape here: maximize/2 wants [{maximize, bool}], not a raw bool — the
-    # old bare-boolean call crashed this GenServer (restart: :temporary, so it
-    # never came back and the wx frame died with it, taking the window with it).
-    :wxTopLevelWindow.maximize(s.frame, maximize: not :wxTopLevelWindow.isMaximized(s.frame))
-    {:noreply, s}
+    {px, py} = :wxWindow.getPosition(s.frame)
+    {sw, sh} = :wxWindow.getSize(s.frame)
+    :wxWindow.setSize(s.frame, usable_area())
+    {:noreply, %{s | maximized: true, restore_rect: {px, py, sw, sh}}}
   end
 
   # Repaint the native chrome to match the page theme. The webview draws its own

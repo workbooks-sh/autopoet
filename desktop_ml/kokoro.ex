@@ -76,7 +76,9 @@ defmodule Autopoet.Kokoro do
 
   # ── engine (pure — testable without the GenServer) ─────────────────────────
 
-  def dir, do: Path.join([File.cwd!(), "data", "models", "kokoro"])
+  # Weights root: AUTOPOET_MODELS (a packaged .app → the read-only bundle) else
+  # <data-home>/data/models — via Discovery.models_dir/0.
+  def dir, do: Path.join(Autopoet.Discovery.models_dir(), "kokoro")
 
   # fp32 beats the int8 graph ~3x on Apple Silicon CPU (dequant overhead
   # dominates q8): measured 2.4s vs 7s per sentence. Prefer fp32 when present.
@@ -152,8 +154,27 @@ defmodule Autopoet.Kokoro do
   defp ok_or(:error, why), do: {:error, why}
 
   # ── phonemization: espeak-ng IPA, punctuation re-woven between chunks ──────
+  #
+  # Resolution order: the BUNDLED espeak-ng (a packaged .app sets AUTOPOET_ESPEAK,
+  # and AUTOPOET_ESPEAK_DATA points at the dir CONTAINING espeak-ng-data so the
+  # relocated binary finds its dictionaries), else whatever is on PATH (dev:
+  # Homebrew). End-user Macs have no Homebrew — the bundle must carry its own.
 
-  defp espeak?, do: System.find_executable("espeak-ng") != nil
+  defp espeak_bin do
+    case System.get_env("AUTOPOET_ESPEAK") do
+      bin when is_binary(bin) and bin != "" -> if File.exists?(bin), do: bin
+      _ -> System.find_executable("espeak-ng")
+    end
+  end
+
+  defp espeak_env do
+    case System.get_env("AUTOPOET_ESPEAK_DATA") do
+      dir when is_binary(dir) and dir != "" -> [{"ESPEAK_DATA_PATH", dir}]
+      _ -> []
+    end
+  end
+
+  defp espeak?, do: espeak_bin() != nil
 
   @doc false
   def phonemize(text) do
@@ -166,7 +187,10 @@ defmodule Autopoet.Kokoro do
           if Regex.match?(~r/^[,;:.!?…—]$/u, chunk) do
             chunk
           else
-            case System.cmd("espeak-ng", ["-q", "--ipa", "-v", "en-us", chunk], stderr_to_stdout: true) do
+            case System.cmd(espeak_bin(), ["-q", "--ipa", "-v", "en-us", chunk],
+                   stderr_to_stdout: true,
+                   env: espeak_env()
+                 ) do
               {out, 0} -> out |> String.split("\n", trim: true) |> Enum.join(" ") |> String.trim()
               _ -> ""
             end

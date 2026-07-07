@@ -99,12 +99,27 @@ defmodule Autopoet.PipelineEvalTest do
     end
   end
 
+  # Autopoet.Control (the legacy Plug) is retired — routes are server blocks the nexus
+  # router dispatches. Drive them the way the runtime does: match + dispatch through
+  # `Nexus.Router`, returning the `%{status, resp_body}` shape the assertions expect.
   defp ctl(method, path, body \\ nil) do
-    conn =
-      conn(method, path, body)
-      |> put_req_header("authorization", "Bearer " <> Autopoet.Discovery.token())
+    [p | rest] = String.split(path, "?", parts: 2)
+    query = if rest == [], do: %{}, else: URI.decode_query(hd(rest))
 
-    Autopoet.Control.call(conn, Autopoet.Control.init([]))
+    {mod, fun, _policy, params} =
+      Nexus.Router.match(method, p) || raise "no nexus route for #{method} #{p}"
+
+    req = %{
+      method: method |> to_string() |> String.upcase(),
+      path: p, params: params, query: query,
+      body: nil, raw_body: body || "", headers: %{},
+      tenant: nil, role: nil, user: nil
+    }
+
+    case Nexus.Router.dispatch(mod, fun, req) do
+      {status, _ct, out} when is_integer(status) -> %{status: status, resp_body: to_string(out)}
+      other -> raise "unexpected dispatch result for #{method} #{p}: #{inspect(other)}"
+    end
   end
 
   defp await(fun, ms) do

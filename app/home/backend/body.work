@@ -1,0 +1,265 @@
+# Autopoet.Body
+
+  The agent's OWN structure — the `.work` body it authors. The agent writes here
+
+The module verbatim, now authored as `.work` — its Elixir source lives inside
+a beam-compiled `server` block instead of a scattered `.ex` file.
+
+defmodule Autopoet.Body do
+  @moduledoc """
+  The agent's OWN structure — the `.work` body it authors. The agent writes here
+  DIRECTLY and immediately (no proposal): the body is its to shape. Every write
+  snapshots the files it touches — both the BEFORE state (into `before/`, for
+  undo) and the AFTER state (into `after/`, for redo) — under
+  `data/body-history/<id>`, so any edit is fully reversible in both directions.
+
+  Contrast the VAULT (`Autopoet.Notes`): the human's source of truth, which the
+  agent has NO direct write to — it can only SUGGEST edits there via a gated
+  proposal ([[proposals]]). So: body = direct + undo/redo; vault = propose-only.
+
+  Writes come as two maps (the drafter's output shape): `writes` (full file
+  content) and `appends` (only-new-lines, composed against the current file).
+  """
+
+  def root, do: Nexus.Paths.data_dir()
+  def history_dir, do: Path.join([Autopoet.Discovery.home(), "data", "body-history"])
+
+  @doc """
+  Apply direct writes + appends to the body, snapshotting before+after. Returns
+  `{:ok, history_id}` (nil id if nothing changed). A fresh write clears the redo
+  stack (standard undo/redo semantics). Emits an event + logs.
+  """
+  def apply(writes, appends \\ %{}) when is_map(writes) and is_map(appends) do
+    rels = (Map.keys(writes) ++ Map.keys(appends)) |> Enum.uniq()
+
+    if rels == [] do
+      {:ok, nil}
+    else
+      hid = snapshot(rels)
+
+      for {rel, content} <- writes do
+        p = safe!(rel)
+        File.mkdir_p!(Path.dirname(p))
+        File.write!(p, content)
+      end
+
+      for {rel, added} <- appends do
+        p = safe!(rel)
+        File.mkdir_p!(Path.dirname(p))
+        cur = if File.exists?(p), do: File.read!(p), else: ""
+        File.write!(p, compose(cur, added))
+      end
+
+      capture_after(hid, rels)
+      clear_redo()
+
+      emit(%{kind: "body.wrote", files: rels, history: hid, tags: []})
+      # per-doc locus events — the workload signal plasticity learns from: docs
+      # written together in one apply are a real co-activation (PLAN phase 1.1)
+      for rel <- rels, do: emit(%{kind: "doc.touch", doc: rel, tags: []})
+      Autopoet.History.record_body(hid, rels)
+      Autopoet.Log.puts("body: wrote #{length(rels)} file(s) directly [#{Enum.join(rels, ", ")}] — undo #{hid}")
+      {:ok, hid}
+    end
+  end
+
+  @doc """
+  Read a single body file by root-relative path. Returns `{:ok, content}` or `{:error, reason}` and
+  NEVER raises — the `GET /body/file` route (`auth: :public`, routes.work) turns a non-`{:ok, _}` into a
+  404, so a traversal attempt (`../`, absolute path) or a missing file must be an error, not a 500.
+  """
+  def read(rel) do
+    case File.read(safe!(rel)) do
+      {:ok, content} -> {:ok, content}
+      {:error, reason} -> {:error, reason}
+    end
+  rescue
+    ArgumentError -> {:error, :unsafe_path}
+  end
+
+  @doc "A single direct write (full content), snapshotted + reversible."
+  def write(rel, content), do: apply(%{to_string(rel) => content})
+
+  @doc "Whether an undo / redo is currently available (drives the UI buttons)."
+  def can_undo?, do: newest_active_id() != nil
+  def can_redo?, do: newest_undone_id() != nil
+
+  @doc "History entries, newest first: `[%{id, files, undone}]`."
+  def history do
+    File.mkdir_p!(history_dir())
+
+    entries()
+    |> Enum.map(fn id ->
+      base = Path.join(history_dir(), id)
+      files = base |> Path.join("before") |> then(&Path.wildcard(Path.join(&1, "**"))) |> Enum.count(&File.regular?/1)
+      %{id: id, files: files + length(absent(base)), undone: undone?(base)}
+    end)
+  end
+
+  @doc """
+  Undo a write: restore the body to its pre-write state from a snapshot. Default
+  undoes the newest write not already undone; pass an id to target one.
+  """
+  def undo(id \\ :latest) do
+    id = if id == :latest, do: newest_active_id(), else: id
+    base = id && Path.join(history_dir(), id)
+
+    cond do
+      is_nil(base) or not File.dir?(base) -> {:error, :no_history}
+      undone?(base) -> {:error, :already_undone}
+      true ->
+        restore(base, "before")
+        for rel <- absent(base), do: File.rm(safe!(rel))
+        File.write!(Path.join(base, ".undone"), to_string(System.unique_integer([:monotonic, :positive])))
+        emit(%{kind: "body.undone", history: id, tags: []})
+        Autopoet.History.record_undo(id)
+        Autopoet.Log.puts("body: undone #{id} — restored to pre-write state")
+        :ok
+    end
+  end
+
+  @doc "Redo: re-apply the most-recently-undone write (restores its post-write state)."
+  def redo do
+    id = newest_undone_id()
+    base = id && Path.join(history_dir(), id)
+
+    if is_nil(base) do
+      {:error, :nothing_to_redo}
+    else
+      restore(base, "after")
+      File.rm(Path.join(base, ".undone"))
+      emit(%{kind: "body.redone", history: id, tags: []})
+      Autopoet.History.record_redo(id)
+      Autopoet.Log.puts("body: redone #{id} — re-applied the write")
+      :ok
+    end
+  end
+
+  # ── snapshot / restore ─────────────────────────────────────────────────────
+
+  # capture the current bytes of each rel that EXISTS (into before/) and the list
+  # of rels that DON'T (absent.list, so undo can remove newly-created files).
+  defp snapshot(rels) do
+    hid = "h#{System.os_time(:second)}-#{System.unique_integer([:positive])}"
+    base = Path.join(history_dir(), hid)
+    File.mkdir_p!(base)
+
+    absent =
+      for rel <- rels do
+        src = safe!(rel)
+
+        if File.exists?(src) do
+          copy_into(src, Path.join([base, "before", rel]))
+          nil
+        else
+          rel
+        end
+      end
+      |> Enum.reject(&is_nil/1)
+
+    if absent != [], do: File.write!(Path.join(base, "absent.list"), Enum.join(absent, "\n") <> "\n")
+    hid
+  end
+
+  # capture the POST-write bytes of each rel (into after/) so redo can re-apply.
+  defp capture_after(hid, rels) do
+    base = Path.join(history_dir(), hid)
+    for rel <- rels, File.exists?(safe!(rel)), do: copy_into(safe!(rel), Path.join([base, "after", rel]))
+  end
+
+  # restore files from a snapshot dir (before/ or after/) back onto the body
+  defp restore(base, which) do
+    from = Path.join(base, which)
+
+    for src <- Path.wildcard(Path.join(from, "**")), File.regular?(src) do
+      rel = Path.relative_to(src, from)
+      dst = safe!(rel)
+      File.mkdir_p!(Path.dirname(dst))
+      File.cp!(src, dst)
+    end
+  end
+
+  defp copy_into(src, dst) do
+    File.mkdir_p!(Path.dirname(dst))
+    File.cp!(src, dst)
+  end
+
+  # ── redo-stack bookkeeping ─────────────────────────────────────────────────
+
+  defp entries do
+    history_dir()
+    |> File.ls!()
+    |> Enum.filter(&File.dir?(Path.join(history_dir(), &1)))
+    |> Enum.sort(:desc)
+  end
+
+  defp undone?(base), do: File.exists?(Path.join(base, ".undone"))
+
+  # newest write still applied (undo target) — highest id without .undone
+  defp newest_active_id do
+    ensure_dir()
+    Enum.find(entries(), fn id -> not undone?(Path.join(history_dir(), id)) end)
+  end
+
+  # most-recently-undone write (redo target) — the .undone marker holds a monotonic
+  # seq; the largest seq is the last thing undone, which redo restores first.
+  defp newest_undone_id do
+    ensure_dir()
+
+    entries()
+    |> Enum.map(fn id -> {id, undone_seq(Path.join(history_dir(), id))} end)
+    |> Enum.reject(fn {_, seq} -> seq == nil end)
+    |> Enum.max_by(fn {_, seq} -> seq end, fn -> nil end)
+    |> case do
+      {id, _} -> id
+      nil -> nil
+    end
+  end
+
+  defp undone_seq(base) do
+    case File.read(Path.join(base, ".undone")) do
+      {:ok, s} -> case Integer.parse(String.trim(s)) do
+        {n, _} -> n
+        _ -> 0
+      end
+      _ -> nil
+    end
+  end
+
+  # a fresh write invalidates the redo stack: clear every .undone marker
+  defp clear_redo do
+    for id <- entries(), do: File.rm(Path.join([history_dir(), id, ".undone"]))
+  end
+
+  defp ensure_dir, do: File.mkdir_p!(history_dir())
+
+  defp absent(base) do
+    case File.read(Path.join(base, "absent.list")) do
+      {:ok, b} -> String.split(b, "\n", trim: true)
+      _ -> []
+    end
+  end
+
+  # append mode: current tail + the new lines
+  defp compose(current, added) do
+    cur = String.trim_trailing(current)
+    add = String.trim_trailing(added)
+    if cur == "", do: add <> "\n", else: cur <> "\n" <> add <> "\n"
+  end
+
+  # best-effort: a direct write must never fail because the event bus is down
+  defp emit(ev) do
+    Nexus.Events.emit(ev)
+  rescue
+    _ -> :ok
+  end
+
+  defp safe!(rel) do
+    rel = to_string(rel)
+
+    if String.starts_with?(rel, "/") or String.contains?(rel, ".."),
+      do: raise(ArgumentError, "unsafe body path: #{rel}")
+
+    Path.join(root(), rel)
+  end
+end

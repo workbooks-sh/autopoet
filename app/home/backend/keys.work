@@ -1,0 +1,113 @@
+# Autopoet.Keys
+
+  Provider keys + the ONE model front door. Every LLM call the autopoet makes rides the
+  Workbooks Cloud AI Gateway; the vendor behind it is an implementation detail.
+
+The modules verbatim, authored as `.work` — the Elixir source lives in a beam-compiled
+`defmodule` code block instead of a scattered `.ex` file. `Autopoet.Keys` resolves
+provider keys through `Nexus.Secrets`; `Autopoet.Providers` is the single-model seam that
+hands off to `Nexus.Llm` (which owns gateway routing + the money boundary).
+
+defmodule Autopoet.Keys do
+  @moduledoc """
+  Provider keys, resolved through `Nexus.Secrets` (store-first, env-fallback) —
+  the same audited seam typeaway uses. Never `System.get_env` directly; the dev
+  injection point is `.env` sourced by run.sh.
+  """
+  def inception, do: Nexus.Secrets.get("INCEPTION_API_KEY")
+  def openrouter, do: Nexus.Secrets.get("OPENROUTER_API_KEY")
+  def gemini, do: Nexus.Secrets.get("GEMINI_API_KEY")
+
+  @doc """
+  Set the OpenRouter key from onboarding's LOCAL power path (bring-your-own AI).
+  Live immediately (System.put_env → env-fallback picks it up) AND persisted to
+  `.env` so it survives a restart. The desktop's free/local lane.
+  """
+  def set_openrouter(key) when is_binary(key) do
+    key = String.trim(key)
+    System.put_env("OPENROUTER_API_KEY", key)
+    persist_env("OPENROUTER_API_KEY", key)
+    :ok
+  end
+
+  # upsert a KEY=value line in the .env run.sh sources (Discovery.home/.env)
+  defp persist_env(name, value) do
+    path = Path.join(Autopoet.Discovery.home(), ".env")
+    line = "#{name}=#{value}"
+
+    lines =
+      case File.read(path) do
+        {:ok, body} -> body |> String.split("\n") |> Enum.reject(&String.starts_with?(&1, name <> "="))
+        _ -> []
+      end
+
+    File.write!(path, Enum.join(lines ++ [line, ""], "\n"))
+  rescue
+    _ -> :ok
+  end
+end
+
+defmodule Autopoet.Providers do
+  @moduledoc """
+  Workbooks Cloud — the ONE model front door. Every LLM call the autopoet makes
+  rides the Workbooks Cloudflare **AI Gateway** (the `workbooks` gateway:
+  `CF_AIG_URL` + `CF_AIG_TOKEN`), which fronts the upstream vendors we happen to
+  use. The gateway is the provider; the vendor is an implementation detail behind
+  it — one billing/observability/caching front door for everything.
+
+  ONE AGENT, ONE MODEL. The old two-model pipeline — a Gemini planner + a
+  Mercury/Inception DRAFTER — is retired. There is a single agent model
+  (`openai/gpt-5.2`, "Go 5.2") and a multimodal SUB model for agents/browsing
+  (`xiaomi/mimo-v2.5`) — both reached through this seam.
+
+  Auth is PASS-THROUGH: the upstream vendor key rides `authorization`, the gateway
+  token rides `cf-aig-authorization`. With no gateway configured it falls back to
+  the vendor's direct endpoint, so dev without the gateway still works. This seam
+  (`complete/2` → `Nexus.Llm.complete`) crosses the `Nexus.Llm` money boundary
+  (gate + meter) on both the gateway and the direct-fallback path.
+
+  EXCEPTION — the realtime lanes do NOT ride this seam: `Autopoet.VoiceBrain`
+  (Cerebras / Groq) and `Autopoet.GeminiLive` (Gemini Live) call their dedicated
+  ultra-low-latency providers over a direct transport, deliberately outside the
+  OpenRouter gateway, because sub-second first-token latency is the whole point of
+  the voice lane. They still SETTLE spend on the same `Nexus.Inference.Admission`
+  ledger post-hoc: VoiceBrain's sync path (`reply`/`complete`) now meters. Still
+  unmetered (tracked, wb-9llj3): VoiceBrain's streaming path + GeminiLive. So do
+  not restate "no call skips the boundary" — the streaming/live lanes still do.
+  """
+  @agent_model "z-ai/glm-5.2"         # the ONE brain model (GLM-5.2, "Go 5.2")
+  @sub_model "xiaomi/mimo-v2.5"       # the multimodal sub / browsing / agent model
+
+  # `brain_live: false` (test config) is the MASTER kill for live providers:
+  # keys sitting in a developer's shell env must never turn the suite live —
+  # they were silently igniting real agent runs (LLM spend + wasm memory that
+  # tripped the watchdog's VM halt mid-suite). Tests inject :brain_llm instead.
+  def live?, do: Application.get_env(:autopoet, :brain_live, true)
+
+  @doc "The single agent model — `AUTOPOET_MODEL` overrides (per-call `opts[:model]` still wins)."
+  def agent_model,
+    do: System.get_env("AUTOPOET_MODEL") || System.get_env("AUTOPOET_PLANNER_MODEL") || @agent_model
+
+  @doc "The multimodal sub / browsing / agent model."
+  def sub_model, do: @sub_model
+
+  # kept name for the ~30 call sites; means "the Workbooks Cloud lane is reachable".
+  def openrouter?(), do: live?() and (gateway?() or is_binary(Autopoet.Keys.openrouter()))
+
+  @doc "Is the Workbooks Cloud gateway configured? (production posture)"
+  def gateway?, do: Nexus.Secrets.has?("CF_AIG_URL") and Nexus.Secrets.has?("CF_AIG_TOKEN")
+
+  @doc """
+  A completion through Workbooks Cloud. Picks the model (default the single agent
+  model) and hands off to `Nexus.Llm`, which owns the gateway routing: with the
+  gateway configured every call rides the `workbooks` front door to the OpenRouter
+  upstream (pass-through auth, model auto-prefixed); without it, direct OpenRouter.
+  `openrouter/2` is the historical name for this ONE seam — kept for the call sites.
+  """
+  def openrouter(messages, opts \\ []), do: complete(messages, opts)
+
+  def complete(messages, opts \\ []) do
+    model = opts[:model] || agent_model()
+    Nexus.Llm.complete(messages, Keyword.merge(opts, model: model, api_key: Autopoet.Keys.openrouter(), tenant: nil))
+  end
+end

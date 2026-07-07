@@ -1,0 +1,1214 @@
+# App routes — the vault, the body, the avatar
+
+The HTTP surface for the workspace + editor + avatar, migrated from the legacy
+`Autopoet.Control` Plug into idiomatic `server`-block routes the nexus serves.
+Handlers are `req`-style: `req.query`/`req.body`/`req.raw_body` in, a JSON map or
+`{status, content_type, bytes}` out. On this trusted desktop nexus the routes are
+`:public` (one operator); the cloud tenant layers auth on top.
+
+server :vault do
+  route "GET /notes/tree.json", :notes_tree, auth: :public
+  route "GET /notes/file", :notes_file, auth: :public
+  route "POST /notes/save", :notes_save, auth: :public
+  route "GET /body/file", :body_file, auth: :public
+  route "POST /body/save", :body_save, auth: :public
+  route "GET /avatar/mouths.json", :avatar_mouths, auth: :public
+  route "GET /micons.json", :micons, auth: :public
+
+  # the nexus router wraps a BARE list return in %{result: …}; the client wants
+  # the array directly, so JSON-encode list payloads ourselves.
+  def notes_tree(_req), do: {200, "application/json", Jason.encode!(Autopoet.Notes.tree())}
+
+  def notes_file(req) do
+    case Autopoet.Notes.read(req.query["path"] || "") do
+      {:ok, content} -> {200, "text/plain; charset=utf-8", content}
+      _ -> {404, %{error: "no such note"}}
+    end
+  end
+
+  def notes_save(req) do
+    Autopoet.Notes.write(req.query["path"], to_string(req.raw_body || ""))
+    %{ok: true}
+  end
+
+  def body_file(req) do
+    case Autopoet.Body.read(req.query["path"] || "") do
+      {:ok, content} -> {200, "text/plain; charset=utf-8", content}
+      _ -> {404, %{error: "no such file"}}
+    end
+  end
+
+  def body_save(req) do
+    path = req.query["path"]
+    Autopoet.Body.write(path, to_string(req.raw_body || ""))
+    Autopoet.Log.puts("body: human edited #{path} directly")
+    %{ok: true}
+  end
+
+  def avatar_mouths(_req), do: Autopoet.Avatar.mouths()
+
+  def micons(_req) do
+    dir = Path.join([Autopoet.Discovery.home(), "app", "home", "static", "micons"])
+
+    names =
+      case File.ls(dir) do
+        {:ok, files} ->
+          files |> Enum.filter(&String.ends_with?(&1, ".svg")) |> Enum.map(&String.trim_trailing(&1, ".svg")) |> Enum.sort()
+
+        _ ->
+          []
+      end
+
+    %{icons: names}
+  end
+end
+
+## Studio — voices, history, chat, profile
+
+server :studio do
+  route "GET /voices/traits.json", :voices_traits, auth: :public
+  route "POST /voices/default", :voices_default, auth: :public
+  route "GET /history/log.json", :history_log, auth: :public
+  route "GET /history/diff.json", :history_diff, auth: :public
+  route "GET /profile", :profile, auth: :public
+  route "GET /chat/sessions.json", :chat_sessions, auth: :public
+  route "POST /chat/new", :chat_new, auth: :public
+  route "POST /intake/start", :intake_start, auth: :public
+  route "POST /speak/stop", :speak_stop, auth: :public
+
+  def voices_traits(_req) do
+    pinned = Autopoet.VoiceRoster.pinned()
+    verdicts = Autopoet.VoiceRoster.verdicts()
+
+    for name <- Autopoet.VoicePersonas.names() ++ pinned,
+        verdicts[name] != "rejected",
+        t = Autopoet.VoiceRoster.traits(name),
+        t != nil,
+        File.exists?(Path.join(Autopoet.VoiceRoster.takes_dir(), name <> ".wav")),
+        into: %{},
+        do: {name, Map.put(t, "kind", if(name in pinned, do: "pinned", else: "designed"))}
+  end
+
+  def voices_default(req) do
+    engine = req.query["engine"]
+    name = Path.basename(req.query["name"] || "")
+
+    valid =
+      (engine == "qwen-clone" and name in Autopoet.VoiceRoster.pinned()) or
+        (engine == "qwen-design" and Autopoet.VoicePersonas.description(name) != nil)
+
+    if valid do
+      path = Path.join([Autopoet.Discovery.home(), "data", "voices", "default"])
+      File.mkdir_p!(Path.dirname(path))
+      File.write!(path, "#{engine} #{name}\n")
+      %{ok: true, engine: engine, name: name}
+    else
+      {400, %{error: "unknown voice"}}
+    end
+  end
+
+  def history_log(_req), do: {200, "application/json", Jason.encode!(Autopoet.History.log())}
+  def history_diff(req), do: %{files: Autopoet.History.diff(req.query["rev"] || "@")}
+  def profile(_req), do: {200, "text/plain; charset=utf-8", Autopoet.Profile.render()}
+  def chat_sessions(_req), do: {200, "application/json", Jason.encode!(Autopoet.Chat.sessions())}
+  def chat_new(_req), do: {200, "text/plain; charset=utf-8", Autopoet.Chat.new() <> "\n"}
+  def intake_start(_req), do: {200, "text/plain; charset=utf-8", "#{Autopoet.Intake.start()}\n"}
+
+  def speak_stop(_req) do
+    Autopoet.Voice.stop()
+    {200, "text/plain; charset=utf-8", "quiet\n"}
+  end
+end
+
+## App misc — auth state, deck, affect, graph
+
+server :app_misc do
+  route "GET /auth/state.json", :auth_state, auth: :public
+  route "POST /auth/onboarding/done", :onboarding_done, auth: :public
+  route "POST /auth/onboarding/reset", :onboarding_reset, auth: :public
+  route "POST /voice/affect", :voice_affect, auth: :public
+  route "POST /voice/deck/new", :deck_new, auth: :public
+  route "POST /voice/deck/add", :deck_add, auth: :public
+  route "GET /graph.json", :graph_json, auth: :public
+  route "POST /profile/reset", :profile_reset, auth: :public
+
+  defp deck_dir, do: Path.join([Autopoet.Discovery.home(), "data", "decks"])
+  defp deck_file, do: Path.join(deck_dir(), "current.md")
+
+  def auth_state(_req) do
+    s = Autopoet.Auth.state()
+    real = Map.new(Autopoet.Connections.all(), &{&1, true})
+
+    %{
+      authenticated: s.authenticated,
+      onboarded: s.onboarded,
+      user: s.user,
+      connections: Map.merge(Map.get(s, :connections, %{}), real)
+    }
+  end
+
+  def onboarding_done(_req) do
+    Autopoet.Auth.complete_onboarding()
+    %{ok: true}
+  end
+
+  def onboarding_reset(_req) do
+    Autopoet.Auth.reset_onboarding()
+    %{ok: true}
+  end
+
+  def voice_affect(req) do
+    case Autopoet.Affect.classify(to_string(req.raw_body || "")) do
+      {:ok, top} -> {200, "text/plain; charset=utf-8", Enum.map_join(top, "\n", fn {l, s} -> "#{l} #{s}" end)}
+      _ -> {200, "text/plain; charset=utf-8", ""}
+    end
+  end
+
+  def deck_new(_req) do
+    File.mkdir_p!(deck_dir())
+
+    case File.stat(deck_file()) do
+      {:ok, %{mtime: mt}} ->
+        stamp = mt |> NaiveDateTime.from_erl!() |> NaiveDateTime.to_iso8601() |> String.replace(":", "-")
+        File.rename(deck_file(), Path.join(deck_dir(), "deck-#{stamp}.md"))
+
+      _ ->
+        :ok
+    end
+
+    %{ok: true}
+  end
+
+  def deck_add(req) do
+    slide = String.trim(to_string(req.raw_body || ""))
+    File.mkdir_p!(deck_dir())
+
+    deck =
+      case File.read(deck_file()) do
+        {:ok, prior} when prior != "" -> prior <> "\n---\n" <> slide
+        _ -> slide
+      end
+
+    File.write!(deck_file(), deck)
+    %{ok: true}
+  end
+
+  def graph_json(_req), do: {200, "application/json", Jason.encode!(Autopoet.WorldGraph.payload())}
+
+  def profile_reset(_req) do
+    Autopoet.Profile.clear()
+    %{ok: true}
+  end
+end
+
+## Window, chat, proposals, cloud status
+
+server :app_ctl do
+  route "GET /health", :health, auth: :public
+  route "POST /win/:action", :win, auth: :public
+  route "GET /chat/transcript", :chat_transcript, auth: :public
+  route "POST /proposal/:id/accept", :proposal_accept, auth: :public
+  route "POST /proposal/:id/reject", :proposal_reject, auth: :public
+  route "GET /cloud/status.json", :cloud_status, auth: :public
+  route "GET /cloud/machine.json", :cloud_machine, auth: :public
+
+  def health(_req), do: {200, "text/plain; charset=utf-8", "ok"}
+
+  def win(req) do
+    action = req.params["action"] || req.params[:action]
+    Autopoet.Window.control(String.to_existing_atom(to_string(action)))
+    {200, "text/plain; charset=utf-8", "ok\n"}
+  end
+
+  def chat_transcript(req) do
+    case Autopoet.Chat.transcript(req.query["id"] || "") do
+      {:ok, body} -> {200, "text/plain; charset=utf-8", body}
+      _ -> {404, %{error: "no such chat"}}
+    end
+  end
+
+  def proposal_accept(req) do
+    id = req.params["id"] || req.params[:id]
+
+    case Autopoet.Proposals.accept(id, Autopoet.Notes.dir()) do
+      :ok ->
+        for {rel, _} <- Autopoet.Proposals.changes(id) do
+          with {:ok, content} <- File.read(Path.join(Autopoet.Notes.dir(), rel)),
+               do: Autopoet.Notes.write(rel, content)
+        end
+
+        {200, "text/plain; charset=utf-8", "accepted #{id}\n"}
+
+      _ ->
+        {404, %{error: "no such proposal"}}
+    end
+  end
+
+  def proposal_reject(req) do
+    Autopoet.Proposals.reject(req.params["id"] || req.params[:id])
+    %{ok: true}
+  end
+
+  def cloud_status(_req) do
+    signed = Autopoet.Cloud.signed_in?()
+    acct = signed && Autopoet.Cloud.account()
+
+    %{
+      signed_in: signed,
+      account: acct && %{email: acct.email, org: acct.org, role: acct.role},
+      tools: Autopoet.Composio.configured?()
+    }
+  end
+
+  def cloud_machine(_req) do
+    case Autopoet.Cloud.get("/api/cloud/machine") do
+      {:ok, b} -> b
+      {:error, {_code, b}} when is_map(b) -> b
+      {:error, :not_signed_in} -> %{"error" => "not signed in"}
+      _ -> %{"error" => "unavailable"}
+    end
+  end
+end
+
+## Auth + power (cloud proxy)
+
+server :power do
+  route "POST /auth/signin", :signin, auth: :public
+  route "POST /auth/oauth/:provider", :oauth, auth: :public
+  route "POST /auth/connect/:provider", :connect, auth: :public
+  route "POST /auth/disconnect/:provider", :disconnect, auth: :public
+  route "GET /auth/providers.json", :providers, auth: :public
+  route "POST /auth/signout", :signout, auth: :public
+  route "GET /power/cloud/nexuses", :cloud_nexuses, auth: :public
+  route "GET /power/cloud/tiers", :cloud_tiers, auth: :public
+  route "GET /power/cloud/summary", :cloud_summary, auth: :public
+  route "POST /power/cloud/checkout", :cloud_checkout, auth: :public
+  route "POST /power/cloud/credits", :cloud_credits, auth: :public
+  route "POST /power/compute", :power_compute, auth: :public
+
+  defp prov(req), do: req.params["provider"] || req.params[:provider]
+  defp txt(s), do: {200, "text/plain; charset=utf-8", s}
+
+  defp cloud_proxy(method, path, body) do
+    result = if method == :get, do: Autopoet.Cloud.get(path), else: Autopoet.Cloud.post(path, body)
+
+    case result do
+      {:ok, b} -> b
+      {:error, {code, b}} when is_integer(code) and is_map(b) -> {code, b}
+      {:error, :not_signed_in} -> {401, %{error: "not signed in"}}
+      _ -> {502, %{error: "cloud unavailable"}}
+    end
+  end
+
+  def signin(req) do
+    case Autopoet.Auth.signin(req.query) do
+      {:error, reason} -> txt("refused: #{inspect(reason)}\n")
+      _ -> txt("app\n")
+    end
+  end
+
+  def oauth(req) do
+    case Autopoet.Auth.oauth(prov(req), req.query) do
+      {:error, reason} -> txt("refused: #{inspect(reason)}\n")
+      %{onboarded: true} -> txt("app\n")
+      _ -> txt("onboarding\n")
+    end
+  end
+
+  def connect(req) do
+    case Autopoet.Auth.connect(prov(req)) do
+      {:error, reason} -> txt("refused: #{inspect(reason)}\n")
+      _ -> txt("ok\n")
+    end
+  end
+
+  def disconnect(req) do
+    Autopoet.Connections.delete(prov(req))
+    Autopoet.Auth.disconnect(prov(req))
+    txt("ok\n")
+  end
+
+  def providers(_req), do: %{configured: Autopoet.Auth.OAuth.configured(), connected: Autopoet.Connections.all()}
+  def signout(_req), do: (Autopoet.Auth.signout(); txt("out\n"))
+
+  def cloud_nexuses(_req), do: cloud_proxy(:get, "/api/platform/nexuses", nil)
+  def cloud_tiers(_req), do: cloud_proxy(:get, "/api/platform/tiers", nil)
+
+  def cloud_summary(_req) do
+    %{
+      credits: (case cloud_proxy(:get, "/api/platform/credits", nil) do %{} = m -> m; _ -> %{} end),
+      subscription: (case cloud_proxy(:get, "/api/platform/billing/subscription", nil) do %{} = m -> m; _ -> %{} end)
+    }
+  end
+
+  def cloud_checkout(req), do: cloud_proxy(:post, "/api/platform/billing/checkout", req.body)
+  def cloud_credits(req), do: cloud_proxy(:post, "/api/platform/billing/credits", req.body)
+
+  def power_compute(req) do
+    choice = to_string(req.raw_body || "") |> String.trim() |> String.slice(0, 120)
+
+    if choice == "" do
+      {422, %{error: "compute choice required"}}
+    else
+      File.write!(Path.join([Autopoet.Discovery.home(), "data", "power-compute"]), choice)
+      %{ok: true, compute: choice}
+    end
+  end
+end
+
+## Vault edits + voice brain + proposals
+
+server :vault_edit do
+  route "POST /notes/new", :notes_new, auth: :public
+  route "POST /notes/delete", :notes_delete, auth: :public
+  route "POST /notes/rename", :notes_rename, auth: :public
+  route "POST /notes/reorder", :notes_reorder, auth: :public
+  route "POST /notes/meta", :notes_meta, auth: :public
+  route "POST /body/undo", :body_undo, auth: :public
+  route "POST /body/redo", :body_redo, auth: :public
+  route "GET /body/undostate.json", :body_undostate, auth: :public
+  route "GET /body/history.json", :body_history, auth: :public
+  route "POST /voice/brain", :voice_brain, auth: :public
+  route "GET /proposals", :proposals, auth: :public
+  route "GET /cloud/connections.json", :cloud_connections, auth: :public
+
+  defp tags(s), do: (s || "") |> String.split(",", trim: true) |> Enum.map(&String.trim/1)
+  defp meta_of(q), do: %{"type" => q["type"], "icon" => q["icon"], "tags" => tags(q["tags"])}
+  defp undo_state, do: %{undo: Autopoet.Body.can_undo?(), redo: Autopoet.Body.can_redo?()}
+
+  def notes_new(req) do
+    q = req.query
+    Autopoet.Notes.create(q["path"], q["type"], meta_of(q))
+    {200, "text/plain; charset=utf-8", "created\n"}
+  end
+
+  def notes_delete(req) do
+    case Autopoet.Notes.delete(req.query["path"]) do
+      :ok -> {200, "text/plain; charset=utf-8", "deleted\n"}
+      {:error, r} -> {200, "text/plain; charset=utf-8", "refused: #{inspect(r)}\n"}
+    end
+  end
+
+  def notes_rename(req) do
+    case Autopoet.Notes.rename(req.query["from"], req.query["to"]) do
+      :ok -> {200, "text/plain; charset=utf-8", "renamed\n"}
+      {:error, r} -> {200, "text/plain; charset=utf-8", "refused: #{inspect(r)}\n"}
+    end
+  end
+
+  def notes_reorder(req) do
+    names = String.split(req.query["names"] || "", "\n", trim: true)
+    Autopoet.Notes.reorder(req.query["dir"] || "", names)
+    {200, "text/plain; charset=utf-8", "reordered\n"}
+  end
+
+  def notes_meta(req) do
+    Autopoet.Notes.set_meta(req.query["path"], meta_of(req.query))
+    {200, "text/plain; charset=utf-8", "ok\n"}
+  end
+
+  def body_undo(req) do
+    Autopoet.Body.undo(req.query["id"] || :latest)
+    undo_state()
+  end
+
+  def body_redo(_req) do
+    Autopoet.Body.redo()
+    undo_state()
+  end
+
+  def body_undostate(_req), do: undo_state()
+  def body_history(_req), do: {200, "application/json", Jason.encode!(Autopoet.Body.history())}
+
+  def voice_brain(req) do
+    with %{"history" => history} when is_list(history) <- (req.body || %{}),
+         {:ok, reply} <- Autopoet.VoiceBrain.reply(history) do
+      %{reply: reply}
+    else
+      _ -> {400, %{error: "bad request"}}
+    end
+  end
+
+  def proposals(_req) do
+    body =
+      case Autopoet.Proposals.list() do
+        [] -> "no proposals\n"
+        ps -> Enum.map_join(ps, "\n", fn {id, status} -> "#{id} #{status}" end) <> "\n"
+      end
+
+    {200, "text/plain; charset=utf-8", body}
+  end
+
+  def cloud_connections(_req) do
+    case Autopoet.Composio.connections() do
+      {:ok, b} -> b
+      _ -> %{"items" => []}
+    end
+  end
+end
+
+## Plan judge, profile, projects, cloud connect
+
+server :ops do
+  route "POST /plan/judge", :plan_judge, auth: :public
+  route "POST /profile/set", :profile_set, auth: :public
+  route "GET /projects", :projects_list, auth: :public
+  route "GET /projects/:slug/status", :project_status, auth: :public
+  route "POST /cloud/connect/:toolkit", :cloud_connect, auth: :public
+  route "POST /cloud/deploy", :cloud_deploy, auth: :public
+
+  def plan_judge(req) do
+    case Autopoet.PlanBrain.judge(if(is_map(req.body), do: req.body, else: %{})) do
+      {:ok, scores} -> scores
+      _ -> {503, %{error: "judge unavailable"}}
+    end
+  end
+
+  def profile_set(req) do
+    case Autopoet.Profile.put(req.query["key"], req.query["value"]) do
+      :ok -> {200, "text/plain; charset=utf-8", "ok\n"}
+      _ -> {200, "text/plain; charset=utf-8", "refused: bad answer\n"}
+    end
+  end
+
+  def projects_list(_req) do
+    body =
+      case Autopoet.Projects.list() do
+        [] -> "no projects\n"
+        ps -> Enum.map_join(ps, "\n", fn {slug, p} -> "#{slug} #{p.status} archetype=#{p.archetype}" end) <> "\n"
+      end
+
+    {200, "text/plain; charset=utf-8", body}
+  end
+
+  def project_status(req) do
+    slug = req.params["slug"] || req.params[:slug]
+
+    case Autopoet.Projects.get(slug) do
+      nil ->
+        {200, "text/plain; charset=utf-8", "unknown project\n"}
+
+      p ->
+        hb = Path.join(Autopoet.Projects.artifacts_dir(slug), "state.txt")
+        state = case File.read(hb) do {:ok, t} -> t; _ -> "(no heartbeat yet)\n" end
+        # header line carries the typed project state (chartered/desk) the status needs;
+        # the migration had returned only the raw heartbeat file, dropping it.
+        {200, "text/plain; charset=utf-8", "#{slug} #{p.status} chartered=#{p.chartered} desk=#{p.desk_running}\n#{state}"}
+    end
+  end
+
+  def cloud_connect(req) do
+    toolkit = req.params["toolkit"] || req.params[:toolkit]
+
+    case Autopoet.Composio.connect(toolkit) do
+      {:ok, %{redirect_url: url}} -> {200, "text/plain; charset=utf-8", url}
+      _ -> {503, %{error: "composio not configured"}}
+    end
+  end
+
+  def cloud_deploy(_req) do
+    case Autopoet.Cloud.post("/api/cloud/provision", %{}) do
+      {:ok, body} -> body
+      {:error, {code, b}} when is_integer(code) and is_map(b) -> {code, b}
+      _ -> {502, %{error: "provision failed"}}
+    end
+  end
+end
+
+## Dev control + voice status
+
+server :dev do
+  route "POST /arm", :arm, auth: :public
+  route "POST /disarm", :disarm, auth: :public
+  route "POST /cycle", :cycle, auth: :public
+  route "POST /kill", :kill, auth: :public
+  route "POST /close", :close, auth: :public
+  route "GET /voice/status", :voice_status, auth: :public
+  route "GET /voice/sync.json", :voice_sync, auth: :public
+  route "GET /voices/roster", :voices_roster, auth: :public
+  route "POST /power/openrouter", :openrouter, auth: :public
+
+  def arm(req) do
+    every = req.query["every"] || "15m"
+    Nexus.Autopoet.Worker.arm(every)
+    {200, "text/plain; charset=utf-8", "armed every #{every}\n"}
+  end
+
+  def disarm(_req) do
+    Nexus.Autopoet.Worker.disarm()
+    {200, "text/plain; charset=utf-8", "disarmed\n"}
+  end
+
+  def cycle(_req) do
+    report = Autopoet.Brain.cycle()
+    {200, "text/plain; charset=utf-8", "cycle: sensed #{report.sensed}, results #{inspect(Enum.map(report.results, & &1.action))}\n"}
+  end
+
+  def kill(_req) do
+    spawn(fn -> Process.sleep(150); :init.stop() end)
+    {200, "text/plain; charset=utf-8", "halting\n"}
+  end
+
+  def close(_req) do
+    case Process.whereis(Autopoet.Window) do
+      nil -> {200, "text/plain; charset=utf-8", "no window (headless)\n"}
+      _ -> Autopoet.Window.control(:close); {200, "text/plain; charset=utf-8", "closing\n"}
+    end
+  end
+
+  def voice_status(_req), do: {200, "text/plain; charset=utf-8", to_string(Autopoet.Voice.status()) <> "\n"}
+  def voice_sync(_req), do: {200, "application/json", Jason.encode!(Autopoet.Voice.sync())}
+  def voices_roster(_req), do: {200, "text/html; charset=utf-8", Autopoet.VoiceRoster.html(Autopoet.Discovery.token())}
+
+  def openrouter(req) do
+    key = to_string(req.raw_body || "") |> String.trim()
+
+    if key == "" do
+      {422, %{error: "empty key"}}
+    else
+      Autopoet.Keys.set_openrouter(key)
+      %{ok: true}
+    end
+  end
+end
+
+## Avatar svg, history, voices, agents
+
+server :ops2 do
+  route "GET /avatar", :avatar_svg, auth: :public
+  route "POST /history/merge", :history_merge, auth: :public
+  route "POST /history/restore", :history_restore, auth: :public
+  route "POST /voice/moods/save", :moods_save, auth: :public
+  route "GET /voices/default.json", :voices_default_json, auth: :public
+  route "POST /voices/verdict", :voices_verdict, auth: :public
+  route "POST /request", :request_change, auth: :public
+  route "POST /agent", :agent, auth: :public
+  route "POST /research", :research, auth: :public
+
+  defp t(s), do: {200, "text/plain; charset=utf-8", s}
+
+  def avatar_svg(_req), do: {200, "image/svg+xml", Autopoet.Avatar.svg()}
+
+  def history_merge(_req) do
+    case Autopoet.History.merge_heads() do
+      {:ok, n} -> t("merged #{n} heads\n")
+      {:error, r} -> t("refused: #{inspect(r)}\n")
+    end
+  end
+
+  def history_restore(req) do
+    case Autopoet.History.restore(req.query["rev"] || "") do
+      {:ok, n} -> t("restored #{n} vault file(s)\n")
+      {:error, r} -> t("refused: #{inspect(r)}\n")
+    end
+  end
+
+  def moods_save(req) do
+    File.write!(Path.join([Autopoet.Discovery.home(), "data", "voice-moods.txt"]), String.trim(to_string(req.raw_body || "")) <> "\n")
+    t("ok\n")
+  end
+
+  def voices_default_json(_req) do
+    case File.read(Path.join([Autopoet.Discovery.home(), "data", "voices", "default"])) do
+      {:ok, body} ->
+        case String.split(String.trim(body), " ", parts: 2) do
+          [engine, name] when engine in ["qwen-clone", "qwen-design", "kokoro"] -> %{engine: engine, name: name}
+          _ -> %{}
+        end
+
+      _ ->
+        %{}
+    end
+  end
+
+  def voices_verdict(req) do
+    Autopoet.VoiceRoster.set(req.query["name"] || "", req.query["state"] || "")
+    t("ok\n")
+  end
+
+  def request_change(req) do
+    case Autopoet.Requests.file(req.query["target"], req.query["change"]) do
+      :ok -> t("filed: #{req.query["target"]} — #{req.query["change"]}\n")
+      {:error, r} -> t("refused: #{inspect(r)}\n")
+    end
+  end
+
+  def agent(req) do
+    name = req.query["name"] || ""
+    task = req.query["task"] || ""
+
+    if name == "" or task == "" do
+      t("usage: agent?name=<agent>&task=<task>\n")
+    else
+      {:ok, out} = Autopoet.Agents.dispatch(name, task)
+      t("dispatched #{name} (async) -> #{out}\n")
+    end
+  end
+
+  def research(req) do
+    q = req.query["q"] || ""
+    if q == "", do: t("usage: research?q=<question>\n"), else: (Autopoet.Agents.research(q); t("researching: #{q}\n"))
+  end
+end
+
+## Chat send, requisition, diagram, deck, toolkits
+
+server :ops3 do
+  route "POST /chat/send", :chat_send, auth: :public
+  route "POST /onboard/requisition", :requisition, auth: :public
+  route "POST /voice/d2", :voice_d2, auth: :public
+  route "GET /voice/deck", :voice_deck, auth: :public
+  route "GET /voice/moods", :voice_moods, auth: :public
+  route "GET /cloud/toolkits", :cloud_toolkits, auth: :public
+  route "GET /voices/take/:name", :voices_take, auth: :public
+  route "POST /voices/trait", :voices_trait, auth: :public
+
+  defp t(s), do: {200, "text/plain; charset=utf-8", s}
+  defp home_file(parts), do: Path.join([Autopoet.Discovery.home() | parts])
+
+  def chat_send(req) do
+    case Autopoet.Chat.send(req.query["id"], to_string(req.raw_body || "")) do
+      {:ok, reply} -> t(reply)
+      {:error, r} -> {502, %{error: "chat failed: #{inspect(r)}"}}
+    end
+  end
+
+  def requisition(req) do
+    case Autopoet.Requisition.pair(if(is_map(req.body), do: req.body, else: %{})) do
+      {:ok, identity} -> identity
+      {:error, r} -> {503, %{error: to_string(r)}}
+    end
+  end
+
+  def voice_d2(req) do
+    src = to_string(req.raw_body || "")
+    base = Path.join(System.tmp_dir!(), "apd2-#{System.unique_integer([:positive])}")
+    d2file = base <> ".d2"
+    svg = base <> ".svg"
+
+    try do
+      File.write!(d2file, src)
+
+      case System.cmd("d2", ["--theme=0", "--pad=12", d2file, svg], stderr_to_stdout: true) do
+        {_, 0} -> {200, "image/svg+xml", File.read!(svg)}
+        {err, _} -> {422, %{error: String.slice(to_string(err), 0, 200)}}
+      end
+    after
+      File.rm(d2file)
+      File.rm(svg)
+    end
+  end
+
+  def voice_deck(_req), do: t(File.read(home_file(["data", "decks", "current.md"])) |> elem(1) |> to_string())
+  def voice_moods(_req), do: t(File.read(home_file(["data", "voice-moods.txt"])) |> elem(1) |> to_string())
+
+  def cloud_toolkits(req) do
+    opts = [limit: req.query["limit"] || "40"] ++ (case req.query["search"] do s when is_binary(s) and s != "" -> [search: s]; _ -> [] end)
+
+    case Autopoet.Composio.toolkits(opts) do
+      {:ok, b} -> b
+      _ -> %{"items" => []}
+    end
+  end
+
+  def voices_take(req) do
+    name = req.params["name"] || req.params[:name]
+    path = Path.join(Autopoet.VoiceRoster.takes_dir(), Path.basename(to_string(name)))
+
+    if File.exists?(path) and String.ends_with?(to_string(name), ".wav") do
+      {200, "audio/wav", File.read!(path)}
+    else
+      {404, %{error: "no such take"}}
+    end
+  end
+
+  def voices_trait(req) do
+    case Autopoet.VoiceRoster.set_trait(req.query["name"] || "", req.query["key"] || "", req.query["value"] || "") do
+      :ok -> t("ok\n")
+      _ -> {422, %{error: "bad trait"}}
+    end
+  end
+end
+
+## Projects lifecycle, voice design, power/cloud
+
+server :ops4 do
+  route "POST /proposal/:id/revert", :proposal_revert, auth: :public
+  route "POST /projects/:slug/archive", :project_archive, auth: :public
+  route "POST /projects/:slug/desk/start", :desk_start, auth: :public
+  route "POST /projects/:slug/desk/stop", :desk_stop, auth: :public
+  route "POST /voices/accent", :voices_accent, auth: :public
+  route "POST /voices/create", :voices_create, auth: :public
+  route "POST /power/cloud/open", :power_cloud_open, auth: :public
+  route "POST /power/cloud/autotopup", :power_autotopup, auth: :public
+  route "POST /power/cloud/openurl", :power_openurl, auth: :public
+
+  defp t(s), do: {200, "text/plain; charset=utf-8", s}
+  defp slug(req), do: req.params["slug"] || req.params[:slug]
+
+  defp cloud_proxy(method, path, body) do
+    r = if method == :get, do: Autopoet.Cloud.get(path), else: Autopoet.Cloud.post(path, body)
+    case r do
+      {:ok, b} -> b
+      {:error, {c, b}} when is_integer(c) and is_map(b) -> {c, b}
+      _ -> {502, %{error: "cloud unavailable"}}
+    end
+  end
+
+  def proposal_revert(req) do
+    case Autopoet.Proposals.revert(req.params["id"] || req.params[:id], Autopoet.Notes.dir()) do
+      :ok -> t("reverted\n")
+      {:error, r} -> t("refused: #{inspect(r)}\n")
+    end
+  end
+
+  def project_archive(req) do
+    case Autopoet.Projects.archive(slug(req)) do
+      :ok -> t("archived\n")
+      {:error, w} -> t("refused: #{inspect(w)}\n")
+    end
+  end
+
+  def desk_start(req) do
+    case Autopoet.Desks.launch(slug(req)) do
+      {:ok, _} -> t("desk running\n")
+      {:error, w} -> t("refused: #{inspect(w)}\n")
+    end
+  end
+
+  def desk_stop(req) do
+    Autopoet.Desks.halt(slug(req))
+    t("desk stopped\n")
+  end
+
+  def voices_accent(req) do
+    case Autopoet.VoiceRoster.set_accent(req.query["name"] || "", req.query["accent"] || "") do
+      :ok -> t("ok\n")
+      _ -> {422, %{error: "bad accent"}}
+    end
+  end
+
+  def voices_create(req) do
+    case Autopoet.VoicePersonas.add(req.query["name"] || "", to_string(req.raw_body || "")) do
+      {:ok, _} -> t("ok\n")
+      _ -> {422, %{error: "bad voice"}}
+    end
+  end
+
+  def power_cloud_open(_req) do
+    spawn(fn -> System.cmd("open", [Autopoet.Cloud.base_url() <> "/cloud/"]) end)
+    %{ok: true}
+  end
+
+  def power_autotopup(req), do: cloud_proxy(:post, "/api/platform/billing/autotopup", req.body)
+
+  def power_openurl(req) do
+    url = req.query["url"] || ""
+    if url != "", do: spawn(fn -> System.cmd("open", [url]) end)
+    %{ok: true}
+  end
+end
+
+## Log, theme, intake proposal, project create, status
+
+server :ops5 do
+  route "GET /log", :log, auth: :public
+  route "POST /chrome-theme", :chrome_theme, auth: :public
+  route "GET /intake/proposal", :intake_proposal, auth: :public
+  route "POST /projects/new", :projects_new, auth: :public
+  route "GET /status", :status, auth: :public
+
+  def log(_req), do: {200, "text/plain; charset=utf-8", Enum.join(Autopoet.Log.recent(200), "\n") <> "\n"}
+
+  def chrome_theme(req) do
+    theme = if req.query["t"] == "dark", do: :dark, else: :light
+
+    case Process.whereis(Autopoet.Window) do
+      nil -> {200, "text/plain; charset=utf-8", "no window (headless)\n"}
+      _ -> Autopoet.Window.set_theme(theme); {200, "text/plain; charset=utf-8", "ok\n"}
+    end
+  end
+
+  def intake_proposal(_req) do
+    case Autopoet.Intake.pending_proposal() do
+      nil -> {404, %{error: "none"}}
+      {id, brief} -> {200, "text/plain; charset=utf-8", id <> "\n" <> brief}
+    end
+  end
+
+  def projects_new(req) do
+    slug = req.query["slug"] || "project-#{System.os_time(:second)}"
+    archetype = String.to_atom(req.query["archetype"] || "venture")
+    prompt = to_string(req.raw_body || "")
+
+    case Autopoet.Projects.create(slug, archetype: archetype) do
+      {:ok, p} ->
+        # conversational creation: the body prompt is the onboarding note, and creating
+        # a project LAUNCHES its desk (genesis begins). Faithful to the retired
+        # Control.post "/projects/new" — the migration had dropped both steps.
+        if String.trim(prompt) != "" do
+          dir = Autopoet.Projects.artifacts_dir(p.slug)
+          File.mkdir_p!(dir)
+          File.write!(Path.join(dir, "onboarding.txt"), prompt)
+        end
+
+        case Autopoet.Desks.launch(p.slug) do
+          {:ok, _} -> {200, "text/plain; charset=utf-8", "created #{p.slug} — desk running, genesis begins\n"}
+          {:error, why} -> {200, "text/plain; charset=utf-8", "created #{p.slug} — desk failed: #{inspect(why)}\n"}
+        end
+
+      {:error, w} ->
+        {422, %{error: inspect(w)}}
+    end
+  end
+
+  def status(_req) do
+    st = Nexus.Autopoet.Worker.status()
+    {up_ms, _} = :erlang.statistics(:wall_clock)
+
+    body = """
+    armed: #{st.armed}
+    next_ms: #{inspect(st.next_ms)}
+    memory_mb: #{div(:erlang.memory(:total), 1_048_576)}
+    uptime_s: #{div(up_ms, 1000)}
+    window: #{if Process.whereis(Autopoet.Window), do: "open", else: "headless"}
+    """
+
+    {200, "text/plain; charset=utf-8", body}
+  end
+end
+
+## Digest + deck export
+
+server :ops6 do
+  route "GET /digest", :digest, auth: :public
+  route "GET /voice/deck/export", :deck_export, auth: :public
+
+  def digest(_req) do
+    # group pending proposals by project (or "(organism)" for the self) — the migration
+    # had flattened this to a bare id list, dropping the slug + target the digest needs.
+    grouped =
+      Autopoet.Proposals.pending()
+      |> Enum.group_by(fn {id, _} ->
+        case Autopoet.Proposals.target_of(id) do
+          "projects/" <> rest -> rest |> String.split("/") |> hd()
+          _ -> "(organism)"
+        end
+      end)
+
+    body =
+      if grouped == %{} do
+        "digest empty — nothing pending\n"
+      else
+        Enum.map_join(grouped, "\n", fn {proj, items} ->
+          "## #{proj}\n" <>
+            Enum.map_join(items, "\n", fn {id, _} -> "  #{id} → #{Autopoet.Proposals.target_of(id)}" end)
+        end) <> "\n"
+      end
+
+    {200, "text/plain; charset=utf-8", body}
+  end
+
+  def deck_export(_req) do
+    md = case File.read(Path.join([Autopoet.Discovery.home(), "data", "decks", "current.md"])) do {:ok, m} -> m; _ -> "" end
+    {200, "text/markdown; charset=utf-8", md}
+  end
+end
+
+## Realtime WS + cloud auth (via the new nexus contracts)
+
+server :realtime do
+  route "GET /voice/live", :voice_live, auth: :public
+  route "POST /auth/cloud/open", :cloud_open, auth: :public
+  # The device-flow return hop lives OUTSIDE `/auth/*` on purpose: the nexus runtime
+  # RESERVES `/auth/:provider/callback` for its OWN native-auth IdP (Nexus.Server's
+  # built-in Plug routes match before workbook routes), so `/auth/cloud/callback`
+  # was silently intercepted → provider "cloud" unknown → 401, and the browser's
+  # token never reached us. `/cloud/callback` is app-owned (like /cloud/status.json).
+  route "GET /cloud/callback", :cloud_callback, auth: :public
+  # Same reservation hazard: `POST /auth/signup` collides with Nexus.Auth.Native.signup
+  # (which wants an email → 422). This app's name-carry signup lives under onboarding.
+  route "POST /auth/onboarding/signup", :signup, auth: :public
+  route "POST /auth/cloud/signout", :cloud_signout, auth: :public
+  route "POST /auth/cloud/disconnect", :cloud_disconnect, auth: :public
+
+  # WebSocket upgrade — the realtime voice call, via the nexus {:ws, …} contract
+  def voice_live(_req), do: {:ws, Autopoet.VoiceSock, %{}}
+
+  def cloud_open(_req) do
+    cb = "http://127.0.0.1:#{Autopoet.Application.port()}/cloud/callback"
+    url = Autopoet.Cloud.base_url() <> "/login/?device=autopoet&cb=" <> URI.encode_www_form(cb)
+    spawn(fn -> System.cmd("open", [url]) end)
+    %{ok: true}
+  end
+
+  # The device-flow return hop. It ALWAYS lands in the system browser (the login was
+  # opened there — WKWebView can't host it), NOT in the desktop webview. So redirecting
+  # to "/" here just loaded a second, confusing copy of the whole app in the browser
+  # while the real desktop window sat behind it. Instead: store the token, establish the
+  # session (the desktop window's poll picks it up within 2s and advances itself), pull
+  # the desktop app forward, and hand the BROWSER a small "you're done, go back" page.
+  def cloud_callback(req) do
+    case Autopoet.Cloud.put_token(req.query["token"] || "") do
+      :ok ->
+        Autopoet.Auth.sign_in_cloud()
+        # best-effort: raise the desktop window (no-op on a headless/cloud nexus that has none)
+        if pid = Process.whereis(Autopoet.Window), do: send(pid, :to_front)
+        {200, "text/html; charset=utf-8", return_to_app_page(:ok)}
+
+      _ ->
+        {200, "text/html; charset=utf-8", return_to_app_page(:failed)}
+    end
+  end
+
+  # A minimal, self-contained confirmation for the browser tab (it can't be reliably
+  # auto-closed — it was opened by `open`, not by script — so it TELLS the user to
+  # switch back, and tries window.close() anyway for the same-browser case).
+  defp return_to_app_page(status) do
+    {title, msg, ok} =
+      case status do
+        :ok -> {"Signed in", "You're connected to Workbooks Cloud. Return to Autopoet — it's already signing you in.", true}
+        _ -> {"Sign-in didn't complete", "Something went wrong minting your device token. Return to Autopoet and try “Sign in with Workbooks” again.", false}
+      end
+
+    accent = if ok, do: "#3a7d54", else: "#a23b3b"
+
+    """
+    <!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>#{title} — Autopoet</title><style>
+      html,body{height:100%;margin:0}
+      body{display:flex;align-items:center;justify-content:center;background:#fbfbf9;
+        font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#2a2622}
+      .card{max-width:420px;padding:40px 34px;text-align:center}
+      .dot{width:46px;height:46px;border-radius:50%;background:#{accent};margin:0 auto 22px;
+        display:flex;align-items:center;justify-content:center;color:#fff;font-size:24px}
+      h1{font-size:21px;letter-spacing:-.01em;margin:0 0 10px} p{color:#787066;margin:0 0 24px}
+      .hint{font-size:13px;color:#a39a8e}
+    </style></head><body><div class="card">
+      <div class="dot">#{if ok, do: "✓", else: "!"}</div>
+      <h1>#{title}</h1><p>#{msg}</p>
+      <div class="hint">You can close this tab.</div>
+    </div><script>setTimeout(function(){try{window.close();}catch(e){}},400);</script>
+    </body></html>
+    """
+  end
+
+  def signup(req) do
+    case Autopoet.Auth.signup(req.query) do
+      {:error, reason} -> {200, "text/plain; charset=utf-8", "refused: #{inspect(reason)}\n"}
+      _ -> {200, "text/plain; charset=utf-8", "onboarding\n"}
+    end
+  end
+
+  def cloud_signout(_req), do: (Autopoet.Cloud.sign_out(); %{ok: true})
+  def cloud_disconnect(_req), do: (Autopoet.Cloud.disconnect(); %{ok: true})
+end
+
+## OAuth (conn contract), brain-stream (SSE), power status, widget pages
+
+server :auth_flows do
+  route "GET /auth/:provider/login", :oauth_login, auth: :public
+  route "GET /auth/:provider/callback", :oauth_callback, auth: :public
+  route "POST /auth/:provider/open", :oauth_open, auth: :public
+  route "POST /auth/cloudflare/token", :cloudflare_token, auth: :public
+  route "POST /voice/brain/stream", :brain_stream, auth: :public
+  route "GET /power/status", :power_status, auth: :public
+
+  defp prov(req), do: req.params["provider"] || req.params[:provider]
+
+  # OAuth needs the Plug conn (session cookie + redirect) → the {:conn, …} contract
+  def oauth_login(req), do: {:conn, fn conn -> Autopoet.Auth.OAuth.login(conn, prov(req)) end}
+  def oauth_callback(req), do: {:conn, fn conn -> Autopoet.Auth.OAuth.callback(conn, prov(req)) end}
+
+  def oauth_open(req) do
+    case Autopoet.Auth.connect(prov(req)) do
+      {:error, r} -> {200, "text/plain; charset=utf-8", "refused: #{inspect(r)}\n"}
+      _ -> {200, "text/plain; charset=utf-8", "ok\n"}
+    end
+  end
+
+  def cloudflare_token(req) do
+    case Autopoet.Auth.OAuth.cloudflare_connect(req.query["token"] || "") do
+      :ok -> {200, "text/plain; charset=utf-8", "ok\n"}
+      {:error, r} -> {200, "text/plain; charset=utf-8", "refused: #{inspect(r)}\n"}
+    end
+  end
+
+  # SSE via the streaming contract — the provider's tokens forwarded as they arrive
+  def brain_stream(req) do
+    with %{"history" => history} when is_list(history) <- (req.body || %{}),
+         {:ok, ref} <- Autopoet.VoiceBrain.stream_req(history) do
+      enum =
+        Stream.resource(
+          fn -> ref end,
+          fn r ->
+            receive do
+              {:http, {^r, :stream, chunk}} -> {[chunk], r}
+              {:http, {^r, :stream_end, _}} -> {:halt, r}
+              {:http, {^r, {:error, _}}} -> {:halt, r}
+            after
+              60_000 -> {:halt, r}
+            end
+          end,
+          fn _ -> :ok end
+        )
+
+      {:stream, "text/event-stream", enum}
+    else
+      _ -> {400, %{error: "bad request"}}
+    end
+  end
+
+  def power_status(_req) do
+    compute =
+      case File.read(Path.join([Autopoet.Discovery.home(), "data", "power-compute"])) do
+        {:ok, c} -> String.trim(c)
+        _ -> nil
+      end
+
+    openrouter? = is_binary(Autopoet.Keys.openrouter())
+    signed_in? = Autopoet.Cloud.signed_in?()
+
+    base = %{
+      compute: compute,
+      inference: (if openrouter?, do: "local", else: "cloud"),
+      openrouter: openrouter?,
+      signed_in: signed_in?
+    }
+
+    # Signed in → fold the cloud ACCOUNT state (machines + billing) into the status so
+    # onboarding can (a) show "your autopoet already has a home" (nxConfirm reads
+    # status.nexuses/subscription) and (b) SKIP the token/credit ask when AI is already
+    # available. Best-effort: a slow/unreachable control plane degrades to `base`.
+    if signed_in?, do: Map.merge(base, cloud_account_power()), else: base
+  end
+
+  # The signed-in account's machines + billing, shaped for the onboarding screens.
+  # `powered` is the one truth the token step reads: a BYO OpenRouter key, OR a cloud
+  # credit balance, OR an active subscription, OR a provisioned machine — any of these
+  # means "AI is already on the account; don't ask for tokens." Reads run in parallel
+  # and every failure path collapses to an empty map (never blocks the paint).
+  defp cloud_account_power do
+    [nexuses_r, credits_r, sub_r] =
+      ["/api/platform/nexuses", "/api/platform/credits", "/api/platform/billing/subscription"]
+      |> Enum.map(fn path -> Task.async(fn -> Autopoet.Cloud.get(path) end) end)
+      |> Task.await_many(8000)
+
+    nexuses =
+      case nexuses_r do
+        {:ok, %{"nexuses" => list}} when is_list(list) -> list
+        {:ok, list} when is_list(list) -> list
+        _ -> []
+      end
+
+    credits = case credits_r do {:ok, %{} = m} -> m; _ -> %{} end
+    subscription = case sub_r do {:ok, %{} = m} -> m; _ -> %{} end
+
+    balance = credits["balance"] || credits["amount"] || credits["credits"] || 0
+    sub_active? = subscription["active"] == true or subscription["status"] in ["active", "trialing"]
+    powered = balance > 0 or sub_active? or nexuses != []
+
+    %{
+      nexuses: nexuses,
+      credits: credits,
+      subscription: (if map_size(subscription) > 0, do: subscription, else: nil),
+      balance: balance,
+      powered: powered
+    }
+  rescue
+    _ -> %{}
+  catch
+    :exit, _ -> %{}
+  end
+end
+
+## Graph cluster, widget pages, SSE, voice regen — the last routes
+
+server :ops7 do
+  route "POST /graph/cluster", :graph_cluster, auth: :public
+  route "GET /plain", :plain, auth: :public
+  route "GET /sse", :sse, auth: :public
+  route "GET /voice/lab", :voice_lab, auth: :public
+  route "GET /voice/widget", :voice_widget, auth: :public
+  route "POST /voices/regen", :voices_regen, auth: :public
+
+  @cluster_sys """
+  You group graph nodes into named clusters. The user gives a grouping request and a
+  node catalog (one per line: id, type, label). Reply ONLY with groups in this form:
+
+  = Group Name
+  node-id
+  node-id
+
+  Every group needs at least one node id copied EXACTLY from the catalog. Nodes that
+  don't fit any group are simply omitted. No prose.
+  """
+
+  def graph_cluster(req) do
+    [prompt | lines] = String.split(to_string(req.raw_body || ""), "\n")
+    catalog = Enum.join(lines, "\n")
+
+    case Autopoet.Chat.oneshot(@cluster_sys, "REQUEST: #{prompt}\n\nCATALOG:\n#{catalog}") do
+      {:ok, out} -> {200, "text/plain; charset=utf-8", out}
+      _ -> {502, %{error: "cluster failed"}}
+    end
+  end
+
+  def plain(_req), do: {200, "text/html; charset=utf-8", "<!doctype html><meta charset=utf-8><title>autopoet</title><body style=\"font:15px system-ui;padding:40px\">Autopoet is running on the nexus. Open the app at <a href=\"/\">/</a>."}
+
+  # a keepalive SSE stream via the streaming contract
+  def sse(_req), do: {:stream, "text/event-stream", Stream.map([": ok\n\n"], & &1)}
+
+  defp serve_html(file) do
+    path = Path.join([Autopoet.Discovery.home(), "app", "home", "static", file])
+
+    case File.read(path) do
+      {:ok, html} -> {200, "text/html; charset=utf-8", String.replace(html, "__TOKEN__", Autopoet.Discovery.token())}
+      _ -> {404, %{error: "not found"}}
+    end
+  end
+
+  def voice_lab(_req), do: serve_html("voicelab.html")
+  def voice_widget(_req), do: serve_html("voice.html")
+
+  def voices_regen(req) do
+    name = Path.basename(req.query["name"] || "")
+
+    cond do
+      Autopoet.VoicePersonas.description(name) == nil -> {404, %{error: "no such persona"}}
+      Autopoet.QwenTts.model() != :design or not Autopoet.QwenTts.ready?() ->
+        Autopoet.QwenTts.switch(:design)
+        {503, %{error: "design engine loading"}}
+
+      true ->
+        %{ok: true, name: name}
+    end
+  end
+end
+
+## Shadow companion — the BEAM-native learned analysis (Scholar + minGRU)
+
+The nexus's own learned lenses over the captured behavioral corpus, wired live so
+they run on every nexus (desktop + cloud) and never fall to dead-code cleanup:
+Scholar/GMM tabular clustering (`Autopoet.Shadow.Profile`), the self-training minGRU
+sequence model (`Autopoet.Shadow.Sequence`), and the Markov higher-order gate
+(`Autopoet.Shadow.Trace`). Pure Nx — no Python, no hardware.
+
+server :shadow do
+  route "GET /shadow/companion", :companion, auth: :public
+  route "GET /shadow/sequence", :sequence, auth: :public
+
+  def companion(req) do
+    level = if req.query["level"] == "doc", do: :doc, else: :kind
+    Autopoet.Shadow.Companion.analyze(level: level, max_steps: 600)
+  end
+
+  def sequence(req) do
+    signals =
+      Autopoet.Shadow.Trace.dir()
+      |> Autopoet.Shadow.Trace.events()
+      |> Autopoet.Shadow.Trace.signals(if(req.query["level"] == "doc", do: :doc, else: :kind))
+
+    Autopoet.Shadow.Sequence.analyze(signals, max_steps: 600)
+  end
+end

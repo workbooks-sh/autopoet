@@ -1,0 +1,107 @@
+# Autopoet.Spine
+
+  The app's supervision **spine** — one `.work`-authored `Supervisor` that owns every
+  stateful domain process (the log, history, auth, profile, the shadow learners, the
+  desktop I/O engines, the discovery beacon, the desks). The `.ex` `Autopoet.Application`
+  is now just the OTP bootstrap: it boots `Nexus.Config`, then starts `Nexus.Server`
+  (which owns HTTP + compiles this very module at bringup), THIS spine, and the window.
+
+  Split of concerns:
+    * `Autopoet.Application` (.ex, the irreducible OTP `mod:` entry) — boots the runtime
+      boundaries: `Nexus.Server` (HTTP) + `Autopoet.Window` (the kill-switch) + one-shot
+      world seeds.
+    * `Autopoet.Spine` (this, .work) — the app's own brain/domain processes, authored as
+      a workbook so the same tree runs on the local desktop nexus AND the workbooks.sh
+      cloud nexus (a redeploy recompiles it at bringup — no scattered `.ex` to ship).
+
+  Authored as a bare top-level `defmodule` code block (NOT wrapped in `server :spine`):
+  the literate parser recognizes `defmodule X do` as a block opener and closes it at the
+  unique column-0 `end`, so the module's body must (and does) stay indented. A `server`
+  wrapper would nest a second column-0 `end` and break the block boundary. `compile_workbook`
+  collects this `defmodule` and compiles it to its own canonical name, `Autopoet.Spine`.
+
+  Boot ordering (why a `.work` module can supervise boot-critical processes):
+  `Nexus.Server.start_link` runs `bringup` SYNCHRONOUSLY — compiling every `.work` BEAM
+  unit, this one included — before it returns. `Autopoet.Application` orders `Nexus.Server`
+  as its FIRST child, and pre-compiles the tier once at start so `Autopoet.Spine` is loaded
+  before its child slot (an explicit map spec, `start:` mfa, no upfront `child_spec/1`) runs.
+
+defmodule Autopoet.Spine do
+  @moduledoc """
+  The app's supervision spine: one `Supervisor` owning every stateful domain process.
+  Started by `Autopoet.Application` AFTER `Nexus.Server` (which compiles this module at
+  bringup). The cloud profile (`AUTOPOET_TARGET=cloud`) drops the desktop-only I/O
+  engines (mic STT + realtime Voice) — the same tree, minus the hardware lanes.
+  """
+  use Supervisor
+
+  def start_link(opts) when is_map(opts) do
+    Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
+  end
+
+  @impl true
+  def init(opts) do
+    port = Map.fetch!(opts, :port)
+
+    children =
+      [
+        Autopoet.Log,
+        Autopoet.History,
+        Autopoet.Auth,
+        Autopoet.Profile,
+        # The money wall (balance/caps/runway) — pure BEAM state, so it runs on BOTH
+        # profiles (desktop + cloud), started before the desks/market that draw on it.
+        # (Restored here after P0 dropped it when Nexus.Server replaced Control's Bandit.)
+        Autopoet.Treasury
+      ] ++
+        desktop_io() ++
+        [
+          # Autopoet.Watchdog is now a `worker :watchdog` block (backend/watchdog.work) —
+          # the nexus Worker.Supervisor owns it, started at bringup, so it is NOT a spine
+          # child anymore (P3).
+          Autopoet.Requests,
+          Autopoet.Capture,
+          # Autopoet.Snapshot is now a `worker :snapshot` block (backend/snapshot.work) —
+          # the nexus Worker.Supervisor owns it (P3).
+          Autopoet.Shadow.Hebb,
+          Autopoet.Shadow.Surprise,
+          Autopoet.Shadow.Outcomes,
+          {Autopoet.Discovery, port}
+        ] ++ [Autopoet.Desks] ++ desk()
+
+    # max_restarts headroom: tests hard-kill the three shadow learners to force
+    # cold/reboot paths — three near-simultaneous restarts must not take down the tree.
+    Supervisor.init(children, strategy: :one_for_one, max_restarts: 10)
+  end
+
+  @doc "Is this the cloud profile (a vendored Fly machine), not the desktop?"
+  def cloud?, do: System.get_env("AUTOPOET_TARGET") == "cloud"
+
+  # Desktop-only I/O children (mic STT + realtime Voice) — dropped in the cloud.
+  # Filtered to modules that actually exist so a mid-refactor tree (a renamed or
+  # deleted I/O module) degrades to missing audio, never a boot crash.
+  defp desktop_io do
+    if cloud?() do
+      []
+    else
+      # Kokoro-82M (BEAM-native ONNX) is the SHIPPED voice engine. Qwen3-TTS is NOT
+      # started in the release — its python sidecar (data/qwen-tts-venv) and MLX weights
+      # don't ship, so `Autopoet.QwenTts` is deliberately absent here. The module stays
+      # compiled, so any stray caller resolves to its graceful "off" status and falls
+      # back to Kokoro. (For a dev A/B, add `Autopoet.QwenTts` back to `base`.)
+      base = [Autopoet.Stt, Autopoet.Voice, Autopoet.Affect]
+      base = if Autopoet.VoiceEngine.kokoro?(), do: [Autopoet.Kokoro | base], else: base
+
+      Enum.filter(base, fn mod ->
+        Code.ensure_loaded?(mod) ||
+          (IO.puts("autopoet: desktop I/O child #{inspect(mod)} missing — skipped") && false)
+      end)
+    end
+  end
+
+  # The always-on trading desk (day/night market cycle) — opt-in via AUTOPOET_DESK=1
+  # (machine-identity enablement, like PORT/WB_DATA). Never on in tests by default.
+  defp desk do
+    if System.get_env("AUTOPOET_DESK") == "1", do: [Autopoet.Desk], else: []
+  end
+end

@@ -3,7 +3,7 @@ defmodule Autopoet.GenesisEvalTest do
   GENESIS gates (wb-h0tjs.1, docs/eval-genesis-plan.md §2/§4 Phase A):
 
     A1 blank slate — a fresh install's VISIBLE graph is exactly [self]. The
-       plumbing (guide pages, limbs registry, infra limbs) exists, classified
+       plumbing (guide pages, agents registry, infra agents) exists, classified
        and hidden; no demo files exist at all.
     A2 graph budget — post-onboarding visible nodes == the persona's workspace
        manifest exactly (workspace docs + crew + the one pending proposal).
@@ -51,8 +51,8 @@ defmodule Autopoet.GenesisEvalTest do
     File.mkdir_p!(Nexus.Paths.data_dir())
     Autopoet.Guide.seed()
     Autopoet.Notes.seed()
-    seed_limbs_like_boot()
-    Autopoet.Limbs.register_from_body()
+    seed_agents_like_boot()
+    Autopoet.Agents.register_from_body()
 
     payload = Autopoet.WorldGraph.payload()
     hidden = MapSet.new(payload.default_hidden)
@@ -61,10 +61,10 @@ defmodule Autopoet.GenesisEvalTest do
     assert Enum.map(visible, & &1.id) == ["self"],
            "A1 FAILED: fresh install shows #{inspect(Enum.map(visible, &{&1.type, &1.label}))}"
 
-    # the plumbing EXISTS (hidden ≠ deleted): guide pages + the limbs registry
+    # the plumbing EXISTS (hidden ≠ deleted): guide pages + the agents registry
     types = Enum.frequencies_by(payload.nodes, & &1.type)
     assert types["guide"] >= 5, "guide pages missing from the (hidden) world"
-    assert types["system"] >= 1, "limbs registry missing from the (hidden) world"
+    assert types["system"] >= 1, "agents registry missing from the (hidden) world"
 
     # the LINTED skill spine rides the guide (accurate-by-construction context —
     # skills/general/*.work, CI-gated upstream by skills.lint): indexed for the
@@ -113,7 +113,7 @@ defmodule Autopoet.GenesisEvalTest do
 
     assert Autopoet.WorldGraph.classify("intake/briefing.work") == "system"
     assert Autopoet.WorldGraph.classify("intake/scout.work") == "system"
-    assert Autopoet.WorldGraph.classify("limbs.work") == "system"
+    assert Autopoet.WorldGraph.classify("agents.work") == "system"
     assert Autopoet.WorldGraph.classify("guide/anatomy.work") == "guide"
 
     # A3: every proposed vault page is sectioned starting code, brief nested (A5)
@@ -241,8 +241,8 @@ defmodule Autopoet.GenesisEvalTest do
     IO.puts("  ✓ GENESIS A4 — reject leaves a void; re-run re-proposes")
   end
 
-  # mirror application.ex seed_limbs (private there)
-  defp seed_limbs_like_boot do
+  # mirror application.ex seed_agents (private there)
+  defp seed_agents_like_boot do
     src = Path.join(:code.priv_dir(:autopoet), "seed")
     root = Nexus.Paths.data_dir()
 

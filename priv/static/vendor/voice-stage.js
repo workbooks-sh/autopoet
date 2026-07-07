@@ -553,7 +553,7 @@
     // adopted cube renders hands in WebGL (avatar3d) — the div is then just an
     // invisible controller (position/rotation vars + pose), not the artwork
     if (adopt && window.Avatar3D) { h.innerHTML = ""; return; }
-    h.innerHTML = poseSVG(POSE_SHAPES[pose]);   // standalone: stamped-union SVG art
+    h.innerHTML = poseSVG(POSE_SHAPES[pose] || POSE_SHAPES.open);   // stamped-union SVG art (baked-only poses degrade to the open mitten on this webview path)
   }
   function setHand(h, vars) { Object.keys(vars).forEach(function (k) { h.style.setProperty("--" + k, vars[k]); }); }
   function placeHand(side, ang, rotDeg, pose) {
@@ -671,6 +671,26 @@
     placeHand("l", 172 * D, 230, "open");
     gesture("--rz", [-3, 3, 0], 200);
     hold(1200);
+  }
+  // ── pose-hold gestures ─────────────────────────────────────────────────────
+  // Raise the right hand in one of the baked poses, hold, drop. ONE table keeps
+  // the brain's directive vocabulary (voice_brain.ex), the fireDir dispatch, and
+  // the avatar3d pose meshes in sync. Unknown poses degrade to the "open" SVG
+  // mitten on the webview fallback (setPose). rot defaults to a slight outward tilt.
+  var GEST_POSE = {
+    peace: { pose: "peace" }, rock: { pose: "rock" }, fist: { pose: "fist", hs: 1.12 },
+    ily:   { pose: "ily" },   three: { pose: "three" }, five: { pose: "five" },
+    palm:  { pose: "palm", rot: 0 }, chill: { pose: "relaxed", rot: -18 }
+  };
+  function poseHold(cfg, ms) {
+    if (!hands || !cfg) return;
+    hideHands();
+    placeHand("r", -SEC, cfg.rot == null ? 8 : cfg.rot, cfg.pose);
+    if (cfg.hs) {
+      setHand(hands.r, { hs: cfg.hs });
+      later(setTimeout(function () { setHand(hands.r, { hs: 1 }); }, 240));
+    }
+    hold(ms || 1500);
   }
 
   // ────────────────────────── D2 graph layer ──────────────────────────
@@ -1695,6 +1715,7 @@
       else if (d === "wave2") wave(true);
       else if (d === "thumbsup") thumbsUp();
       else if (d === "shrug") { shrug(); setBrows("raised"); later(setTimeout(function () { setBrows("none"); }, 1300)); }
+      else if (GEST_POSE[d]) poseHold(GEST_POSE[d]);
       else if (d === "nod") nod();
     }
 
@@ -2480,6 +2501,9 @@
         gesture("--nod", [6 * a + 3, -2 * a, 4 * a + 1, 0], 130);
       },
       thumbsUp: function () { if (mounted) thumbsUp(); },
+      // raise the right hand in ANY baked pose by name (point/open/thumb/fist/
+      // peace/two/spread/rock/ily/palm/three/five/relaxed); ms = optional hold
+      pose: function (name, ms) { if (mounted) poseHold({ pose: name }, ms); },
       // ── behavior-lane puppet verbs (the playground + pose engine drive these) ──
       playTake: function (url) {
         if (!mounted) return Promise.resolve();

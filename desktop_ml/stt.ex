@@ -129,7 +129,7 @@ defmodule Autopoet.Stt do
       nil
   end
 
-  defp model_dir(name), do: Path.join([Autopoet.Discovery.home(), "data", "models", name])
+  defp model_dir(name), do: Path.join(Autopoet.Discovery.models_dir(), name)
 
   # afconvert emits standard RIFF: walk the chunks to the `data` payload,
   # s16le mono 16k → f32 tensor in [-1, 1] (what both engines want)

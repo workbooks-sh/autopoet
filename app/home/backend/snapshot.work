@@ -1,0 +1,28 @@
+# Snapshot — telemetry ledger persistence
+
+  Persists the otherwise in-memory `Nexus.Telemetry` ledger, authored as the nexus's native
+  `worker` primitive (supervised `init`/`tick`) instead of a hand-rolled GenServer. Every 60s
+  the runtime calls `tick/1`: if the ledger changed, a framed snapshot `%{at, ledger}` is
+  appended to `data/traces/telemetry.etfs` (same framed format as the traces) — reboot-safe
+  history for the feedback substrate. The `Nexus.Worker.Supervisor` owns the OTP + the clock.
+
+worker :snapshot, every: "60s", restart: :permanent do
+  def init do
+    File.mkdir_p!(Path.dirname(path()))
+    nil
+  end
+
+  def tick(last) do
+    ledger = Nexus.Telemetry.ledger()
+
+    if ledger != %{} and ledger != last do
+      frame = :erlang.term_to_binary(%{at: System.os_time(:second), ledger: ledger})
+      File.write!(path(), <<byte_size(frame)::32, frame::binary>>, [:append])
+      ledger
+    else
+      last
+    end
+  end
+
+  def path, do: Path.join([Autopoet.Discovery.home(), "data", "traces", "telemetry.etfs"])
+end

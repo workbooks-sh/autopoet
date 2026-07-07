@@ -42,3 +42,20 @@ eval/live-runs/
 # model weights — never commit (downloaded to disk)
 desktop_ml/models/
 *.gguf
+app/home/static/
+
+# native NIF build artifact (rebuilt from c_src/ by elixir_make on macOS desktop)
+/priv/*.so
+
+# desktop packaging artifacts — the assembled .app/.dmg (scripts/package-macos.sh)
+/dist/
+
+# runtime Store DB + learned-knowledge log — recreated on boot; never source (was tracked, see review-hardening)
+.nexus/
+
+# stale hand-committed .app stub (execs a hardcoded path); the real bundle is built into dist/ by scripts/package-macos.sh
+/Autopoet.app/
+
+# runtime body content at repo root — seeded from priv/seed on boot; never source
+/agents.work
+/limbs.work
