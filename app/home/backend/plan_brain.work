@@ -174,11 +174,13 @@ defmodule Autopoet.PlanBrain do
     stage_rule =
       cond do
         exchanges == 0 ->
-          "This is your VERY FIRST question. You already greeted them — do NOT greet again, do NOT " <>
-            "re-introduce yourself, do NOT show a slide yet. Give a short warm reaction, then ask ONE " <>
-            "natural question to start GETTING TO KNOW THEM — who they are and what their world/work " <>
-            "is like. This is an interview to understand THEM. Do NOT ask 'what do you want to build' " <>
-            "or for a project brief — you are learning the person, not taking an order."
+          "This is your VERY FIRST question. Your greeting was ALREADY SPOKEN (it is the assistant " <>
+            "message above) — do NOT greet again in any form: no 'great/nice/lovely to meet you', no " <>
+            "hello, no re-introduction, no slide yet. Open DIRECTLY with the question itself (a tiny " <>
+            "lead-in clause like 'So —' is fine). Ask ONE natural question to start GETTING TO KNOW " <>
+            "THEM — who they are and what their world/work is like. This is an interview to understand " <>
+            "THEM. Do NOT ask 'what do you want to build' or for a project brief — you are learning " <>
+            "the person, not taking an order."
 
         exchanges <= 3 ->
           "Keep INTERVIEWING to know them: their world, how technical they are and what tools they " <>

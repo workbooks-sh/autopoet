@@ -14,6 +14,26 @@ server :voice do
 
   defp frame(wav), do: <<byte_size(wav)::32, wav::binary>>
 
+  # Clause-chunk an utterance for streaming synth: sentences first; a long
+  # sentence additionally peels its leading clause at the first comma so the
+  # opener is small (fast first audio) and the remainder rides as its own chunk.
+  defp clause_chunks(text) do
+    text
+    |> String.split(~r/(?<=[.!?])\s+/, trim: true)
+    |> Enum.flat_map(fn s ->
+      if length(String.split(s, " ")) > 18 do
+        case String.split(s, ~r/(?<=,)\s+/, parts: 2) do
+          [a, b] -> [a, b]
+          _ -> [s]
+        end
+      else
+        [s]
+      end
+    end)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+  end
+
   defp kokoro_voice(req) do
     Autopoet.VoiceEngine.kokoro_voice(
       req.query["voice"] || req.query["persona"] ||
@@ -29,12 +49,32 @@ server :voice do
     streaming = req.query["stream"] == "1"
 
     cond do
-      # Kokoro (default) — synthesizes fully in-BEAM; one framed chunk when streaming
+      # Kokoro (default) — synth is ~0.9x realtime, so one whole-utterance chunk
+      # means SECONDS of dead air before first audio. Streaming synthesizes
+      # clause-by-clause LAZILY: each frame leaves the moment it decodes (the
+      # stream contract flushes per element), so the opener plays in ~1s while
+      # the rest of the utterance is still synthesizing.
       Autopoet.VoiceEngine.kokoro?() and Autopoet.Kokoro.ready?() ->
-        case Autopoet.Kokoro.speak(text, kokoro_voice(req)) do
-          {:ok, wav} when streaming -> {:stream, "application/octet-stream", [frame(wav)]}
-          {:ok, wav} -> {200, "audio/wav", wav}
-          _ -> {503, %{error: "kokoro not ready"}}
+        voice = kokoro_voice(req)
+
+        if streaming do
+          enum =
+            text
+            |> clause_chunks()
+            |> Stream.map(fn chunk ->
+              case Autopoet.Kokoro.speak(chunk, voice) do
+                {:ok, wav} -> frame(wav)
+                _ -> <<>>
+              end
+            end)
+            |> Stream.reject(&(&1 == <<>>))
+
+          {:stream, "application/octet-stream", enum}
+        else
+          case Autopoet.Kokoro.speak(text, voice) do
+            {:ok, wav} -> {200, "audio/wav", wav}
+            _ -> {503, %{error: "kokoro not ready"}}
+          end
         end
 
       # Qwen — streaming sidecar; yield each framed chunk as it decodes
