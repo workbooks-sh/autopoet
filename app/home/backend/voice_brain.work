@@ -20,6 +20,14 @@ defmodule Autopoet.VoiceBrain do
   point. Same discipline as the other providers: key via `Nexus.Secrets`
   (`GROQ_API_KEY`), never logged, never returned, TLS verify_peer.
 
+  MONEY BOUNDARY: this lane calls Cerebras/Groq over a DIRECT `:httpc` transport
+  (below), NOT through `Autopoet.Providers.complete` / `Nexus.Llm`, so its spend
+  does NOT currently cross the `Nexus.Llm` gate + meter. That is deliberate for
+  latency, but it means voice spend is unmetered — routing it through
+  `Nexus.Inference.Admission` (metering without adding a gateway hop on the hot
+  path) is a tracked follow-up. Keep `Autopoet.Providers`' invariant honest: it
+  no longer claims "no call skips the boundary" — this call does.
+
   The system prompt makes the model a PERFORMER: it answers in the avatar
   cue-script DSL (spoken narration + inline stage directives + optional @graph
   D2 blocks), which the voice widget plays — voice, face, hands, diagram.

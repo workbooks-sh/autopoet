@@ -63,6 +63,20 @@ defmodule Autopoet.Body do
     end
   end
 
+  @doc """
+  Read a single body file by root-relative path. Returns `{:ok, content}` or `{:error, reason}` and
+  NEVER raises — the `GET /body/file` route (`auth: :public`, routes.work) turns a non-`{:ok, _}` into a
+  404, so a traversal attempt (`../`, absolute path) or a missing file must be an error, not a 500.
+  """
+  def read(rel) do
+    case File.read(safe!(rel)) do
+      {:ok, content} -> {:ok, content}
+      {:error, reason} -> {:error, reason}
+    end
+  rescue
+    ArgumentError -> {:error, :unsafe_path}
+  end
+
   @doc "A single direct write (full content), snapshotted + reversible."
   def write(rel, content), do: apply(%{to_string(rel) => content})
 

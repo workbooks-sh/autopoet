@@ -57,14 +57,22 @@ defmodule Autopoet.Providers do
 
   ONE AGENT, ONE MODEL. The old two-model pipeline — a Gemini planner + a
   Mercury/Inception DRAFTER — is retired. There is a single agent model
-  (`openai/gpt-5.2`, "Go 5.2"), a multimodal SUB model for agents/browsing
-  (`xiaomi/mimo-v2.5`), and the fast voice/plan lane (Cerebras, in
-  `Autopoet.VoiceBrain`) — all three reached THROUGH the gateway.
+  (`openai/gpt-5.2`, "Go 5.2") and a multimodal SUB model for agents/browsing
+  (`xiaomi/mimo-v2.5`) — both reached through this seam.
 
   Auth is PASS-THROUGH: the upstream vendor key rides `authorization`, the gateway
   token rides `cf-aig-authorization`. With no gateway configured it falls back to
-  the vendor's direct endpoint, so dev without the gateway still works. Both paths
-  cross the `Nexus.Llm` money boundary (gate + meter) — no call skips it.
+  the vendor's direct endpoint, so dev without the gateway still works. This seam
+  (`complete/2` → `Nexus.Llm.complete`) crosses the `Nexus.Llm` money boundary
+  (gate + meter) on both the gateway and the direct-fallback path.
+
+  EXCEPTION — the realtime lanes do NOT ride this seam: `Autopoet.VoiceBrain`
+  (Cerebras / Groq) and `Autopoet.GeminiLive` (Gemini Live) call their dedicated
+  ultra-low-latency providers over a direct transport, deliberately outside the
+  OpenRouter gateway and its meter, because sub-second first-token latency is the
+  whole point of the voice lane. Their spend is therefore currently UNMETERED —
+  metering the realtime lanes through `Nexus.Inference.Admission` is a tracked
+  follow-up. Do not restate "no call skips the boundary": the voice/live lanes do.
   """
   @agent_model "z-ai/glm-5.2"         # the ONE brain model (GLM-5.2, "Go 5.2")
   @sub_model "xiaomi/mimo-v2.5"       # the multimodal sub / browsing / agent model
