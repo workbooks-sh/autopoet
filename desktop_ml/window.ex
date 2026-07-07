@@ -22,13 +22,18 @@ defmodule Autopoet.Window do
   @doc "Programmatic close — same wx close event the stoplight produces."
   def close, do: GenServer.cast(__MODULE__, :close)
 
-  # The frame is ALWAYS a normal titled window (wxDEFAULT_FRAME_STYLE) so macOS makes it
-  # miniaturizable + zoomable — minimize/maximize then work through plain wx. In frameless
-  # mode a native shim (Autopoet.Window.Mac) restyles it INSET afterward: transparent
-  # titlebar, hidden title, full-size content, native traffic lights hidden — so the page's
-  # own stoplights are the only visible controls but the real window actions still fire.
-  # If that shim can't load, we simply keep the native title bar (still fully functional).
-  @wx_default_frame_style 0x0009_09FF
+  # The frame must be a normal titled window so macOS makes it miniaturizable, zoomable,
+  # AND fullscreen-capable. CRITICAL: pass the REAL wxDEFAULT_FRAME_STYLE — a previous
+  # hand-rolled constant (0x0009_09FF) accidentally carried wxFRAME_TOOL_WINDOW (0x4),
+  # which makes wxOSX create the frame as a UTILITY NSPanel: no native fullscreen ever,
+  # collectionBehavior writes silently rejected, invisible to accessibility. That one bit
+  # was the root of every "mac window acts wrong" symptom. In frameless mode the native
+  # shim (Autopoet.Window.Mac) restyles the titled window INSET afterward: transparent
+  # titlebar, hidden title, full-size content, native traffic lights hidden — the page's
+  # stoplights are the visible controls but real window actions still fire.
+  # wxDEFAULT_FRAME_STYLE = CAPTION|CLIP_CHILDREN|CLOSE_BOX|SYSTEM_MENU|MINIMIZE_BOX|
+  #                         MAXIMIZE_BOX|RESIZE_BORDER (wx 3.2)
+  @wx_default_frame_style 0x2040_1E40
 
   # WKWebView swallows every mouse event inside it — `-webkit-app-region:drag` in
   # the page's CSS has NO effect there (that hookup is a Chromium/Electron thing;
@@ -249,14 +254,13 @@ defmodule Autopoet.Window do
     {:noreply, s}
   end
 
-  # The custom green button = the REAL macOS zoom (fill the usable area ⇄ restore).
-  # Cocoa's zoom: compares the actual frame to the standard frame, so it stays correct
-  # after any manual drag/resize — the old state-tracked setSize toggle desynced on the
-  # first user move ("maximize doesn't maximize"). The wx toggle remains only as the
-  # shim-missing fallback (where the window has a native title bar anyway).
+  # The custom green button = REAL macOS fullscreen (its own Space, three-finger
+  # swipeable between fullscreen apps) — what the green button means everywhere else
+  # on the platform. Same action toggles back out. The wx zoom toggle remains only as
+  # the shim-missing fallback (where the window has a native title bar anyway).
   def handle_cast(:maximize, s) do
     if Autopoet.Window.Mac.available?() do
-      Autopoet.Window.Mac.zoom("autopoet")
+      Autopoet.Window.Mac.toggle_fullscreen("autopoet")
       {:noreply, s}
     else
       if s.maximized do

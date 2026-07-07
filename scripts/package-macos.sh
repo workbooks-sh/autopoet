@@ -163,6 +163,17 @@ say "verifying signature"
 codesign --verify --deep --strict --verbose=2 "$APP"
 spctl -a -t exec -vv "$APP" 2>&1 || true   # will say "rejected/unnotarized" until step 6
 
+# ── 4b. ONE app in /Applications: a SYMLINK to the fresh build ──────────────
+# Never a copy — a copy goes stale the moment the next build lands, and then the
+# Dock/Launchpad/Spotlight launch the WRONG Autopoet. The link keeps a single
+# truth: /Applications/Autopoet.app always IS dist/Autopoet.app. An existing real
+# directory there (an old copied install) is replaced by the link.
+say "linking /Applications/Autopoet.app → $APP"
+if [ -e "/Applications/Autopoet.app" ] && [ ! -L "/Applications/Autopoet.app" ]; then
+  rm -rf "/Applications/Autopoet.app"
+fi
+ln -sfn "$APP" "/Applications/Autopoet.app"
+
 # ── 5. build the DMG ────────────────────────────────────────────────────────
 say "creating dmg"
 rm -f "$DMG"

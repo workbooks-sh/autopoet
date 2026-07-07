@@ -21,8 +21,17 @@ client :shell do
     // synchronously during parse (no flash) and survives location.reload() (which
     // preserves the query string). Replaces the old serve-time __CHROME__ substitution
     // that Autopoet.Control did before the nexus migration served the page verbatim.
-    if (new URLSearchParams(location.search).has("frameless"))
+    if (new URLSearchParams(location.search).has("frameless")) {
       document.documentElement.style.setProperty("--chrome-display", "flex");
+      // native-fullscreen etiquette: macOS hides traffic lights in fullscreen, so the
+      // custom set must vanish too (and return on exit). The webview fills the frame,
+      // so "viewport == whole screen" IS the fullscreen signal — no native plumbing.
+      const chromeFs = () => document.documentElement.style.setProperty(
+        "--chrome-display",
+        (window.innerHeight >= screen.height && window.innerWidth >= screen.width) ? "none" : "flex");
+      window.addEventListener("resize", chromeFs);
+      window.addEventListener("DOMContentLoaded", chromeFs);
+    }
   </script>
 
   <div id="dragbar"></div>
