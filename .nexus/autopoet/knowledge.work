@@ -1,8 +1,0 @@
-# Autopoet knowledge
-
-Lessons the autopoet has learned (append-only; the lines are the source of truth).
-
-- (autopoet) autonomous_ready request for journal
-- (autopoet) rejected request for journal :: "_build/test_home/data/proposals/p1782948588-135/changes/index.work"
-- (autopoet) rejected request for journal :: "_build/test_home/data/proposals/p1782948693-2114/changes/index.work"
-- (autopoet) rejected request for journal :: "_build/test_home/data/proposals/p1782948693-2114/changes/index.work","_build/test_home/data/proposals/p1782948693-451/changes/index.work"

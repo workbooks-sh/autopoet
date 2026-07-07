@@ -49,3 +49,6 @@ app/home/static/
 
 # desktop packaging artifacts — the assembled .app/.dmg (scripts/package-macos.sh)
 /dist/
+
+# runtime Store DB + learned-knowledge log — recreated on boot; never source (was tracked, see review-hardening)
+.nexus/
