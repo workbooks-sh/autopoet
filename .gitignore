@@ -52,3 +52,6 @@ app/home/static/
 
 # runtime Store DB + learned-knowledge log — recreated on boot; never source (was tracked, see review-hardening)
 .nexus/
+
+# stale hand-committed .app stub (execs a hardcoded path); the real bundle is built into dist/ by scripts/package-macos.sh
+/Autopoet.app/
