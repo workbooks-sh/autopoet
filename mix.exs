@@ -145,7 +145,9 @@ defmodule Autopoet.MixProject do
       {:mint_web_socket, "~> 1.0"},
       # compiles the native macOS window shim (c_src → priv/*.so). Compile-only; the
       # `:elixir_make` compiler is added just on a macOS desktop build (mac_nif_compiler/0).
-      {:elixir_make, "~> 0.10", runtime: false}
+      {:elixir_make, "~> 0.10", runtime: false},
+      # dependency CVE scanner (advisory DB) — dev/test only, never shipped. `mix deps.audit`.
+      {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false}
     ] ++ ml_deps()
   end
 
