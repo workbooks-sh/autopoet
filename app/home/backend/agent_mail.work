@@ -93,12 +93,13 @@ defmodule Autopoet.AgentMail do
     end
   end
 
+  # Secrets-first (Nexus.Secrets is store-first with an env fallback — the old env-first prefix was
+  # inverted and redundant).
   defp key do
-    System.get_env("AGENTMAIL_API_KEY") ||
-      (try do
-         Nexus.Secrets.get("AGENTMAIL_API_KEY")
-       rescue
-         _ -> nil
-       end)
+    try do
+      Nexus.Secrets.get("AGENTMAIL_API_KEY")
+    rescue
+      _ -> nil
+    end
   end
 end

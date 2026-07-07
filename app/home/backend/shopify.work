@@ -71,7 +71,9 @@ defmodule Autopoet.Shopify do
     end
   end
 
-  defp store, do: System.get_env("SHOPIFY_STORE") || safe("SHOPIFY_STORE")
-  defp token, do: System.get_env("SHOPIFY_TOKEN") || safe("SHOPIFY_TOKEN")
+  # Secrets-first (Nexus.Secrets is store-first with an env fallback — the old env-first prefix was
+  # inverted and redundant).
+  defp store, do: safe("SHOPIFY_STORE")
+  defp token, do: safe("SHOPIFY_TOKEN")
   defp safe(k), do: (try do: Nexus.Secrets.get(k), rescue: (_ -> nil))
 end

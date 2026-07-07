@@ -531,9 +531,15 @@ defmodule Autopoet.Venture do
   defp deploy_wrangler(site_dir) do
     project = "autopoet-venture"
 
-    # pin the account: the OAuth login sees multiple CF accounts and wrangler
-    # refuses to guess (issues.log #1-5); the venture lives on the owner's
-    env = [{"CLOUDFLARE_ACCOUNT_ID", System.get_env("CF_ACCOUNT_ID") || "6d4b74aeb10f455fbf88141901e7595d"}]
+    # pin the account: the OAuth login sees multiple CF accounts and wrangler refuses to guess
+    # (issues.log #1-5). The id comes from Nexus.Secrets (store-first, env fallback: CF_ACCOUNT_ID) —
+    # NEVER hardcoded: a baked account-id would deploy every operator's venture into ours. Absent ⇒
+    # omit the pin and let wrangler refuse to guess (a loud, correct failure, not a silent misdeploy).
+    env =
+      case Nexus.Secrets.get("CF_ACCOUNT_ID") do
+        id when is_binary(id) and id != "" -> [{"CLOUDFLARE_ACCOUNT_ID", id}]
+        _ -> []
+      end
 
     case System.cmd("wrangler", ["pages", "deploy", site_dir, "--project-name=#{project}", "--branch=main", "--commit-dirty=true"], stderr_to_stdout: true, env: env) do
       {out, 0} ->

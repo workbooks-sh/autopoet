@@ -73,7 +73,9 @@ defmodule Autopoet.Registrar do
     end
   end
 
-  defp key, do: System.get_env("PORKBUN_API_KEY") || safe_secret("PORKBUN_API_KEY")
-  defp secret, do: System.get_env("PORKBUN_SECRET") || safe_secret("PORKBUN_SECRET")
+  # Secrets-first (Nexus.Secrets is store-first with an env fallback, so this already honours the env
+  # var too — the old `System.get_env || …` prefix was both inverted and redundant).
+  defp key, do: safe_secret("PORKBUN_API_KEY")
+  defp secret, do: safe_secret("PORKBUN_SECRET")
   defp safe_secret(k), do: (try do: Nexus.Secrets.get(k), rescue: (_ -> nil))
 end
