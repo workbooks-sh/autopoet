@@ -58,14 +58,19 @@ defmodule Autopoet.PlanBrain do
             "content" => "Your previous reply was NOT valid JSON. Reply with ONLY " <>
               "the single JSON object for this move — no prose, no code fences, no trailing text."}
 
-  # the planner's head start in the ask_llm race: long enough that a genuinely
-  # quick planner turn wins on quality, short enough that a slow one can't drag
-  # the conversation — telemetry showed the planner rarely beats 2s while the
-  # Cerebras fast lane is ready well inside this window
-  @planner_grace_ms 1_600
+
+  # the format contract, ANCHORED AT THE END of every prompt: with it only at the
+  # top of the long persona prompt, both fast models answered in beautiful prose
+  # and zero JSON on the first try (recency wins) — every turn burned two lanes
+  # before the repair nudge (which appends exactly this, at the end) fixed it
+  @format_anchor %{"role" => "system",
+                   "content" => "FORMAT: reply with ONLY the single JSON move object — " <>
+                     "no prose, no code fences, no text before or after it."}
 
   defp ask_llm(state, history, fork_done, exchanges) do
-    prompt = [%{"role" => "system", "content" => system_prompt(state, fork_done, exchanges)} | trim(history)]
+    prompt =
+      [%{"role" => "system", "content" => system_prompt(state, fork_done, exchanges)} | trim(history)] ++
+        [@format_anchor]
     titles = state["deck_titles"] |> List.wrap() |> Enum.map(&String.downcase(to_string(&1)))
 
     last_say =
@@ -73,31 +78,20 @@ defmodule Autopoet.PlanBrain do
       |> Enum.reverse()
       |> Enum.find_value("", fn m -> if m["role"] == "assistant", do: m["content"], else: nil end)
 
-    # RACED LANES (measured 2026-07-07: planner-only turns swung 2.5s → 11s → 17.9s —
-    # the onboarding "hangs" were literally this one serial call). Both lanes fire
-    # AT ONCE; the planner keeps a short grace window for quality, and the moment it
-    # overruns, the fast conversational lane's reply (already in flight — Cerebras→
-    # Groq, the live-voice widget's lane) speaks instead. The planner stays available
-    # as a late lane, then the repair nudge. Every attempt is fully guarded — a bad
-    # reply is the NEXT lane, never a 503. Worst case is bounded (~30s) instead of
-    # the old 120s-timeout × retries. Each turn logs lane + latency (plan.turn …)
-    # so conversation pacing is never invisible again.
+    # THE VOICE LADDER — LOCKED (owner decree 2026-07-07): a spoken turn is answered
+    # by EXACTLY two providers, in order, through the one gateway front:
+    #   1. Cerebras · GLM-4.7, reasoning OFF (sub-second tokens; thinking would eat
+    #      the whole token budget — measured finish=length with EMPTY content)
+    #   2. Groq · Llama-3.3-70B
+    # plus ONE repair nudge back through the Cerebras lane. NO planner model, NO
+    # other provider, NO silent drift: both providers unreachable ⇒ the turn FAILS
+    # LOUDLY and the client shows the hiccup. Every attempt logs lane + latency.
     t0 = System.monotonic_time(:millisecond)
-    planner_task = Task.async(fn -> try do planner(prompt) rescue _ -> :error catch _, _ -> :error end end)
-    fast_task = Task.async(fn -> try do fast(prompt) rescue _ -> :error catch _, _ -> :error end end)
-
-    yield = fn task, ms ->
-      case Task.yield(task, ms) do
-        {:ok, r} -> r
-        _ -> :error
-      end
-    end
 
     lanes = [
-      {"planner", fn -> yield.(planner_task, @planner_grace_ms) end},
-      {"fast", fn -> yield.(fast_task, 5_000) end},
-      {"planner-late", fn -> yield.(planner_task, 15_000) end},
-      {"repair", fn -> planner(prompt ++ [@repair]) end}
+      {"cerebras", fn -> fast_lane(:cerebras, prompt) end},
+      {"groq", fn -> fast_lane(:groq, prompt) end},
+      {"cerebras-repair", fn -> fast_lane(:cerebras, prompt ++ [@repair]) end}
     ]
 
     result =
@@ -112,8 +106,6 @@ defmodule Autopoet.PlanBrain do
         end
       end)
 
-    Task.shutdown(planner_task, :brutal_kill)
-    Task.shutdown(fast_task, :brutal_kill)
     ms = System.monotonic_time(:millisecond) - t0
 
     case result do
@@ -122,20 +114,29 @@ defmodule Autopoet.PlanBrain do
         {:ok, move}
 
       :error ->
-        Autopoet.Log.puts("plan.turn FAILED — all lanes, #{ms}ms")
+        Autopoet.Log.puts("plan.turn FAILED — both voice providers unreachable, #{ms}ms")
         :error
     end
   end
 
   defp try_move(call, fork_done, titles, last_say) do
-    with {:ok, content} <- call.(),
-         {:ok, raw} when is_map(raw) <- decode_move(content),
-         {:ok, move} <- validate(raw, fork_done),
-         move <- statement_only(move),
-         false <- repeats?(move, last_say) do
-      {:ok, dedupe(move, titles)}
-    else
-      _ -> :error
+    case call.() do
+      {:ok, content} ->
+        with {:ok, raw} when is_map(raw) <- decode_move(content),
+             {:ok, move} <- validate(raw, fork_done),
+             move <- statement_only(move),
+             false <- repeats?(move, last_say) do
+          {:ok, dedupe(move, titles)}
+        else
+          _ ->
+            # the model ANSWERED but the move didn't survive parse/validate —
+            # log the head so a systematic shape problem is visible, not a mystery
+            Autopoet.Log.puts("plan.turn reject — #{String.slice(to_string(content), 0, 180) |> inspect()}")
+            :error
+        end
+
+      _ ->
+        :error
     end
   rescue
     _ -> :error
@@ -172,50 +173,29 @@ defmodule Autopoet.PlanBrain do
 
   defp dedupe(move, _), do: move
 
-  # LATENCY LANE: the FAST conversational provider — VoiceBrain (Cerebras→Groq,
-  # the live-voice widget's lane) when a direct key exists; otherwise the SAME
-  # cloud gateway as everything else but on the fast sub model (mimo), 8s hard
-  # ceiling. A gateway-only install (the normal tenant/desktop case) previously
-  # had NO working fast lane at all — VoiceBrain.available? was false and every
-  # turn fell through to the slow planner lanes. PURE — no planner fallback
-  # inside, because ask_llm runs this IN A RACE against the planner and a nested
-  # fallback would double-fire the slow lane.
-  defp fast(messages) do
-    if Autopoet.VoiceBrain.available?() do
-      case Autopoet.VoiceBrain.complete(messages, max_tokens: 550, temperature: 0.45) do
-        {:ok, %{content: content}} -> {:ok, content}
-        {:ok, content} when is_binary(content) -> {:ok, content}
-        _ -> :error
-      end
-    else
-      # CEREBRAS through the one transport: OpenRouter's provider routing pins the
-      # request to Cerebras hardware (glm-4.7 — the same brain VoiceBrain picks with
-      # a direct key, ~sub-second first token). The `provider` field rides the body,
-      # so when a CF_AIG/Workbooks-gateway front is configured (gateway-first
-      # pass-through in Nexus.Llm) the SAME call flows through the gateway
-      # unchanged. Can't serve on Cerebras → :error → the race's other lanes.
-      # reasoning OFF: glm-4.7 is a hybrid-reasoning model and on real plan prompts
-      # it thought away the ENTIRE token budget (finish="length", empty content) —
-      # the fast lane exists for speed, not deliberation
-      case Autopoet.Providers.openrouter(messages,
-             model: "z-ai/glm-4.7", provider: %{only: ["cerebras"]},
-             reasoning: %{enabled: false},
-             max_tokens: 550, temperature: 0.45, timeout: 8_000, retries: 0) do
-        {:ok, %{content: content}} -> {:ok, content}
-        _ -> :error
-      end
-    end
+  # THE two locked voice providers, each pinned at the transport (OpenRouter
+  # provider routing — rides the gateway front when CF_AIG_* is configured):
+  #   :cerebras — GLM-4.7, reasoning OFF (thinking eats the whole token budget —
+  #               measured finish="length" with EMPTY content when left on)
+  #   :groq     — Llama-3.3-70B
+  # One try each, 10s ceiling. There is deliberately NO other lane here.
+  defp fast_lane(:cerebras, messages) do
+    Autopoet.Providers.openrouter(messages,
+      model: "z-ai/glm-4.7", provider: %{only: ["cerebras"]}, reasoning: %{enabled: false},
+      max_tokens: 550, temperature: 0.45, timeout: 10_000, retries: 0)
+    |> lane_content()
   end
 
-  # BOUNDED: the default LLM lane carries a 120s timeout and 2 internal retries —
-  # measured turns hit 17.9s and the theoretical worst case was minutes of dead
-  # air. One try, 20s hard ceiling; the race's other lanes are the retry story.
-  defp planner(messages) do
-    case Autopoet.Providers.openrouter(messages, max_tokens: 550, temperature: 0.4, timeout: 20_000, retries: 0) do
-      {:ok, %{content: content}} -> {:ok, content}
-      _ -> :error
-    end
+  defp fast_lane(:groq, messages) do
+    Autopoet.Providers.openrouter(messages,
+      model: "meta-llama/llama-3.3-70b-instruct", provider: %{only: ["groq"]},
+      max_tokens: 550, temperature: 0.45, timeout: 10_000, retries: 0)
+    |> lane_content()
   end
+
+  defp lane_content({:ok, %{content: c}}) when is_binary(c) and c != "", do: {:ok, c}
+  defp lane_content(_), do: :error
+
 
   defp system_prompt(state, fork_done, exchanges) do
     form = state["form"] || %{}

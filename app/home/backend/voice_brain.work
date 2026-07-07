@@ -144,21 +144,54 @@ defmodule Autopoet.VoiceBrain do
   def complete(messages, opts \\ []) when is_list(messages) do
     # ladder across EVERY configured fast provider (Cerebras → Groq), not just
     # the first — one provider rate-limiting must not fail the turn
-    providers()
-    |> Enum.reduce_while({:error, :not_configured}, fn {prov, key}, _ ->
-      r = route(prov)
+    direct =
+      providers()
+      |> Enum.reduce_while({:error, :not_configured}, fn {prov, key}, _ ->
+        r = route(prov)
 
-      body =
-        Jason.encode!(%{
-          "model" => r.model,
-          "messages" => messages,
-          "temperature" => Keyword.get(opts, :temperature, 0.7),
-          "max_tokens" => Keyword.get(opts, :max_tokens, 1200)
-        })
+        body =
+          Jason.encode!(%{
+            "model" => r.model,
+            "messages" => messages,
+            "temperature" => Keyword.get(opts, :temperature, 0.7),
+            "max_tokens" => Keyword.get(opts, :max_tokens, 1200)
+          })
 
-      case request(r, key, body) do
-        {:ok, _} = ok -> {:halt, ok}
-        err -> {:cont, err}
+        case request(r, key, body) do
+          {:ok, _} = ok -> {:halt, ok}
+          err -> {:cont, err}
+        end
+      end)
+
+    # No direct key on this machine → the SAME two providers through the ONE
+    # gateway front (OpenRouter provider pins). The voice ladder is LOCKED:
+    # Cerebras · GLM-4.7 (reasoning off) → Groq · Llama-3.3-70B — and if both
+    # are unreachable the caller gets the error; NOTHING silently substitutes.
+    case direct do
+      {:error, :not_configured} -> gateway_ladder(messages, opts)
+      other -> other
+    end
+  end
+
+  # the gateway mirror of the direct ladder — same providers, same order
+  defp gateway_ladder(messages, opts) do
+    [
+      [model: "z-ai/glm-4.7", provider: %{only: ["cerebras"]}, reasoning: %{enabled: false}],
+      [model: "meta-llama/llama-3.3-70b-instruct", provider: %{only: ["groq"]}]
+    ]
+    |> Enum.reduce_while({:error, :no_fast_provider}, fn lane, _ ->
+      case Autopoet.Providers.openrouter(
+             messages,
+             lane ++
+               [
+                 max_tokens: Keyword.get(opts, :max_tokens, 1200),
+                 temperature: Keyword.get(opts, :temperature, 0.7),
+                 timeout: 10_000,
+                 retries: 0
+               ]
+           ) do
+        {:ok, %{content: c}} = ok when is_binary(c) and c != "" -> {:halt, ok}
+        err -> {:cont, (case err do {:error, _} = e -> e; _ -> {:error, :bad_reply} end)}
       end
     end)
   end
