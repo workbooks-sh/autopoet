@@ -54,6 +54,13 @@ mkdir -p "$APP/Contents/Resources/app-home/app"
 cp -R "$ROOT/app/home" "$APP/Contents/Resources/app-home/app/home"
 # strip any stray dev state that may sit under the source tree
 rm -rf "$APP/Contents/Resources/app-home/app/home/.DS_Store"
+# overlay the TRACKED vendor code from priv/static onto the gitignored app/home/static
+# tree — app/home/static is the SERVED static root but holds untracked blobs, so it
+# drifts; v0.0.1 shipped a client importing GLTFLoader.mjs that this tree lacked
+# (module 404→SPA-shell HTML → the whole avatar module died, no cube). Code files
+# are canonical in priv/static/vendor; the big wasm/onnx blobs stay app-local.
+cp -f "$ROOT"/priv/static/vendor/*.mjs "$ROOT"/priv/static/vendor/*.js "$ROOT"/priv/static/vendor/*.glb \
+  "$APP/Contents/Resources/app-home/app/home/static/vendor/"
 
 # 2c. lean ML weights — ONLY what loads at runtime (Kokoro fp32 + Moonshine + Affect)
 M="$APP/Contents/Resources/models"

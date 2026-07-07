@@ -88,9 +88,11 @@ window.PlanMode = (() => {
   async function showDesigner() {
     board.present();   // reveal the cube centered, face on, so design is live
     if (typeof applyCharacter === "function") try { applyCharacter(); } catch (_) {}
+    // the route layer wraps a bare-list handler return in {result: [...]} — unwrap it
+    const unlist = j => Array.isArray(j) ? j : (j && Array.isArray(j.result) ? j.result : []);
     let [personalities, voices] = await Promise.all([
-      fetch("/onboard/personalities.json").then(r => r.json()).catch(() => [{ key: "warm", name: "Warm" }]),
-      fetch("/voice/kokoro/voices.json").then(r => r.json()).catch(() => (typeof AP_VOICES !== "undefined" ? AP_VOICES : ["bf_emma"]))
+      fetch("/onboard/personalities.json").then(r => r.json()).then(unlist).catch(() => [{ key: "warm", name: "Warm" }]),
+      fetch("/voice/kokoro/voices.json").then(r => r.json()).then(unlist).catch(() => (typeof AP_VOICES !== "undefined" ? AP_VOICES : ["bf_emma"]))
     ]);
     // normalize to {id,label}: server returns objects; the fallback is raw ids
     voices = (voices || []).map(v => typeof v === "string" ? { id: v, label: v } : v);
