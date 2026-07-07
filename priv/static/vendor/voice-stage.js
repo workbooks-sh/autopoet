@@ -1299,8 +1299,10 @@
   var VOICE_ID = "bf_emma";
   function bootKokoro() {
     if (kokoro) return;
-    fetch("/voice/tts/status").then(function (r) { return r.text(); }).then(function (s) {
-      s = s.trim();
+    // route returns JSON %{status: "ready"|"loading"} — parse it (a raw-text
+    // compare here silently demoted every session to the in-browser wasm worker)
+    fetch("/voice/tts/status").then(function (r) { return r.json(); }).then(function (j) {
+      var s = ((j && (j.status || j.result)) || "").toString().trim();
       if (s.indexOf("ready") === 0) {
         kokoro = true; kokoroMode = "server";
         if (mounted && !playing && vmode === "voice") capStatus("ready — just talk");
@@ -1335,6 +1337,11 @@
   // Cached per turn: the streaming prewarmer fires clauses while the model is
   // still writing, and perform() then reuses the same in-flight promises.
     var genCache = new Map();
+  // paralinguistic sound tags (chuckle/sigh/…) rode INSIDE the synthesized text for
+  // Chatterbox; the engine is gone (Kokoro-only) but the tag lanes remain wired. The
+  // Chatterbox removal deleted this table and left every PARA_TAG.test call throwing
+  // ReferenceError on ANY directive — never-match keeps the lanes inert for Kokoro.
+  var PARA_TAG = /^(?!)$/;
   // narration → the clip texts perform() synthesizes (sentence/clause chunks,
   // bracket-tag prefixes included — they're the cache key, stripped at synth)
   function ttsTexts(narration) {

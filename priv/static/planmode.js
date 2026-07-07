@@ -28,6 +28,11 @@ window.PlanMode = (() => {
   // ── mount: standalone stage (own grid + own cube, SEPARATE from the
   //    dashboard graph), form on the grid, character enters, auto-performs ──
   function start(options) {
+    // REENTRANT-SAFE: a second start() while a session is live must not re-adopt
+    // the cube — VoiceStage.stage() would return null (the cube is already owned)
+    // and clobber the shared `board` under the live designer's handlers
+    // (the "null.hush" crash). The running session simply keeps the stage.
+    if (board) return true;
     opts = options || {};
     document.body.classList.add("pm-screen");
     // stage mode: ADOPT the real #self-cube (opts.stage.adopt) but WITHOUT the

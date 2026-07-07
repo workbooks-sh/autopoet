@@ -1564,8 +1564,10 @@ client :performer do
   var VOICE_ID = "bf_emma";
   function bootKokoro() {
     if (kokoro) return;
-    fetch("/voice/tts/status").then(function (r) { return r.text(); }).then(function (s) {
-      s = s.trim();
+    // route returns JSON %{status: "ready"|"loading"} — parse it (a raw-text
+    // compare here silently demoted every session to the in-browser wasm worker)
+    fetch("/voice/tts/status").then(function (r) { return r.json(); }).then(function (j) {
+      var s = ((j && (j.status || j.result)) || "").toString().trim();
       if (s.indexOf("ready") === 0) {
         kokoro = true; kokoroMode = "server";
         if (mounted && !playing && vmode === "voice") capStatus("ready — just talk");
@@ -1600,6 +1602,11 @@ client :performer do
   // Cached per turn: the streaming prewarmer fires clauses while the model is
   // still writing, and perform() then reuses the same in-flight promises.
     var genCache = new Map();
+  // paralinguistic sound tags (chuckle/sigh/…) rode INSIDE the synthesized text for
+  // Chatterbox; the engine is gone (Kokoro-only) but the tag lanes remain wired. The
+  // Chatterbox removal deleted this table and left every PARA_TAG.test call throwing
+  // ReferenceError on ANY directive — never-match keeps the lanes inert for Kokoro.
+  var PARA_TAG = /^(?!)$/;
   // narration → the clip texts perform() synthesizes (sentence/clause chunks,
   // bracket-tag prefixes included — they're the cache key, stripped at synth)
   function ttsTexts(narration) {
@@ -7362,7 +7369,10 @@ async function showPlanMode(previewPairing) {
   // never fall through to the contract form. (A lab preview still passes its own
   // pairing and skips the form.)
   let kokoro = !previewPairing;
-  if (kokoro) await warmVoice();
+  // NO blocking warm gate: the server engine loads itself at boot, the streaming
+  // path self-warms on say(), and previews carry their own per-button loader —
+  // an overlay here only manufactures perceived latency (it once burned a full
+  // 8s because it text-compared a JSON status and never saw "ready").
 
   try {
     // ONBOARDING uses the ONE avatar component — the SAME #self-cube (WebGL
@@ -7391,25 +7401,6 @@ async function showPlanMode(previewPairing) {
     document.getElementById("onboard").classList.remove("hidden");
     showQuiz();
   }
-}
-
-// warm the local voice (Kokoro) behind a small loader so previews are instant
-async function warmVoice() {
-  const ob = document.getElementById("onboard");
-  const loader = document.createElement("div");
-  loader.id = "ape-loader";
-  loader.innerHTML = `<div class="ape-load-cube"></div><div class="ape-load-txt">warming your voice…</div>`;
-  ob.appendChild(loader);
-  const t0 = Date.now();
-  await new Promise(res => {
-    (function poll() {
-      fetch("/voice/tts/status").then(r => r.text()).then(s => {
-        if (s.trim() === "ready" || Date.now() - t0 > 8000) res();
-        else setTimeout(poll, 300);
-      }).catch(() => setTimeout(poll, 300));
-    })();
-  });
-  loader.remove();
 }
 
 // INLINE Workbooks Cloud billing — machine + initial tokens + auto-top-up, one
@@ -9179,6 +9170,11 @@ window.PlanMode = (() => {
   // ── mount: standalone stage (own grid + own cube, SEPARATE from the
   //    dashboard graph), form on the grid, character enters, auto-performs ──
   function start(options) {
+    // REENTRANT-SAFE: a second start() while a session is live must not re-adopt
+    // the cube — VoiceStage.stage() would return null (the cube is already owned)
+    // and clobber the shared `board` under the live designer's handlers
+    // (the "null.hush" crash). The running session simply keeps the stage.
+    if (board) return true;
     opts = options || {};
     document.body.classList.add("pm-screen");
     // stage mode: ADOPT the real #self-cube (opts.stage.adopt) but WITHOUT the
