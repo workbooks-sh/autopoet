@@ -21,12 +21,14 @@ defmodule Autopoet.VoiceBrain do
   (`GROQ_API_KEY`), never logged, never returned, TLS verify_peer.
 
   MONEY BOUNDARY: this lane calls Cerebras/Groq over a DIRECT `:httpc` transport
-  (below), NOT through `Autopoet.Providers.complete` / `Nexus.Llm`, so its spend
-  does NOT currently cross the `Nexus.Llm` gate + meter. That is deliberate for
-  latency, but it means voice spend is unmetered — routing it through
-  `Nexus.Inference.Admission` (metering without adding a gateway hop on the hot
-  path) is a tracked follow-up. Keep `Autopoet.Providers`' invariant honest: it
-  no longer claims "no call skips the boundary" — this call does.
+  (below), NOT through `Autopoet.Providers.complete` / `Nexus.Llm`, for latency. It
+  still SETTLES its spend on the same `Nexus.Inference.Admission` ledger: the sync
+  completion path (`reply/1`, `complete/2`) now prices the response's token usage
+  and debits the nexus org post-hoc (`meter/2`, off the hot path) — a no-op on
+  desktop, a real debit on a cloud tenant. STILL UNMETERED (tracked, wb-9llj3):
+  the STREAMING path (`stream_req/1` — usage arrives in the final SSE chunk the
+  CALLER drains; needs `stream_options.include_usage` + caller-side metering) and
+  `Autopoet.GeminiLive` (cumulative `usageMetadata` needs delta-tracking in state).
 
   The system prompt makes the model a PERFORMER: it answers in the avatar
   cue-script DSL (spoken narration + inline stage directives + optional @graph
@@ -195,7 +197,8 @@ defmodule Autopoet.VoiceBrain do
     case :httpc.request(:post, {r.url, req_headers(key, r.extra), ~c"application/json", body}, http_opts(r.host, 30_000), body_format: :binary) do
       {:ok, {{_, 200, _}, _, resp}} ->
         case Jason.decode(resp) do
-          {:ok, %{"choices" => [%{"message" => %{"content" => text}} | _]}} when is_binary(text) ->
+          {:ok, %{"choices" => [%{"message" => %{"content" => text}} | _]} = decoded} when is_binary(text) ->
+            meter(r.model, decoded["usage"])
             {:ok, String.trim(text)}
 
           _ ->
@@ -209,6 +212,19 @@ defmodule Autopoet.VoiceBrain do
         {:error, {:transport, inspect(reason) |> String.slice(0, 120)}}
     end
   end
+
+  # Post-hoc money-boundary accounting for this realtime lane. It calls Cerebras/Groq DIRECTLY (for
+  # latency) instead of via Nexus.Llm's gateway meter, so it settles the spend here against the same
+  # Nexus.Inference.Admission ledger Nexus.Llm uses: price the response's own token usage and debit the
+  # nexus org. Best-effort and off the hot path (the reply already returned) — charge/2 never raises and
+  # is a no-op on desktop (no billing tenant / enforcement off); it debits only a real cloud tenant. wb-9llj3.
+  defp meter(model, usage) when is_map(usage) do
+    Nexus.Inference.Admission.charge(Nexus.Auth.nexus_org(), Nexus.Inference.Admission.cost(model, usage))
+  rescue
+    _ -> :ok
+  end
+
+  defp meter(_model, _usage), do: :ok
 
   @doc "The performer contract: how the model speaks the avatar's cue-script DSL."
   def system_prompt do

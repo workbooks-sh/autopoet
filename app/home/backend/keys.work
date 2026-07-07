@@ -69,10 +69,11 @@ defmodule Autopoet.Providers do
   EXCEPTION — the realtime lanes do NOT ride this seam: `Autopoet.VoiceBrain`
   (Cerebras / Groq) and `Autopoet.GeminiLive` (Gemini Live) call their dedicated
   ultra-low-latency providers over a direct transport, deliberately outside the
-  OpenRouter gateway and its meter, because sub-second first-token latency is the
-  whole point of the voice lane. Their spend is therefore currently UNMETERED —
-  metering the realtime lanes through `Nexus.Inference.Admission` is a tracked
-  follow-up. Do not restate "no call skips the boundary": the voice/live lanes do.
+  OpenRouter gateway, because sub-second first-token latency is the whole point of
+  the voice lane. They still SETTLE spend on the same `Nexus.Inference.Admission`
+  ledger post-hoc: VoiceBrain's sync path (`reply`/`complete`) now meters. Still
+  unmetered (tracked, wb-9llj3): VoiceBrain's streaming path + GeminiLive. So do
+  not restate "no call skips the boundary" — the streaming/live lanes still do.
   """
   @agent_model "z-ai/glm-5.2"         # the ONE brain model (GLM-5.2, "Go 5.2")
   @sub_model "xiaomi/mimo-v2.5"       # the multimodal sub / browsing / agent model
