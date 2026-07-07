@@ -55,3 +55,7 @@ app/home/static/
 
 # stale hand-committed .app stub (execs a hardcoded path); the real bundle is built into dist/ by scripts/package-macos.sh
 /Autopoet.app/
+
+# runtime body content at repo root — seeded from priv/seed on boot; never source
+/agents.work
+/limbs.work
