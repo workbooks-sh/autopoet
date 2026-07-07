@@ -282,7 +282,7 @@ defmodule Autopoet.Auth.OAuth do
     :inets.start()
     :ssl.start()
 
-    case :httpc.request(:post, {String.to_charlist(cfg.token), headers, ~c"application/json", String.to_charlist(body)}, [timeout: 15_000], body_format: :binary) do
+    case :httpc.request(:post, {String.to_charlist(cfg.token), headers, ~c"application/json", String.to_charlist(body)}, [timeout: 15_000] ++ Nexus.Net.tls_opts(), body_format: :binary) do
       {:ok, {{_, 200, _}, _, resp}} ->
         case Jason.decode(to_string(resp)) do
           {:ok, %{"key" => key}} when is_binary(key) -> {:ok, key}
@@ -320,7 +320,7 @@ defmodule Autopoet.Auth.OAuth do
     :inets.start()
     :ssl.start()
 
-    case :httpc.request(:post, {String.to_charlist(cfg.token), headers, ~c"application/x-www-form-urlencoded", String.to_charlist(form)}, [timeout: 15_000], body_format: :binary) do
+    case :httpc.request(:post, {String.to_charlist(cfg.token), headers, ~c"application/x-www-form-urlencoded", String.to_charlist(form)}, [timeout: 15_000] ++ Nexus.Net.tls_opts(), body_format: :binary) do
       {:ok, {{_, 200, _}, _, body}} ->
         case Jason.decode(to_string(body)) do
           {:ok, %{"access_token" => tok}} when is_binary(tok) -> {:ok, tok}
@@ -348,7 +348,7 @@ defmodule Autopoet.Auth.OAuth do
     :inets.start()
     :ssl.start()
 
-    case :httpc.request(:get, {url, headers}, [timeout: 15_000], body_format: :binary) do
+    case :httpc.request(:get, {url, headers}, [timeout: 15_000] ++ Nexus.Net.tls_opts(), body_format: :binary) do
       {:ok, {{_, 200, _}, _, body}} ->
         case Jason.decode(to_string(body)) do
           {:ok, %{"success" => true}} ->

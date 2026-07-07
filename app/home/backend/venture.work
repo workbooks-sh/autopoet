@@ -455,7 +455,7 @@ defmodule Autopoet.Venture do
         :inets.start()
         :ssl.start()
 
-        case :httpc.request(:get, {String.to_charlist(url), [{~c"authorization", String.to_charlist("Bearer " <> bearer)}]}, [timeout: 15_000], body_format: :binary) do
+        case :httpc.request(:get, {String.to_charlist(url), [{~c"authorization", String.to_charlist("Bearer " <> bearer)}]}, [timeout: 15_000] ++ Nexus.Net.tls_opts(), body_format: :binary) do
           {:ok, {{_, 200, _}, _, body}} ->
             case Jason.decode(body) do
               {:ok, %{"data" => tweets}} ->
@@ -571,7 +571,7 @@ defmodule Autopoet.Venture do
     :inets.start()
     :ssl.start()
 
-    case :httpc.request(:get, {~c"https://citeflows.com/api/waitlist/count", []}, [timeout: 10_000], body_format: :binary) do
+    case :httpc.request(:get, {~c"https://citeflows.com/api/waitlist/count", []}, [timeout: 10_000] ++ Nexus.Net.tls_opts(), body_format: :binary) do
       {:ok, {{_, 200, _}, _, body}} ->
         count = case Integer.parse(String.trim(to_string(body))) do
           {n, _} -> n

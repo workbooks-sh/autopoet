@@ -92,7 +92,7 @@ defmodule Autopoet.SelfServe do
       {~c"accept", ~c"text/html,application/xhtml+xml"}
     ]
 
-    case :httpc.request(:get, {String.to_charlist(URI.encode(url)), headers}, [timeout: 20_000, autoredirect: true], body_format: :binary) do
+    case :httpc.request(:get, {String.to_charlist(URI.encode(url)), headers}, [timeout: 20_000, autoredirect: true] ++ Nexus.Net.tls_opts(), body_format: :binary) do
       {:ok, {{_, code, _}, _, _}} when code in 200..399 -> :ok
       _ -> :blocked
     end

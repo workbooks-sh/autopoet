@@ -70,7 +70,7 @@ defmodule Autopoet.Micro do
     :inets.start()
     :ssl.start()
 
-    case :httpc.request(:get, {String.to_charlist(health), []}, [timeout: 1_500], []) do
+    case :httpc.request(:get, {String.to_charlist(health), []}, [timeout: 1_500] ++ Nexus.Net.tls_opts(), []) do
       {:ok, {{_, 200, _}, _, _}} -> true
       _ -> false
     end

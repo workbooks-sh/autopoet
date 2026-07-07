@@ -116,7 +116,7 @@ defmodule Autopoet.Cloud do
             do: {url, [auth], ~c"application/json", Jason.encode!(body)},
             else: {url, [auth]}
 
-        case :httpc.request(method, req, [timeout: 20_000], body_format: :binary) do
+        case :httpc.request(method, req, [timeout: 20_000] ++ Nexus.Net.tls_opts(), body_format: :binary) do
           {:ok, {{_, code, _}, _h, resp}} when code in 200..299 -> {:ok, decode(resp)}
           {:ok, {{_, code, _}, _h, resp}} -> {:error, {code, decode(resp)}}
           {:error, e} -> {:error, e}

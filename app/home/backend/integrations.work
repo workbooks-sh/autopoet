@@ -174,7 +174,7 @@ defmodule Autopoet.Integrations do
 
     headers = [auth, {~c"accept", ~c"application/json"}, {~c"user-agent", ~c"autopoet"}]
 
-    case :httpc.request(:get, {String.to_charlist(url), headers}, [timeout: 30_000], body_format: :binary) do
+    case :httpc.request(:get, {String.to_charlist(url), headers}, [timeout: 30_000] ++ Nexus.Net.tls_opts(), body_format: :binary) do
       {:ok, {{_, code, _}, _, body}} when code in 200..299 ->
         {:ok, safe_json(to_string(body))}
 
