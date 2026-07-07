@@ -7677,16 +7677,31 @@ function nxConfirm(ctx, status, tiers) {
     list = [{ id: "cloud", name: plan ? plan + " machine" : "your cloud machine", plan: plan }];
   }
   const name = n => `${n.icon || "◈"} ${n.name || n.id}`;
-  ctx.line.textContent = `runs on ${name(list[0])} — AI through the gateway. nothing to buy.`;
+
+  // MONEY-HONEST status line: show the actual credit state, never a blanket
+  // "nothing to buy" (a $0 metered account would run dry on the first turn).
+  //   subscription → included · grace (enforce off) → unmetered dev account ·
+  //   credits > 0 → the real balance · $0 metered → say so + surface the fixes.
+  const sub = status.subscription;
+  const subActive = !!(sub && (sub.active === true || ["active", "trialing"].includes(sub.status)));
+  const grace = status.grace === true;
+  const bal = typeof status.balance === "number" ? status.balance : 0;
+  const money =
+    subActive ? { line: `${(sub.tier || sub.plan || "plan")} subscription — inference included`, chip: "subscribed" }
+    : grace ? { line: `unmetered developer account · $${(+status.spent_mtd || 0).toFixed(2)} used this month`, chip: "unmetered" }
+    : bal > 0 ? { line: `$${bal.toFixed(2)} in AI credits on your account`, chip: `$${bal.toFixed(2)} credits` }
+    : { line: "no AI credits left on the account — add credits or bring your own key", chip: "no credits" };
+  ctx.line.textContent = `runs on ${name(list[0])} — ${money.line}`;
 
   ctx.stack.innerHTML = `
     <div class="nx-picks">${list.map((n, i) => `
       <button class="nx-pick ${i === 0 ? "sel" : ""}" data-id="${n.id}">
         <span class="nx-pick-name">${name(n)}</span>
-        <span class="nx-chips">${["plan", "region", "state"].map(k => n[k] ? `<i class="nx-chip">${n[k]}</i>` : "").join("")}</span>
+        <span class="nx-chips">${["plan", "region", "state"].map(k => n[k] ? `<i class="nx-chip">${n[k]}</i>` : "").join("")}<i class="nx-chip">${money.chip}</i></span>
         <span class="nx-go">use it →</span>
       </button>`).join("")}</div>
     <div class="nx-quietrow">
+      ${(!subActive && !grace) ? `<a href="#" class="nx-quiet" id="nx-q-topup">${bal > 0 ? "add credits" : "add credits →"}</a>` : ""}
       <a href="#" class="nx-quiet" id="nx-q-more">or create another machine → from $12/mo</a>
       <a href="#" class="nx-quiet" id="nx-q-local">run on this desktop instead</a>
       <a href="#" class="nx-quiet" id="nx-q-key">bring your own key</a>
@@ -7721,6 +7736,8 @@ function nxConfirm(ctx, status, tiers) {
     showInference("local");
   };
   q("nx-q-key").onclick = e => { e.preventDefault(); showInference("local"); };
+  // metered account → the credit top-up lives in the inference step's buy lane
+  if (q("nx-q-topup")) q("nx-q-topup").onclick = e => { e.preventDefault(); showInference("cloud"); };
   refreshIcons();
 }
   </script>

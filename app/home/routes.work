@@ -342,7 +342,10 @@ server :power do
   end
 
   def cloud_checkout(req), do: cloud_proxy(:post, "/api/platform/billing/checkout", req.body)
-  def cloud_credits(req), do: cloud_proxy(:post, "/api/platform/billing/credits", req.body)
+  # credit purchases live at /credits/checkout on the control plane — the old
+  # /billing/credits path never existed (404), so the buy-credits lane silently
+  # failed with "couldn't start the credit purchase" for every user
+  def cloud_credits(req), do: cloud_proxy(:post, "/api/platform/credits/checkout", req.body)
 
   def power_compute(req) do
     choice = to_string(req.raw_body || "") |> String.trim() |> String.slice(0, 120)
@@ -1106,13 +1109,22 @@ server :auth_flows do
 
     balance = credits["balance"] || credits["amount"] || credits["credits"] || 0
     sub_active? = subscription["active"] == true or subscription["status"] in ["active", "trialing"]
-    powered = balance > 0 or sub_active? or nexuses != []
+    # grace = the ledger tracks but does not block (enforce off — the developer/comp state)
+    grace = credits["enforce"] == false
+    # powered must mean "inference will actually run", MONEY-honest: credits, an active
+    # subscription, or unmetered grace. A provisioned machine alone is NOT money — its
+    # brain crosses the same admission gate and blocks at $0 (a $0 enforced account
+    # previously read as 'nothing to buy'). When the credits read failed entirely
+    # (empty map), degrade to the old machine heuristic rather than a false "add credits".
+    powered = balance > 0 or sub_active? or grace or (map_size(credits) == 0 and nexuses != [])
 
     %{
       nexuses: nexuses,
       credits: credits,
       subscription: (if map_size(subscription) > 0, do: subscription, else: nil),
       balance: balance,
+      grace: grace,
+      spent_mtd: credits["spent_mtd"],
       powered: powered
     }
   rescue
