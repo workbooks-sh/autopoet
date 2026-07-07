@@ -68,9 +68,30 @@ static ERL_NIF_TERM miniaturize_nif(ErlNifEnv *env, int argc, const ERL_NIF_TERM
 }
 
 // Native green-button zoom (fill the usable area ⇄ restore) — the real macOS toggle.
+// Cocoa compares the ACTUAL frame against the standard (zoomed) frame, so this never
+// desyncs the way a hand-tracked setSize toggle does after the user drags/resizes.
 static ERL_NIF_TERM zoom_nif(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
   NSString *title = term_to_nsstring(env, argv[0]);
   on_main(^{ [find_window(title) zoom:nil]; });
+  return ok(env);
+}
+
+// Dock-click reopen: wx never handles applicationShouldHandleReopen, so clicking the
+// Dock icon of a running app with a miniaturized window does NOTHING. Observing app
+// activation (a Dock click always activates) and deminiaturizing restores the native
+// expectation; a plain cmd-tab to the minimized app restores it too (Chrome behavior).
+static ERL_NIF_TERM install_reopen_nif(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
+  NSString *title = term_to_nsstring(env, argv[0]);
+  on_main(^{
+    [[NSNotificationCenter defaultCenter]
+        addObserverForName:NSApplicationDidBecomeActiveNotification
+                    object:NSApp
+                     queue:[NSOperationQueue mainQueue]
+                usingBlock:^(NSNotification *note) {
+                  NSWindow *w = find_window(title);
+                  if (w && [w isMiniaturized]) [w deminiaturize:nil];
+                }];
+  });
   return ok(env);
 }
 
@@ -79,6 +100,7 @@ static ErlNifFunc funcs[] = {
   {"apply_inset", 1, apply_inset_nif},
   {"miniaturize", 1, miniaturize_nif},
   {"zoom", 1, zoom_nif},
+  {"install_reopen", 1, install_reopen_nif},
 };
 
 ERL_NIF_INIT(Elixir.Autopoet.Window.Mac, funcs, NULL, NULL, NULL, NULL)

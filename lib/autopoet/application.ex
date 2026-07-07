@@ -44,19 +44,24 @@ defmodule Autopoet.Application do
     #   1. Nexus.Server — owns HTTP on the port the window points at, serves the
     #      `.work` app surface (app/home) at `/`. All ~166 routes are server blocks
     #      (P1); Autopoet.Control + its Bandit are RETIRED — the runtime owns HTTP.
-    #   2. Autopoet.Spine — the app's own domain/brain processes (P2). Handed as an
+    #   2. Autopoet.Window — the desktop kill-switch (closing it halts the BEAM).
+    #      Starts BEFORE the Spine: children boot sequentially, and the window used to
+    #      wait out the whole domain bring-up — seconds of nothing on screen. Now it
+    #      appears the moment HTTP serves; the page's own loading states cover the
+    #      spine warming behind it.
+    #   3. Autopoet.Spine — the app's own domain/brain processes (P2). Handed as an
     #      explicit map spec (start: mfa, no upfront `child_spec/1`) so the Supervisor
     #      never touches the module until its slot starts (after the pre-compile above).
-    #   3. Autopoet.Window — the desktop kill-switch (closing it halts the BEAM).
     children =
-      [
-        {Nexus.Server, root: root, port: port},
-        %{
-          id: Autopoet.Spine,
-          start: {Autopoet.Spine, :start_link, [%{port: port}]},
-          type: :supervisor
-        }
-      ] ++ window()
+      [{Nexus.Server, root: root, port: port}] ++
+        window() ++
+        [
+          %{
+            id: Autopoet.Spine,
+            start: {Autopoet.Spine, :start_link, [%{port: port}]},
+            type: :supervisor
+          }
+        ]
 
     result =
       Supervisor.start_link(children,

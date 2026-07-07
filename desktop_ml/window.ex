@@ -76,13 +76,24 @@ defmodule Autopoet.Window do
       Process.send_after(self(), :refit, 150)
     end
 
-    # Open zoomed to fill the USABLE area (below the menu bar, beside the dock) — a real
-    # macOS "maximize"/zoom, not a fullscreen Space. Driven by setSize so the custom green
-    # button can TOGGLE it reliably against our own `maximized` state (Cocoa's isMaximized
-    # is unreliable here). restore_rect is where a restore lands.
+    # Open zoomed to fill the USABLE area (below the menu bar, beside the dock). With the
+    # shim, that's Cocoa's own zoom: — it records the pre-zoom frame, so every later green
+    # click toggles correctly even after the user drags/resizes (the old hand-tracked
+    # setSize toggle desynced from reality on the first manual move). Sized to the restore
+    # rect FIRST so zoom's un-zoom target is sane. Without the shim, plain setSize.
     area = usable_area()
-    :wxWindow.setSize(frame, area)
-    :wxFrame.show(frame)
+
+    if inset? do
+      :wxWindow.setSize(frame, centered_rect(area, 1280, 820))
+      :wxFrame.show(frame)
+      # queued on the Cocoa main thread AFTER apply_inset — order is preserved
+      Autopoet.Window.Mac.zoom("autopoet")
+      # Dock-click (and cmd-tab) restore a miniaturized window — wx never handles reopen
+      Autopoet.Window.Mac.install_reopen("autopoet")
+    else
+      :wxWindow.setSize(frame, area)
+      :wxFrame.show(frame)
+    end
 
     {:ok, %{frame: frame, view: view, drag: drag, drag_offset: nil, maximized: true, restore_rect: centered_rect(area, 1280, 820)}}
   end
@@ -238,20 +249,26 @@ defmodule Autopoet.Window do
     {:noreply, s}
   end
 
-  # The custom green button: toggle macOS-style ZOOM (fill the usable area ⇄ restore the
-  # previous rect). State-tracked, because a borderless frame's Cocoa isMaximized is
-  # unreliable — the old `not isMaximized` toggle never flipped back, so the window read
-  # as stuck "full screen". setSize is unambiguous and never enters a fullscreen Space.
-  def handle_cast(:maximize, %{maximized: true} = s) do
-    :wxWindow.setSize(s.frame, s.restore_rect)
-    {:noreply, %{s | maximized: false}}
-  end
-
+  # The custom green button = the REAL macOS zoom (fill the usable area ⇄ restore).
+  # Cocoa's zoom: compares the actual frame to the standard frame, so it stays correct
+  # after any manual drag/resize — the old state-tracked setSize toggle desynced on the
+  # first user move ("maximize doesn't maximize"). The wx toggle remains only as the
+  # shim-missing fallback (where the window has a native title bar anyway).
   def handle_cast(:maximize, s) do
-    {px, py} = :wxWindow.getPosition(s.frame)
-    {sw, sh} = :wxWindow.getSize(s.frame)
-    :wxWindow.setSize(s.frame, usable_area())
-    {:noreply, %{s | maximized: true, restore_rect: {px, py, sw, sh}}}
+    if Autopoet.Window.Mac.available?() do
+      Autopoet.Window.Mac.zoom("autopoet")
+      {:noreply, s}
+    else
+      if s.maximized do
+        :wxWindow.setSize(s.frame, s.restore_rect)
+        {:noreply, %{s | maximized: false}}
+      else
+        {px, py} = :wxWindow.getPosition(s.frame)
+        {sw, sh} = :wxWindow.getSize(s.frame)
+        :wxWindow.setSize(s.frame, usable_area())
+        {:noreply, %{s | maximized: true, restore_rect: {px, py, sw, sh}}}
+      end
+    end
   end
 
   # Repaint the native chrome to match the page theme. The webview draws its own

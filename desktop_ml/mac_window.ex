@@ -28,4 +28,5 @@ defmodule Autopoet.Window.Mac do
   def apply_inset(_title), do: :not_loaded
   def miniaturize(_title), do: :not_loaded
   def zoom(_title), do: :not_loaded
+  def install_reopen(_title), do: :not_loaded
 end
