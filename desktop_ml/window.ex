@@ -130,6 +130,13 @@ defmodule Autopoet.Window do
   def set_theme(theme) when theme in [:light, :dark], do: GenServer.cast(__MODULE__, {:set_theme, theme})
   def set_theme(_), do: :ok
 
+  @doc """
+  Evaluate JavaScript inside the desktop WKWebView (loopback debug seam). The
+  webview has no reachable console, so this + the page's /client/log bridge is
+  how production-webview behavior is probed without guessing.
+  """
+  def eval_js(js) when is_binary(js), do: GenServer.cast(__MODULE__, {:eval_js, js})
+
   # The app UI: a native WKWebView filling the frame (single child auto-fills).
   defp attach_view(frame, inset?) do
     # Pass ?frameless=1 ONLY in inset mode, so the page draws its own stoplights over the
@@ -248,6 +255,11 @@ defmodule Autopoet.Window do
   @impl true
   def handle_cast(:close, s) do
     :wxFrame.close(s.frame)
+    {:noreply, s}
+  end
+
+  def handle_cast({:eval_js, js}, s) do
+    if Autopoet.Window.Mac.available?(), do: Autopoet.Window.Mac.eval_js("autopoet", js)
     {:noreply, s}
   end
 

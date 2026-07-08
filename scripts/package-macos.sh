@@ -43,11 +43,59 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$ROOT/native/Info.plist"      "$APP/Contents/Info.plist"
 cp "$ROOT/priv/static/autopoet.icns" "$APP/Contents/Resources/autopoet.icns"
-cp "$ROOT/native/launch.sh"       "$APP/Contents/MacOS/Autopoet"
-chmod +x "$APP/Contents/MacOS/Autopoet"
+# The main executable MUST be a compiled Mach-O (native/launcher.c → exec's
+# Resources/launch.sh): with a script at Contents/MacOS, macOS resolves the
+# app's root process to /bin/bash — a system binary TCC categorically refuses
+# to prompt — so no mic/camera dialog could EVER appear for any child process.
+cp "$ROOT/native/launch.sh" "$APP/Contents/Resources/launch.sh"
+chmod +x "$APP/Contents/Resources/launch.sh"
+clang -O2 -o "$APP/Contents/MacOS/Autopoet" "$ROOT/native/launcher.c"
 
 # 2a. the mix release
 cp -R "$REL_SRC" "$APP/Contents/Resources/rel"
+
+# 2a'. the RUNTIME HELPER bundle — beam.smp must carry a real app-bundle
+# identity (mainBundle → usage strings → TCC). An unbundled beam in erts/bin
+# has NO Info.plist: AVFoundation/WebKit find no usage description and deny
+# capture without prompting. Structure (the Electron-helper pattern):
+#   AutopoetRuntime.app/Contents/MacOS/beam.smp   ← the real binary
+#   AutopoetRuntime.app/Contents/Frameworks/      ← bundled dylibs (so beam's
+#       @executable_path/../Frameworks/… install names resolve naturally)
+#   erts-*/bin/beam.smp                            ← exec shim (mainBundle
+#       follows the LITERAL exec path, so a symlink is not enough)
+ERTS_DIR=$(ls -d "$APP/Contents/Resources/rel/erts-"*)
+HELPER="$APP/Contents/Resources/rel/AutopoetRuntime.app"
+mkdir -p "$HELPER/Contents/MacOS"
+mv "$ERTS_DIR/bin/beam.smp" "$HELPER/Contents/MacOS/beam.smp"
+cat > "$ERTS_DIR/bin/beam.smp" <<'SHIM'
+#!/bin/bash
+# exec the REAL beam inside the helper .app so the process carries a proper
+# bundle identity (mainBundle → usage strings → TCC can finally prompt)
+exec "$(cd "$(dirname "$0")/../.." && pwd)/AutopoetRuntime.app/Contents/MacOS/beam.smp" "$@"
+SHIM
+chmod +x "$ERTS_DIR/bin/beam.smp"
+cat > "$HELPER/Contents/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>ai.zaius.autopoet</string>
+	<key>CFBundleName</key>
+	<string>Autopoet</string>
+	<key>CFBundleExecutable</key>
+	<string>beam.smp</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Autopoet listens to your voice so you can speak with your companion.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Autopoet can use the camera for expressive, face-aware interactions.</string>
+</dict>
+</plist>
+PLIST
 
 # 2b. the app/home surface (Nexus.Server root = AUTOPOET_HOME/app/home)
 mkdir -p "$APP/Contents/Resources/app-home/app"
@@ -112,10 +160,17 @@ if otool -L "$ESP/bin/espeak-ng" "$ESP/lib/"*.dylib | grep -qi homebrew; then
 fi
 
 # ── 3. relocate the Homebrew native dylibs into the bundle ───────────────────
-say "relocating native dylibs (wx · onnxruntime · openssl) → erts Frameworks"
+# Destination = the HELPER bundle's Frameworks: beam.smp really executes at
+# AutopoetRuntime.app/Contents/MacOS, so @executable_path/../Frameworks resolves
+# THERE. A compat symlink at erts-*/Frameworks covers the small erts helpers
+# (epmd/inet_gethost run from erts/bin as their own processes). The symlink
+# stays INSIDE the outer bundle, which codesign allows.
+say "relocating native dylibs (wx · onnxruntime · openssl) → runtime-helper Frameworks"
 REL="$APP/Contents/Resources/rel"
 ERTS_DIR="$(cd "$REL"/erts-* && pwd)"
-FW="$ERTS_DIR/Frameworks"        # @executable_path(beam.smp)/../Frameworks
+FW="$REL/AutopoetRuntime.app/Contents/Frameworks"   # @executable_path(real beam)/../Frameworks
+mkdir -p "$FW"
+ln -sfn ../AutopoetRuntime.app/Contents/Frameworks "$ERTS_DIR/Frameworks"
 WXE=$(echo "$REL"/lib/wx-*/priv/wxe_driver.so)
 CRYPTO=$(echo "$REL"/lib/crypto-*/priv/lib/crypto.so)
 ORTEX=$(echo "$REL"/lib/ortex-*/priv/native/ortex.so)
@@ -155,6 +210,14 @@ export -f sign_file; export IDENTITY ENTITLEMENTS
 find "$APP" -type f \( -name "*.so" -o -name "*.dylib" -o -perm +111 \) | while read -r f; do
   if file "$f" | grep -q "Mach-O"; then sign_file "$f"; fi
 done
+# the runtime helper: beam must claim the SAME identifier its helper bundle
+# declares (TCC validates the signature against the claimed CFBundleIdentifier;
+# codesign's filename-derived "beam" identifier reads as spoofing), then the
+# helper bundle itself gets sealed BEFORE the outer app seals over it.
+codesign --force --options runtime --timestamp --identifier ai.zaius.autopoet \
+  --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" "$HELPER/Contents/MacOS/beam.smp"
+codesign --force --options runtime --timestamp \
+  --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" "$HELPER"
 # the app bundle last
 codesign --force --options runtime --timestamp \
   --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" "$APP"

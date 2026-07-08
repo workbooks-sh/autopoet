@@ -11,8 +11,13 @@
 set -e
 export PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
-HERE="$(cd "$(dirname "$0")" && pwd)"          # Contents/MacOS
-RES="$(cd "$HERE/../Resources" && pwd)"        # Contents/Resources
+# This script now lives at Contents/Resources/launch.sh — exec'd by the COMPILED
+# launcher at Contents/MacOS/Autopoet (native/launcher.c). The main executable
+# must be a real Mach-O: with a script there, macOS resolved the app's root
+# process to /bin/bash, which TCC categorically refuses to prompt — the mic
+# permission dialog could never appear for any child process.
+HERE="$(cd "$(dirname "$0")" && pwd)"          # Contents/Resources
+RES="$HERE"                                     # Contents/Resources
 
 SUP="$HOME/Library/Application Support/Autopoet"
 mkdir -p "$SUP/nexus" "$SUP/tmp"

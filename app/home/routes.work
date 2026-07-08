@@ -206,6 +206,10 @@ end
 server :app_ctl do
   route "GET /health", :health, auth: :public
   route "POST /win/:action", :win, auth: :public
+  # loopback debug seam: evaluate JS inside the desktop WKWebView (no reachable
+  # console otherwise) — pairs with the page's POST /client/log bridge
+  route "POST /win-eval", :win_eval, auth: :public
+  route "POST /win-mic", :win_mic, auth: :public
   route "GET /chat/transcript", :chat_transcript, auth: :public
   route "POST /proposal/:id/accept", :proposal_accept, auth: :public
   route "POST /proposal/:id/reject", :proposal_reject, auth: :public
@@ -213,6 +217,16 @@ server :app_ctl do
   route "GET /cloud/machine.json", :cloud_machine, auth: :public
 
   def health(_req), do: {200, "text/plain; charset=utf-8", "ok"}
+
+  def win_eval(req) do
+    Autopoet.Window.eval_js(to_string(req.raw_body || ""))
+    %{ok: true}
+  end
+
+  def win_mic(_req) do
+    Autopoet.Window.Mac.mic_status()
+    %{ok: true}
+  end
 
   def win(req) do
     action = req.params["action"] || req.params[:action]

@@ -16,6 +16,7 @@
 #include <erl_nif.h>
 #import <Cocoa/Cocoa.h>
 #import <WebKit/WebKit.h>
+#import <AVFoundation/AVFoundation.h>
 #import <objc/runtime.h>
 
 static NSString *term_to_nsstring(ErlNifEnv *env, ERL_NIF_TERM term) {
@@ -226,6 +227,51 @@ static ERL_NIF_TERM allow_media_nif(ErlNifEnv *env, int argc, const ERL_NIF_TERM
     // The page's JS context was created BEFORE the preference flip and never gains
     // navigator.mediaDevices retroactively — reload once so the fresh context sees it.
     if (!hadMedia) { NSLog(@"[ap_mac_window] reloading webview for media context"); [wv reload]; }
+    // wx re-installs ITS UIDelegate on navigations (including that reload), evicting
+    // the grant — then WebKit's capture ask hits a delegate that can't answer and
+    // getUserMedia dies with NotAllowedError before any TCC prompt. Watchdog:
+    // re-assert ours whenever evicted (pointer compare, cheap), and LOG each
+    // eviction so the theft is visible in the app log.
+    [NSTimer scheduledTimerWithTimeInterval:2.0 repeats:YES block:^(NSTimer *t) {
+      if (wv.UIDelegate != (id)g_ui_delegate) {
+        NSLog(@"[ap_mac_window] media-capture grant RE-asserted (evicted by %@)", wv.UIDelegate);
+        g_orig_uidelegate = wv.UIDelegate;
+        wv.UIDelegate = (id)g_ui_delegate;
+      }
+    }];
+  });
+  return ok(env);
+}
+
+// Evaluate JavaScript inside the app's real WKWebView (agent/dev seam): the desktop
+// webview has no reachable console, so this — paired with the page's /client/log
+// bridge — is how behavior inside the production webview is probed from outside.
+static ERL_NIF_TERM eval_js_nif(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
+  NSString *title = term_to_nsstring(env, argv[0]);
+  NSString *js = term_to_nsstring(env, argv[1]);
+  on_main(^{
+    NSWindow *w = find_window(title);
+    WKWebView *wv = w ? find_webview(w.contentView) : nil;
+    if (!wv) { NSLog(@"[ap_mac_window] eval_js: no WKWebView"); return; }
+    [wv evaluateJavaScript:js completionHandler:^(id result, NSError *error) {
+      if (error) NSLog(@"[ap_mac_window] eval_js error: %@", error.localizedDescription);
+    }];
+  });
+  return ok(env);
+}
+
+// The decisive mic diagnostic: what does TCC think of THIS process, and does a
+// DIRECT AVFoundation access request produce the system prompt? Separates the
+// TCC/app-identity layer from WebKit's internal policy checks.
+static ERL_NIF_TERM mic_status_nif(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
+  on_main(^{
+    AVAuthorizationStatus st = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
+    NSString *desc = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"NSMicrophoneUsageDescription"];
+    NSLog(@"[ap_mac_window] mic tcc status=%ld mainBundle=%@ usage=%@",
+          (long)st, [[NSBundle mainBundle] bundlePath], desc ? @"present" : @"MISSING");
+    [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio completionHandler:^(BOOL granted) {
+      NSLog(@"[ap_mac_window] mic tcc requestAccess → %@", granted ? @"GRANTED" : @"denied");
+    }];
   });
   return ok(env);
 }
@@ -238,6 +284,8 @@ static ErlNifFunc funcs[] = {
   {"toggle_fullscreen", 1, toggle_fullscreen_nif},
   {"install_reopen", 1, install_reopen_nif},
   {"allow_media", 1, allow_media_nif},
+  {"eval_js", 2, eval_js_nif},
+  {"mic_status", 0, mic_status_nif},
 };
 
 ERL_NIF_INIT(Elixir.Autopoet.Window.Mac, funcs, NULL, NULL, NULL, NULL)
