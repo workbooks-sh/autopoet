@@ -44,15 +44,24 @@ defmodule Autopoet.WorldGraph do
       Path.wildcard(Path.join(root, "**/*.work"))
       |> Enum.reject(&String.contains?(&1, "/.nexus/"))
 
+    workspaces = workspaces(root)
+    ws_slugs = MapSet.new(workspaces, & &1.slug)
+
     doc_nodes =
-      for f <- docs do
-        rel = Path.relative_to(f, root)
+      for f <- docs,
+          rel = Path.relative_to(f, root),
+          # index.work files are STRUCTURE (the manifest, a workspace's front
+          # matter), not content — they never render as world nodes
+          Path.basename(rel) != "index.work" do
+        {ws, folder} = place(rel, ws_slugs)
 
         %{
           id: "doc:#{rel}",
           label: Path.basename(rel, ".work"),
           type: classify(rel),
           path: rel,
+          workspace: ws,
+          folder: folder,
           detail: f |> File.read!() |> String.slice(0, 4000)
         }
       end
@@ -116,8 +125,15 @@ defmodule Autopoet.WorldGraph do
         }
       end
 
+    # VAULT items never render in the world (inform 6 stays compiled): a request
+    # targeting a notes/*.md mirror is plumbing between lanes, not world state —
+    # unfiltered, the intake's note mirror showed as N duplicate "note" nodes
     request_nodes =
       Autopoet.Requests.pending()
+      |> Enum.reject(fn r ->
+        t = to_string(r.target)
+        String.starts_with?(t, "notes/") or String.ends_with?(t, ".md")
+      end)
       |> Enum.with_index()
       |> Enum.map(fn {r, i} ->
         %{
@@ -148,8 +164,64 @@ defmodule Autopoet.WorldGraph do
     # system_types: the same plumbing classes, for the client's built-in
     # "system" cluster — grouped into ONE gray expandable node rather than
     # hidden outright (default_hidden stays the server contract for evals
-    # and alternate frontends)
-    %{nodes: nodes, links: tethers ++ ref_links, default_hidden: @default_hidden, system_types: @default_hidden}
+    # and alternate frontends). workspaces: the declared/discovered subtrees —
+    # the client seeds an auto-cluster per workspace (docs carry `workspace`).
+    %{nodes: nodes, links: tethers ++ ref_links,
+      default_hidden: @default_hidden, system_types: @default_hidden,
+      workspaces: workspaces}
+  end
+
+  # The user's WORKSPACES: declared in the manifest (`deploy workspaces=`,
+  # the Workbooks convention) UNION discovered — any top-level folder carrying
+  # its own index.work is a workspace even before the manifest names it.
+  # The world organizes by these; folders live INSIDE them.
+  def workspaces(root) do
+    declared =
+      for w <- List.wrap(Nexus.Config.workspaces()) do
+        %{slug: w.id, title: w.name, emoji: w[:icon]}
+      end
+
+    discovered =
+      for dir <- Path.wildcard(Path.join(root, "*/index.work")),
+          slug = dir |> Path.dirname() |> Path.basename(),
+          not String.starts_with?(slug, "."),
+          slug not in ~w(guide intake notes) do
+        %{slug: slug, title: title_of(dir, slug), emoji: nil}
+      end
+
+    (declared ++ discovered) |> Enum.uniq_by(& &1.slug)
+  end
+
+  defp title_of(index_file, slug) do
+    case File.read(index_file) do
+      {:ok, src} ->
+        case Regex.run(~r/^#\s+(.+)$/m, src) do
+          [_, t] -> String.trim(t)
+          _ -> slug
+        end
+
+      _ ->
+        slug
+    end
+  end
+
+  # a doc's place in the world: {workspace_slug | nil, folder_path | nil} —
+  # folder is the subpath BETWEEN the workspace and the file (sub-cluster seam)
+  defp place(rel, ws_slugs) do
+    case Path.split(rel) do
+      [top | rest] when rest != [] ->
+        if MapSet.member?(ws_slugs, top) do
+          case Enum.drop(rest, -1) do
+            [] -> {top, nil}
+            folders -> {top, Enum.join(folders, "/")}
+          end
+        else
+          {nil, nil}
+        end
+
+      _ ->
+        {nil, nil}
+    end
   end
 
   @doc "Node types hidden by default (I3) — exposed for evals and alternate frontends."

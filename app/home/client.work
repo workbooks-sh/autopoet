@@ -60,23 +60,33 @@ client :shell do
             <button class="save" id="dosave" title="save (⌘S)"><i data-lucide="check"></i></button>
           </div>
         </div>
+        <div id="hbctl">
+          <button id="hb-toggle" title="start the heartbeat"><i data-lucide="play"></i></button>
+          <button id="hb-cadence" title="heartbeat cadence"><i data-lucide="chevron-down"></i></button>
+        </div>
+        <button id="newplus" title="create…"><i data-lucide="plus"></i></button>
       </div>
-      <div id="vaultbar">
-        <button class="add" id="newnote" title="new document"><img class="mic" src="/static/micons/markdown.svg" alt=""><span class="pl">+</span></button>
-        <button class="add" id="newsketch" title="new sketch"><img class="mic" src="/static/micons/svg.svg" alt=""><span class="pl">+</span></button>
-        <button class="add" id="newfolder" title="new folder"><img class="mic" src="/static/micons/folder.svg" alt=""><span class="pl">+</span></button>
-        <button class="add" id="newworkspace" title="new workspace"><span class="wshash">#</span><span class="pl">+</span></button>
-      </div>
-      <ul id="treeroot"></ul>
+      <!-- the goo filter both top menus render through (blur+contrast = blobs
+           merge as they spiral out; icons ride an unfiltered twin layer) -->
+      <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+        <filter id="goo"><feGaussianBlur in="SourceGraphic" stdDeviation="6" result="b"/>
+        <feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -11" result="g"/>
+        <feComposite in="SourceGraphic" in2="g" operator="atop"/></filter>
+      </defs></svg>
+      <div id="plusmenu"></div>
+      <div id="hbpop"></div>
       <div id="commtop">
         <button id="comm-chat" title="chat"><i data-lucide="message-square"></i><span class="lbl">chat</span></button>
         <button id="comm-voice" title="voice"><i data-lucide="audio-lines"></i><span class="lbl">voice</span></button>
       </div>
+      <ul id="treeroot"></ul>
       <div id="sidebarfoot">
         <button id="foot-profile" class="footprofile" title="account"><span class="uinitial">·</span></button>
-        <div class="footgap"></div>
+        <button id="foot-notifs" class="footkeycap" title="notifications">
+          <i data-lucide="bell"></i><span class="fklbl">notifications</span><span class="bdg" id="bellbdg" style="display:none"></span>
+        </button>
         <button id="foot-settings" class="footbtn" title="settings"><i data-lucide="settings"></i></button>
-        <button id="foot-env" class="footbtn" title="environment · integrations"><span class="envE">E</span></button>
+        <button id="foot-env" class="footbtn" title="connections · environment"><i data-lucide="plug"></i></button>
       </div>
     </div>
   
@@ -150,7 +160,6 @@ client :shell do
         <div class="cb" id="cb-search"><i data-lucide="search"></i><input id="searchin"
           placeholder="search the world…" spellcheck="false"><span class="tip">search the world</span></div>
         <div class="cb" id="cb-filter"><i data-lucide="drafting-compass"></i><span class="tip">graph tools</span></div>
-        <div class="cb" id="cb-bell"><i data-lucide="bell"></i><span class="bdg" id="bellbdg" style="display:none"></span><span class="tip">notifications</span></div>
       </div>
       <div id="searchpop"><div class="res" id="searchres"></div></div>
       <div id="filterpop"></div>
@@ -3848,6 +3857,7 @@ function openModalRaw(html) {
 function closeModal() {
   document.getElementById("shade").classList.remove("on");
   document.getElementById("modal").classList.remove("on");
+  document.getElementById("modal").classList.remove("big");
   closePop();
 }
 document.getElementById("shade").onclick = () => closeModal();
@@ -3986,10 +3996,90 @@ function createFromModal() {
       .then(() => { closeModal(); if (mv.kind !== "folder" && mv.kind !== "workspace") openFile(path, mv.kind); });
   }
 }
-document.getElementById("newnote").onclick = () => openModal("note");
-document.getElementById("newsketch").onclick = () => openModal("sketch");
-document.getElementById("newfolder").onclick = () => openModal("folder");
-document.getElementById("newworkspace").onclick = () => openModal("workspace");
+// ── the header controls: ONE + (gooey spiral-out create menu) and the
+// heartbeat play/stop + cadence dropdown. State-aware: opening either menu
+// closes the other; outside click / Escape closes both. Both render through
+// the #goo filter — blob layer gooifies, an unfiltered twin carries the icons.
+const topMenus = { plus: false, hb: false };
+function closeTopMenus() {
+  topMenus.plus = topMenus.hb = false;
+  document.getElementById("plusmenu").classList.remove("on");
+  document.getElementById("hbpop").classList.remove("on");
+}
+document.addEventListener("click", e => {
+  if (!e.target.closest("#plusmenu,#hbpop,#newplus,#hbctl")) closeTopMenus();
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeTopMenus(); });
+
+const PLUS_ITEMS = [
+  { kind: "note", label: "document", icon: "/static/micons/markdown.svg" },
+  { kind: "sketch", label: "sketch", icon: "/static/micons/svg.svg" },
+  { kind: "folder", label: "folder", icon: "/static/micons/folder.svg" },
+  { kind: "workspace", label: "workspace", hash: true }
+];
+function buildPlusMenu() {
+  const m = document.getElementById("plusmenu");
+  m.innerHTML = `
+    <div class="goo-blobs">${PLUS_ITEMS.map((_, i) => `<span class="gb" style="--i:${i}"></span>`).join("")}</div>
+    <div class="goo-icons">${PLUS_ITEMS.map((it, i) => `
+      <button class="gi" style="--i:${i}" data-kind="${it.kind}" title="new ${it.label}">
+        ${it.hash ? '<span class="wshash">#</span>' : `<img class="mic" src="${it.icon}" alt="">`}
+        <span class="gl">${it.label}</span>
+      </button>`).join("")}</div>`;
+  m.querySelectorAll(".gi").forEach(b => b.onclick = () => { closeTopMenus(); openModal(b.dataset.kind); });
+}
+buildPlusMenu();
+document.getElementById("newplus").onclick = e => {
+  e.stopPropagation();
+  const was = topMenus.plus;
+  closeTopMenus();
+  if (!was) { topMenus.plus = true; document.getElementById("plusmenu").classList.add("on"); }
+};
+
+// ── heartbeat: play = arm (at the saved cadence), stop = disarm ──
+const HB_STEPS = ["5m", "15m", "30m", "1h", "3h"];
+const hbEvery = () => localStorage.getItem("ap-hb-every") || "15m";
+let hbArmed = false;
+function paintHb() {
+  const b = document.getElementById("hb-toggle");
+  b.innerHTML = hbArmed ? '<i data-lucide="square"></i>' : '<i data-lucide="play"></i>';
+  b.title = hbArmed ? `heartbeat running (every ${hbEvery()}) — stop` : "start the heartbeat";
+  b.classList.toggle("running", hbArmed);
+  if (window.lucide) lucide.createIcons();
+}
+async function hbRefresh() {
+  try {
+    const s = await (await fetch("/heartbeat/status", authed)).json();
+    hbArmed = !!s.armed;
+  } catch (_) { hbArmed = false; }
+  paintHb();
+}
+document.getElementById("hb-toggle").onclick = async e => {
+  e.stopPropagation();
+  closeTopMenus();
+  await fetch(hbArmed ? "/disarm" : "/arm?every=" + encodeURIComponent(hbEvery()), { method: "POST", ...authed });
+  hbRefresh();
+};
+document.getElementById("hb-cadence").onclick = e => {
+  e.stopPropagation();
+  const was = topMenus.hb;
+  closeTopMenus();
+  if (was) return;
+  topMenus.hb = true;
+  const p = document.getElementById("hbpop");
+  p.innerHTML = `
+    <div class="goo-blobs">${HB_STEPS.map((_, i) => `<span class="gb" style="--i:${i}"></span>`).join("")}</div>
+    <div class="goo-icons">${HB_STEPS.map((s, i) => `
+      <button class="gi ${s === hbEvery() ? "sel" : ""}" style="--i:${i}" data-every="${s}"><span class="ge">${s}</span></button>`).join("")}</div>`;
+  p.classList.add("on");
+  p.querySelectorAll(".gi").forEach(b => b.onclick = async () => {
+    localStorage.setItem("ap-hb-every", b.dataset.every);
+    closeTopMenus();
+    if (hbArmed) { await fetch("/arm?every=" + encodeURIComponent(b.dataset.every), { method: "POST", ...authed }); }
+    hbRefresh();
+  });
+};
+hbRefresh();
 
   </script>
 end
@@ -4337,7 +4427,7 @@ function seedSystemCluster(data) {
   // an already-seeded cluster tracks the reserved theme gray (migrates old hex)
   const sys = clusterById("sys");
   if (sys && sys.color !== SYSTEM_GRAY) { sys.color = SYSTEM_GRAY; saveClusters(); }
-  if (sys || localStorage.getItem("ap-syscluster-dissolved")) return;
+  if (sys || clusterTombstoned("sys")) return;
   // grouping replaces hiding: release any legacy hidden state on these types
   let migrated = false;
   for (const t of SYS_TYPES) if (hiddenTypes.delete(t)) migrated = true;
@@ -4347,6 +4437,40 @@ function seedSystemCluster(data) {
     note: "reference pages + plumbing the app ships with — not authored by you" });
   saveClusters();
 }
+
+// ── auto-clusters: the world organizes by WORKSPACE (the Workbooks unit), and
+// folders inside a workspace become sub-clusters — their members are a subset
+// of the workspace's, so the hulls nest visually. Live rules, so new pages
+// join their workspace with no bookkeeping. Per-id tombstones respected.
+function seedWorkspaceClusters(data) {
+  let changed = false;
+  (data.workspaces || []).forEach((w, i) => {
+    const id = "ws:" + w.slug;
+    if (clusterById(id) || clusterTombstoned(id)) return;
+    clusters.push({ id, name: w.title || w.slug, builtin: true, collapsed: false,
+      emoji: w.emoji || "", color: CLPAL[i % CLPAL.length],
+      rule: { kind: "workspace", value: w.slug },
+      note: "workspace — auto-grouped; pages you add here join it automatically" });
+    changed = true;
+  });
+  // folder sub-clusters (only once a folder holds 2+ docs — one page isn't a group)
+  const byFolder = new Map();
+  for (const n of data.nodes || []) {
+    if (!n.workspace || !n.folder) continue;
+    const key = n.workspace + "/" + n.folder;
+    byFolder.set(key, (byFolder.get(key) || 0) + 1);
+  }
+  let j = 0;
+  for (const [key, count] of byFolder) {
+    const id = "fld:" + key;
+    if (count < 2 || clusterById(id) || clusterTombstoned(id)) continue;
+    clusters.push({ id, name: key.split("/").pop(), builtin: true, collapsed: false,
+      color: CLPAL[(j++ + 3) % CLPAL.length], rule: { kind: "folder", value: key },
+      note: "folder inside [[" + key.split("/")[0] + "]] — auto-grouped" });
+    changed = true;
+  }
+  if (changed) saveClusters();
+}
 function addCluster(c) {
   c.id = c.id || "cl" + Date.now().toString(36) + Math.floor(Math.random() * 1e4);
   c.color = c.color || CLPAL[clusters.length % CLPAL.length];
@@ -4354,11 +4478,14 @@ function addCluster(c) {
   return c;
 }
 const clusterById = id => clusters.find(c => c.id === id);
+// dissolving ANY auto-seeded cluster is respected forever (per-id tombstone) —
+// none of them re-seed themselves behind the owner's back
+const clusterTombstoned = id =>
+  localStorage.getItem("ap-cluster-dissolved:" + id) ||
+  (id === "sys" && localStorage.getItem("ap-syscluster-dissolved"));
 function removeCluster(id) {
   const c = clusterById(id);
-  // dissolving the built-in system cluster is respected forever (tombstone) —
-  // it never re-seeds itself behind the owner's back
-  if (c && c.builtin) localStorage.setItem("ap-syscluster-dissolved", "1");
+  if (c && c.builtin) localStorage.setItem("ap-cluster-dissolved:" + id, "1");
   clusters = clusters.filter(x => x.id !== id);
   saveClusters();
   if (c && c.collapsed) draw(); else clusterChanged();   // expanded: hull just melts away
@@ -4378,6 +4505,10 @@ function clusterChanged() {
 function clusterMembers(c, nodes) {
   let ids;
   if (c.rule && c.rule.kind === "system") ids = nodes.filter(n => SYS_TYPES.has(n.type)).map(n => n.id);
+  else if (c.rule && c.rule.kind === "workspace") ids = nodes.filter(n => n.workspace === c.rule.value).map(n => n.id);
+  else if (c.rule && c.rule.kind === "folder")
+    ids = nodes.filter(n => n.workspace && n.folder &&
+      (n.workspace + "/" + n.folder === c.rule.value || (n.workspace + "/" + n.folder).startsWith(c.rule.value + "/"))).map(n => n.id);
   else if (c.rule && c.rule.kind === "type") ids = nodes.filter(n => n.type === c.rule.value).map(n => n.id);
   else if (c.rule && c.rule.kind === "match") {
     const q = c.rule.value.toLowerCase();
@@ -4578,7 +4709,8 @@ async function draw() {
   try { data = await (await fetch("/graph.json")).json(); }
   catch (err) { return fatal("graph.json fetch failed: " + err); }
   if (!data.nodes || !data.nodes.length) return fatal("graph.json returned no nodes");
-  seedSystemCluster(data);   // BEFORE the collapse pass — system nodes fold into it
+  seedSystemCluster(data);      // BEFORE the collapse pass — system nodes fold into it
+  seedWorkspaceClusters(data);  // the world organizes by workspace (+ folder sub-clusters)
   data = applyClusterTransform(data);
   // first load with no saved choice: adopt the server's default_hidden (I3) —
   // except the system types, which the built-in cluster presents instead
@@ -4924,7 +5056,7 @@ svg.on("contextmenu", e => {
     { icon: "file-plus-2", label: "new document", fn: () => openModal("note") },
     { icon: "pen-tool", label: "new sketch", fn: () => openModal("sketch") },
     { icon: "folder-plus", label: "new folder", fn: () => openModal("folder") }, "-",
-    { icon: "bell", label: "notifications", fn: () => document.getElementById("cb-bell").click() }
+    { icon: "bell", label: "notifications", fn: () => document.getElementById("foot-notifs").click() }
   ]);
 });
 function act(id, verb) {
@@ -5325,11 +5457,20 @@ document.getElementById("searchin").addEventListener("keydown", e => {
 document.getElementById("searchin").addEventListener("blur", () => {
   setTimeout(() => { if (!document.getElementById("searchin").value.trim()) collapseSearch(); }, 150);
 });
-document.getElementById("cb-bell").onclick = () => {
+// notifications live on the footer keycap now — the list opens above it,
+// scrollable; handled items leave the list on the next world refresh
+document.getElementById("foot-notifs").onclick = e => {
+  e.stopPropagation();
   collapseSearch();
   notif.classList.toggle("on");
   syncActive();
 };
+document.addEventListener("click", e => {
+  if (notif.classList.contains("on") && !notif.contains(e.target) && !e.target.closest("#foot-notifs")) {
+    notif.classList.remove("on");
+    syncActive();
+  }
+});
 
 function clearSearchDim() { g.selectAll("g > g").attr("opacity", 1); applyFilter(); }
 
@@ -5878,7 +6019,7 @@ function showClusterPanel(c) {
     : clusterMembers(c, worldData.nodes).length;
   panel.innerHTML = `
     <h3>${esc(c.name)}</h3>
-    <span class="tag ${c.builtin ? "sys" : ""}" style="background:${c.color}">cluster · ${n} node${n === 1 ? "" : "s"}${c.rule ? " · rule: " + esc(c.rule.kind === "system" ? "system content" : c.rule.kind === "type" ? "type:" + c.rule.value : c.rule.value) : ""}</span>
+    <span class="tag ${c.builtin ? "sys" : ""}" style="background:${c.color}">cluster · ${n} node${n === 1 ? "" : "s"}${c.rule ? " · rule: " + esc(c.rule.kind === "system" ? "system content" : c.rule.kind === "workspace" ? "workspace" : c.rule.kind === "folder" ? "folder" : c.rule.kind === "type" ? "type:" + c.rule.value : c.rule.value) : ""}</span>
     <div class="clrow"><input id="cl-name" value="${esc(c.name)}" spellcheck="false" title="name"></div>
     <div class="clrow"><input id="cl-emoji" value="${esc(c.emoji || "")}" placeholder="emoji shown when collapsed…" maxlength="4" spellcheck="false" title="emoji"></div>
     <div class="clrow"><input id="cl-tags" value="${esc((c.tags || []).join(", "))}" placeholder="tags, comma separated…" spellcheck="false"></div>
@@ -6112,7 +6253,7 @@ const SLASH = [
   { name: "status", icon: "activity", hint: "runtime status",
     run: async () => addMsg("ap", "```\n" + (await (await fetch("/status")).text()).trim() + "\n```") },
   { name: "proposals", icon: "bell", hint: "open notifications",
-    run: () => { document.getElementById("cb-bell").click(); } }
+    run: () => { document.getElementById("foot-notifs").click(); } }
 ];
 const MENTION_KINDS = { agent: "#e07a5f", doc: "#4a90d9", guide: "#8e7cc3" };
 const mentionCandidates = () =>
@@ -9212,24 +9353,88 @@ function pollMachinePanel() {
   }, 3000);
 }
 
-// env · integrations (dev-local key/values for now)
+// ── connections (the plug): the workbooks integration library — active
+// connections at a glance, everything editable in one full-size modal that
+// also carries the environment variables.
 const getEnv = () => { try { return JSON.parse(localStorage.getItem("ap-env") || "[]"); } catch (_) { return []; } };
 const setEnvRows = rows => localStorage.setItem("ap-env", JSON.stringify(rows));
-document.getElementById("foot-env").onclick = e => { e.stopPropagation(); renderEnvPop(e.currentTarget); };
-function renderEnvPop(anchor) {
-  const rows = getEnv();
+const LOCAL_PROVIDERS = ["github", "google", "cloudflare"];
+
+async function fetchConnections() {
+  let local = {}, toolkits = [];
+  try { local = (await (await fetch("/auth/state.json", authed)).json()).connections || {}; } catch (_) {}
+  try { toolkits = ((await (await fetch("/cloud/connections.json", authed)).json()).items || []); } catch (_) {}
+  return { local, toolkits };
+}
+
+document.getElementById("foot-env").onclick = async e => {
+  e.stopPropagation();
+  const anchor = e.currentTarget;
+  const { local, toolkits } = await fetchConnections();
+  const active = LOCAL_PROVIDERS.filter(p => local[p])
+    .map(p => `<div class="fp-conn"><span class="dot on"></span>${esc(p)}</div>`)
+    .concat(toolkits.map(t => `<div class="fp-conn"><span class="dot on"></span>${esc(t.toolkit || t.name || t.slug || "toolkit")}</div>`));
   openFootPop(anchor, `
-    <div class="fp-title">environment · integrations</div>
-    <div class="fp-env" id="fp-env">
-      ${rows.map(r => `<div class="fp-envrow"><input class="k" placeholder="KEY" value="${esc(r.k || '')}"><input class="v" placeholder="value" value="${esc(r.v || '')}"><button class="rm">×</button></div>`).join("")}
+    <div class="fp-title">connections</div>
+    ${active.length ? active.join("") : `<div class="fp-note">nothing connected yet</div>`}
+    <div class="fp-sep"></div>
+    <button class="fp-item" id="fp-editconn"><i data-lucide="settings-2"></i>edit connections &amp; environment</button>`);
+  refreshIcons();
+  document.getElementById("fp-editconn").onclick = () => { closeFootPop(); openConnEnvModal(); };
+};
+
+async function openConnEnvModal() {
+  const { local, toolkits } = await fetchConnections();
+  const envRows = getEnv();
+  openModalRaw(`
+    <h3>connections &amp; environment</h3>
+    <div class="ce-grid">
+      <div class="ce-col">
+        <div class="ce-sub">connections</div>
+        ${LOCAL_PROVIDERS.map(p => `
+          <div class="ce-conn">
+            <span class="dot ${local[p] ? "on" : ""}"></span><span class="ce-name">${esc(p)}</span>
+            <button class="ce-tgl" data-p="${p}" data-on="${local[p] ? 1 : 0}">${local[p] ? "disconnect" : "connect"}</button>
+          </div>`).join("")}
+        ${toolkits.length ? `<div class="ce-sub" style="margin-top:10px">toolkits</div>` : ""}
+        ${toolkits.map(t => `<div class="ce-conn"><span class="dot on"></span><span class="ce-name">${esc(t.toolkit || t.name || t.slug || "toolkit")}</span></div>`).join("")}
+        <div class="ce-addtk">
+          <input id="ce-tkin" placeholder="connect a toolkit (e.g. notion, slack)…" spellcheck="false">
+          <button id="ce-tkgo">connect</button>
+        </div>
+      </div>
+      <div class="ce-col">
+        <div class="ce-sub">environment variables</div>
+        <div class="fp-env" id="ce-env">
+          ${envRows.map(r => `<div class="fp-envrow"><input class="k" placeholder="KEY" value="${esc(r.k || '')}"><input class="v" placeholder="value" value="${esc(r.v || '')}"><button class="rm">×</button></div>`).join("")}
+        </div>
+        <button class="fp-envadd" id="ce-envadd">+ variable</button>
+        <div class="fp-note">// dev-local for now — wires to runtime config later</div>
+      </div>
     </div>
-    <button class="fp-envadd" id="fp-envadd">+ variable</button>
-    <div class="fp-note">// dev-local for now — wires to runtime config later</div>`);
-  const commit = () => setEnvRows([...document.querySelectorAll("#fp-env .fp-envrow")].map(row =>
+    <div class="acts"><button id="ce-done" class="go">done</button></div>`);
+  document.getElementById("modal").classList.add("big");
+  const commit = () => setEnvRows([...document.querySelectorAll("#ce-env .fp-envrow")].map(row =>
     ({ k: row.querySelector(".k").value, v: row.querySelector(".v").value })));
-  document.querySelectorAll("#fp-env input").forEach(inp => inp.oninput = commit);
-  document.querySelectorAll("#fp-env .rm").forEach((b, i) => b.onclick = () => { const rs = getEnv(); rs.splice(i, 1); setEnvRows(rs); renderEnvPop(anchor); });
-  document.getElementById("fp-envadd").onclick = () => { commit(); const rs = getEnv(); rs.push({ k: "", v: "" }); setEnvRows(rs); renderEnvPop(anchor); };
+  document.querySelectorAll("#ce-env input").forEach(inp => inp.oninput = commit);
+  document.querySelectorAll("#ce-env .rm").forEach((b, i) => b.onclick = () => {
+    const rs = getEnv(); rs.splice(i, 1); setEnvRows(rs); closeModal(); openConnEnvModal();
+  });
+  document.getElementById("ce-envadd").onclick = () => {
+    commit(); const rs = getEnv(); rs.push({ k: "", v: "" }); setEnvRows(rs); closeModal(); openConnEnvModal();
+  };
+  document.querySelectorAll(".ce-tgl").forEach(b => b.onclick = async () => {
+    const p = b.dataset.p, on = b.dataset.on === "1";
+    await fetch(`/auth/${on ? "disconnect" : "connect"}/${p}`, { method: "POST", ...authed }).catch(() => {});
+    closeModal(); openConnEnvModal();
+  });
+  document.getElementById("ce-tkgo").onclick = async () => {
+    const tk = document.getElementById("ce-tkin").value.trim().toLowerCase();
+    if (!tk) return;
+    await fetch("/cloud/connect/" + encodeURIComponent(tk), { method: "POST", ...authed }).catch(() => {});
+    closeModal(); openConnEnvModal();
+  };
+  document.getElementById("ce-done").onclick = () => closeModal();
 }
   </script>
 end

@@ -131,19 +131,6 @@ design :vault_tree_green_in_the_mock do
   #domerge:hover { background:var(--ok-bg) !important; color:var(--green-deep) !important; }
   /* the vault action toolbar — one row of VS Code Material icons, each carrying a
      + badge so every button clearly reads as "add" (file / sketch / folder / workspace) */
-  #vaultbar { flex:none; display:flex; justify-content:center; gap:6px; padding:9px 10px;
-    margin-bottom:4px; border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
-  #vaultbar .add { position:relative; display:flex; align-items:center; justify-content:center;
-    width:32px; height:32px; border:1px solid var(--line); background:var(--surface); border-radius:9px;
-    cursor:pointer; transition:background .15s ease, border-color .15s ease; }
-  #vaultbar .add:hover { background:var(--fill-hover); border-color:var(--border); }
-  #vaultbar .add .mic { width:18px; height:18px; }
-  #vaultbar .add .wshash { font:800 16px ui-monospace,monospace; color:var(--purple); line-height:1; }
-  #vaultbar .add .pl { position:absolute; right:-4px; bottom:-4px; width:14px; height:14px;
-    background:var(--fill); color:var(--ink-faint); border:1.5px solid var(--panel); border-radius:50%;
-    font:800 10px ui-monospace,monospace; line-height:1;
-    display:flex; align-items:center; justify-content:center; }
-  #vaultbar .add:hover .pl { background:var(--line); color:var(--ink-faint); }
   #tree .hd { display:flex; align-items:center; gap:6px; padding:2px 10px 8px;
     color:var(--ink-faint); font-size:11px; }
   #tree .hd b { flex:1; font-weight:600; letter-spacing:.06em; }
@@ -468,6 +455,8 @@ design :the_save_prompt_command_only_now_liv do
   /* ── comm switcher: chat/voice lives at the sidebar's foot, above the account
      row — the frameless window chrome was overlapping (and eating clicks on)
      its old top-strip spot ── */
+  /* chat|voice ride the top now (under the header row, where the create
+     buttons lived — #tree's 52px top padding already clears the strip) */
   #commtop { display:flex; gap:4px; background:var(--surface); border:1px solid var(--line);
     border-radius:10px; padding:3px; margin:0 10px 6px; }
   #commtop button { flex:1; }
@@ -752,10 +741,10 @@ design :canvas_badges_top_right_search_notif do
   #searchpop .res .it:hover { background:var(--fill); }
   #searchpop .res .sw { width:9px; height:9px; border-radius:50%; flex:none; }
 
-  #notif { position:absolute; top:52px; right:14px; bottom:14px; z-index:8; width:320px;
+  #notif { position:fixed; left:10px; bottom:52px; z-index:40; width:320px; max-height:56vh;
     background:var(--surface); border:1px solid var(--line); border-radius:12px;
     box-shadow:0 14px 40px var(--border-mid); display:none; flex-direction:column;
-    opacity:0; transform:translateX(10px);
+    opacity:0; transform:translateY(8px);
     transition:opacity .2s ease, transform .22s cubic-bezier(.22,.9,.24,1); }
   #notif.on { display:flex; opacity:1; transform:none; }
   #notif .nh { padding:11px 14px; font-size:11px; font-weight:600; letter-spacing:.05em;
@@ -810,6 +799,94 @@ design :sidebar_footer_account_settings_env do
   .footbtn:hover { background:var(--line); color:var(--ink-2); }
   .footbtn svg.lucide { width:16px; height:16px; }
   .footbtn .envE { font:700 14px ui-monospace,monospace; }
+
+  /* ── header controls: heartbeat play/stop + cadence, the one + ── */
+  #hbctl { display:flex; align-items:center; border:1px solid var(--line); border-radius:9px;
+    background:var(--surface); overflow:hidden; -webkit-app-region:no-drag; }
+  #hbctl button { border:none; background:none; cursor:pointer; color:var(--ink-dim);
+    display:flex; align-items:center; justify-content:center; padding:0;
+    transition:background .15s ease, color .15s ease; }
+  #hbctl button:hover { background:var(--fill-hover); color:var(--ink); }
+  #hb-toggle { width:28px; height:26px; }
+  #hb-toggle.running { color:var(--green-deep); }
+  #hb-toggle svg.lucide { width:13px; height:13px; }
+  #hb-cadence { width:18px; height:26px; border-left:1px solid var(--line) !important; }
+  #hb-cadence svg.lucide { width:11px; height:11px; }
+  #newplus { width:28px; height:28px; border:1px solid var(--line); border-radius:9px;
+    background:var(--btn-solid); color:var(--on-accent); cursor:pointer; display:flex;
+    align-items:center; justify-content:center; -webkit-app-region:no-drag;
+    transition:transform .18s cubic-bezier(.22,.9,.24,1), background .15s ease; }
+  #newplus:hover { background:var(--btn-solid-hover); }
+  #newplus svg.lucide { width:15px; height:15px; }
+
+  /* ── the gooey menus: a filtered blob layer merges as items spiral out; an
+     unfiltered twin carries crisp icons/labels. One open at a time (JS). ── */
+  #plusmenu, #hbpop { position:absolute; z-index:30; top:38px; width:44px; height:0;
+    pointer-events:none; }
+  #plusmenu { right:8px; }
+  #hbpop { right:44px; }
+  #plusmenu .goo-blobs, #hbpop .goo-blobs { filter:url(#goo); }
+  #plusmenu .gb, #plusmenu .gi, #hbpop .gb, #hbpop .gi {
+    position:absolute; top:-32px; right:0; width:34px; height:34px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    transform:translate(0,0) scale(.3); opacity:0;
+    transition:transform .34s cubic-bezier(.26,1.2,.38,1), opacity .18s ease;
+    transition-delay:calc(var(--i) * 42ms); }
+  #plusmenu .gb, #hbpop .gb { background:var(--btn-solid); }
+  #plusmenu .gi, #hbpop .gi { border:none; background:none; cursor:pointer; pointer-events:none; }
+  #plusmenu.on .gb, #plusmenu.on .gi, #hbpop.on .gb, #hbpop.on .gi { opacity:1; }
+  #plusmenu.on .gi, #hbpop.on .gi { pointer-events:auto; }
+  /* the + menu spirals down-left (a quarter arc); the cadence pop chains straight down */
+  #plusmenu.on .gb:nth-child(1), #plusmenu.on .gi:nth-child(1) { transform:translate(0,44px) scale(1); }
+  #plusmenu.on .gb:nth-child(2), #plusmenu.on .gi:nth-child(2) { transform:translate(-10px,86px) scale(1); }
+  #plusmenu.on .gb:nth-child(3), #plusmenu.on .gi:nth-child(3) { transform:translate(-28px,124px) scale(1); }
+  #plusmenu.on .gb:nth-child(4), #plusmenu.on .gi:nth-child(4) { transform:translate(-54px,154px) scale(1); }
+  #hbpop.on .gb, #hbpop.on .gi { transform:translate(0, calc(42px + var(--i) * 38px)) scale(1); }
+  #plusmenu .gi .mic { width:17px; height:17px; }
+  #plusmenu .gi .wshash { font:800 15px ui-monospace,monospace; color:var(--on-accent); line-height:1; }
+  #plusmenu .gi .gl { position:absolute; right:42px; top:50%; transform:translateY(-50%);
+    background:var(--ink); color:var(--paper); font:10.5px ui-monospace,monospace;
+    padding:3px 9px; border-radius:6px; white-space:nowrap; opacity:0; transition:opacity .15s ease .12s; }
+  #plusmenu.on .gi:hover .gl { opacity:1; }
+  #hbpop .gi .ge { font:600 11px ui-monospace,monospace; color:var(--on-accent); }
+  #hbpop .gi.sel .ge { color:var(--amber); }
+  @media (prefers-reduced-motion:reduce) {
+    #plusmenu .gb, #plusmenu .gi, #hbpop .gb, #hbpop .gi { transition:opacity .15s ease; } }
+
+  /* ── the notifications keycap: a wide key between avatar and settings ── */
+  .footkeycap { flex:1; height:30px; display:flex; align-items:center; justify-content:center;
+    gap:7px; position:relative; cursor:pointer; -webkit-app-region:no-drag;
+    border:1px solid var(--border-mid); border-bottom-width:2.5px; border-radius:8px;
+    background:var(--surface); color:var(--ink-dim); font:10.5px ui-monospace,monospace; }
+  .footkeycap:hover { color:var(--ink-2); background:var(--fill); }
+  .footkeycap:active { transform:translateY(1px); border-bottom-width:1.5px; }
+  .footkeycap svg.lucide { width:13px; height:13px; }
+  .footkeycap .bdg { position:absolute; top:-6px; right:-4px; min-width:15px; height:15px;
+    border-radius:99px; background:var(--red); color:#fff; font:600 9.5px ui-monospace,monospace;
+    display:flex; align-items:center; justify-content:center; padding:0 4px; }
+
+  /* ── connections popover rows + the full connections/env modal ── */
+  #footpop .fp-conn { display:flex; align-items:center; gap:8px; padding:6px 9px;
+    font:12px ui-monospace,monospace; color:var(--ink-2); }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--ink-fainter); flex:none; }
+  .dot.on { background:var(--green); }
+  #modal.big { width:min(720px,92vw); top:10vh; max-height:76vh; overflow:auto; }
+  .ce-grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  @media (max-width:760px) { .ce-grid { grid-template-columns:1fr; } }
+  .ce-sub { font-size:11px; letter-spacing:.05em; color:var(--ink-faint); text-transform:uppercase;
+    margin:2px 0 8px; }
+  .ce-conn { display:flex; align-items:center; gap:9px; padding:7px 4px;
+    border-bottom:1px solid var(--border-soft); font-size:12.5px; color:var(--ink-2); }
+  .ce-name { flex:1; }
+  .ce-tgl { font:11px ui-monospace,monospace; border:1px solid var(--line); background:var(--surface);
+    color:var(--ink-dim); border-radius:7px; padding:3px 9px; cursor:pointer; }
+  .ce-tgl:hover { background:var(--fill-hover); color:var(--ink); }
+  .ce-addtk { display:flex; gap:6px; margin-top:10px; }
+  .ce-addtk input { flex:1; font:12px ui-monospace,monospace; border:1px solid var(--line);
+    border-radius:8px; padding:6px 9px; outline:none; background:var(--surface-2); color:var(--ink); }
+  .ce-addtk button { font:11px ui-monospace,monospace; border:1px solid var(--line);
+    background:var(--btn-solid); color:var(--on-accent); border-radius:8px; padding:0 12px; cursor:pointer; }
+
   /* the footer popups (open upward from the footer) */
   #footpop { position:fixed; z-index:40; display:none; background:var(--surface); border:1px solid var(--line);
     border-radius:12px; box-shadow:0 14px 40px rgba(25,35,55,.18); padding:6px; min-width:210px; }

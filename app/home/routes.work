@@ -399,7 +399,10 @@ server :vault_edit do
 
   def notes_new(req) do
     q = req.query
-    Autopoet.Notes.create(q["path"], q["type"], meta_of(q))
+    # the item KIND (note/sketch/folder/workspace) — NOT q["type"], which is the
+    # program/context META field; that mixup made "create workspace" fall through
+    # to the file branch and write an empty extensionless FILE (the `general` bug)
+    Autopoet.Notes.create(q["path"], q["kind"] || q["type"], meta_of(q))
     {200, "text/plain; charset=utf-8", "created\n"}
   end
 
@@ -541,6 +544,7 @@ end
 server :dev do
   route "POST /arm", :arm, auth: :public
   route "POST /disarm", :disarm, auth: :public
+  route "GET /heartbeat/status", :hb_status, auth: :public
   route "POST /cycle", :cycle, auth: :public
   route "POST /kill", :kill, auth: :public
   route "POST /close", :close, auth: :public
@@ -558,6 +562,12 @@ server :dev do
   def disarm(_req) do
     Nexus.Autopoet.Worker.disarm()
     {200, "text/plain; charset=utf-8", "disarmed\n"}
+  end
+
+  # the header's play/stop control reads this on boot and after every toggle
+  def hb_status(_req) do
+    s = Nexus.Autopoet.Worker.status()
+    %{armed: s.armed, spec: s.spec}
   end
 
   def cycle(_req) do

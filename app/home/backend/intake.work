@@ -54,6 +54,7 @@ defmodule Autopoet.Intake do
     Autopoet.Log.puts("intake: building your starting world (#{plan.workspace.name})")
     files = skeleton(profile, plan)
     {:ok, _} = Autopoet.Body.apply(files)
+    declare_workspace(plan.workspace)
     Autopoet.Agents.register_from_body()
     seed_prior(plan)
     Autopoet.Log.puts("intake: #{map_size(files)} pages live — agents registered")
@@ -444,6 +445,39 @@ defmodule Autopoet.Intake do
     target_edges = for {title, rel} <- pages, do: {slug(title), rel}
 
     Enum.uniq(index_edges ++ chain_edges ++ target_edges)
+  end
+
+  # A workspace is DECLARED, not implied by a folder (the Workbooks manifest
+  # convention: `deploy workspaces="folder | Name | emoji"`). Without this line
+  # the built world reads as loose folders; with it every surface — the graph's
+  # auto-clusters, the files tree, the cloud — organizes by workspace.
+  defp declare_workspace(ws) do
+    manifest = Path.join(Nexus.Paths.data_dir(), "index.work")
+    entry = "#{ws.name} | #{ws.title}"
+
+    with {:ok, src} <- File.read(manifest) do
+      cond do
+        String.contains?(src, ws.name <> " |") ->
+          :ok
+
+        # append this workspace into an existing workspaces="..." attr
+        Regex.match?(~r/^(\s*)workspaces="([^"]*)"/m, src) ->
+          patched =
+            Regex.replace(~r/^(\s*)workspaces="([^"]*)"/m, src, "\\1workspaces=\"\\2\n#{entry}\"", global: false)
+
+          File.write!(manifest, patched)
+          Autopoet.Log.puts("intake: workspace declared — #{entry}")
+
+        # first workspace: add the attr inside the deploy block
+        Regex.match?(~r/^deploy do$/m, src) ->
+          patched = Regex.replace(~r/^deploy do$/m, src, "deploy do\n  workspaces=\"#{entry}\"", global: false)
+          File.write!(manifest, patched)
+          Autopoet.Log.puts("intake: workspace declared — #{entry}")
+
+        true ->
+          Autopoet.Log.puts("intake: no deploy block in the manifest — workspace #{ws.name} undeclared")
+      end
+    end
   end
 
   defp seed_prior(plan) do
