@@ -63,6 +63,11 @@ defmodule Autopoet.Kokoro do
     {:noreply, engine}
   end
 
+  # Autopoet.Weights lands the model files after boot → re-run the load
+  @impl true
+  def handle_cast(:reload, nil), do: {:noreply, nil, {:continue, :load}}
+  def handle_cast(:reload, engine), do: {:noreply, engine}
+
   @impl true
   def handle_call(:ready?, _from, state) do
     {:reply, state != nil and espeak?(), state}

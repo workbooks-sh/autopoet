@@ -125,7 +125,8 @@ defmodule Autopoet.MixProject do
   def application do
     [
       # :wx is the desktop GUI (wxWidgets) — absent from the headless cloud image, so cloud omits it.
-      extra_applications: [:logger | if(@cloud, do: [], else: [:wx])],
+      # :inets/:ssl/:public_key back the first-run weights download (Autopoet.Weights, httpc lane).
+      extra_applications: [:logger, :inets, :ssl, :public_key | if(@cloud, do: [], else: [:wx])],
       mod: {Autopoet.Application, []}
     ]
   end

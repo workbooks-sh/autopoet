@@ -127,7 +127,10 @@ rm -rf "$APP/Contents/Resources/app-home/app/home/.DS_Store"
 cp -f "$ROOT"/priv/static/vendor/*.mjs "$ROOT"/priv/static/vendor/*.js "$ROOT"/priv/static/vendor/*.glb \
   "$APP/Contents/Resources/app-home/app/home/static/vendor/"
 
-# 2c. lean ML weights — ONLY what loads at runtime (Kokoro fp32 + Moonshine + Affect)
+# 2c. ML weights: NOT bundled by default (wb-yucr0) — the lean app downloads
+# them on first run (Autopoet.Weights → R2, sha256-verified) into the user's
+# writable models dir. BUNDLE_WEIGHTS=1 restores the fat offline bundle.
+if [[ "${BUNDLE_WEIGHTS:-}" == "1" ]]; then
 M="$APP/Contents/Resources/models"
 mkdir -p "$M/kokoro/voices" "$M/moonshine" "$M/affect"
 cp -c "$ROOT/data/models/kokoro/model_fp32.onnx" "$M/kokoro/" 2>/dev/null || cp "$ROOT/data/models/kokoro/model_fp32.onnx" "$M/kokoro/"
@@ -139,6 +142,7 @@ cp -c "$ROOT/data/models/moonshine/decoder_with_past_model.onnx" "$M/moonshine/"
 cp -c "$ROOT/data/models/moonshine/tokenizer.json"               "$M/moonshine/" 2>/dev/null || cp "$ROOT/data/models/moonshine/tokenizer.json"               "$M/moonshine/"
 cp -c "$ROOT/data/models/affect/model_quantized.onnx" "$M/affect/" 2>/dev/null || cp "$ROOT/data/models/affect/model_quantized.onnx" "$M/affect/"
 cp -c "$ROOT/data/models/affect/tokenizer.json"       "$M/affect/" 2>/dev/null || cp "$ROOT/data/models/affect/tokenizer.json"       "$M/affect/"
+fi
 
 # 2d. the empty-world deploy manifest (seeded per-install on first run)
 mkdir -p "$APP/Contents/Resources/seed"

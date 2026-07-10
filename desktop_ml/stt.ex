@@ -47,6 +47,11 @@ defmodule Autopoet.Stt do
     {:noreply, %{state | moonshine: moonshine}}
   end
 
+  # Autopoet.Weights lands the model files after boot → re-run the warm
+  @impl true
+  def handle_cast(:reload, %{moonshine: nil} = state), do: {:noreply, state, {:continue, :warm}}
+  def handle_cast(:reload, state), do: {:noreply, state}
+
   @impl true
   def handle_call(:engine, _from, state) do
     {:reply, (state.moonshine && :moonshine) || (state.whisper && :whisper), state}

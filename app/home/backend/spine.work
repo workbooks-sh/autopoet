@@ -89,7 +89,10 @@ defmodule Autopoet.Spine do
       # don't ship, so `Autopoet.QwenTts` is deliberately absent here. The module stays
       # compiled, so any stray caller resolves to its graceful "off" status and falls
       # back to Kokoro. (For a dev A/B, add `Autopoet.QwenTts` back to `base`.)
-      base = [Autopoet.Stt, Autopoet.Voice, Autopoet.Affect]
+      # Weights FIRST: the lean bundle ships no models — this child fetches them
+      # (R2, sha256-verified) and :reload-casts the engines below when they land.
+      # A models-complete install (or a BUNDLE_WEIGHTS build) makes it a no-op.
+      base = [Autopoet.Weights, Autopoet.Stt, Autopoet.Voice, Autopoet.Affect]
       base = if Autopoet.VoiceEngine.kokoro?(), do: [Autopoet.Kokoro | base], else: base
 
       Enum.filter(base, fn mod ->

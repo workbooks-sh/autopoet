@@ -38,7 +38,10 @@ fi
 export AUTOPOET_HOME="$RES/app-home"     # read-only SURFACE root (app/home lives under here)
 export AUTOPOET_DATA="$SUP"              # writable DATA home (token/session/ctl/power-compute)
 export WB_DATA="$SUP/nexus"              # the world (SQLite + workspaces)
-export AUTOPOET_MODELS="$RES/models"     # bundled ML weights (Kokoro/Moonshine/Affect)
+# bundled ML weights (BUNDLE_WEIGHTS=1 builds only). The lean bundle ships
+# none — Autopoet.Weights downloads them to <data-home>/data/models on first
+# run, Discovery.models_dir/0's fallback when this stays unset.
+[ -d "$RES/models" ] && export AUTOPOET_MODELS="$RES/models"
 export AUTOPOET_ESPEAK="$RES/espeak/bin/espeak-ng"   # bundled phonemizer (Kokoro)
 export AUTOPOET_ESPEAK_DATA="$RES/espeak/share"      # dir CONTAINING espeak-ng-data
 export AUTOPOET_FRAMELESS="${AUTOPOET_FRAMELESS:-1}"   # custom stoplight chrome
