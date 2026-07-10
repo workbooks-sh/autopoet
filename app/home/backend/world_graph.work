@@ -145,7 +145,11 @@ defmodule Autopoet.WorldGraph do
         %{source: "self", target: n.id, kind: "tether"}
       end
 
-    %{nodes: nodes, links: tethers ++ ref_links, default_hidden: @default_hidden}
+    # system_types: the same plumbing classes, for the client's built-in
+    # "system" cluster — grouped into ONE gray expandable node rather than
+    # hidden outright (default_hidden stays the server contract for evals
+    # and alternate frontends)
+    %{nodes: nodes, links: tethers ++ ref_links, default_hidden: @default_hidden, system_types: @default_hidden}
   end
 
   @doc "Node types hidden by default (I3) — exposed for evals and alternate frontends."

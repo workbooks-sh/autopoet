@@ -149,6 +149,10 @@ server :app_misc do
 
   def onboarding_done(_req) do
     Autopoet.Auth.complete_onboarding()
+    # the world-seed retry the quiz finale's comment always promised: if the
+    # build lane never ran (crash, closed app), entry kicks it. Marker-guarded —
+    # a completed intake makes this a no-op.
+    Autopoet.Intake.start()
     %{ok: true}
   end
 

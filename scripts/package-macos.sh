@@ -226,16 +226,18 @@ say "verifying signature"
 codesign --verify --deep --strict --verbose=2 "$APP"
 spctl -a -t exec -vv "$APP" 2>&1 || true   # will say "rejected/unnotarized" until step 6
 
-# ── 4b. ONE app in /Applications: a SYMLINK to the fresh build ──────────────
-# Never a copy — a copy goes stale the moment the next build lands, and then the
-# Dock/Launchpad/Spotlight launch the WRONG Autopoet. The link keeps a single
-# truth: /Applications/Autopoet.app always IS dist/Autopoet.app. An existing real
-# directory there (an old copied install) is replaced by the link.
-say "linking /Applications/Autopoet.app → $APP"
-if [ -e "/Applications/Autopoet.app" ] && [ ! -L "/Applications/Autopoet.app" ]; then
+# ── 4b. install = a real COPY into /Applications, AFTER signing completes ───
+# A symlinked .app is not reliably indexed by Spotlight/Launchpad (the app was
+# unfindable). The copy cannot go stale: this script is the only installer and
+# refreshes it on every build. Runs after notarize+staple (or before the
+# SKIP_NOTARY exit) so the installed app carries the final ticket.
+install_app() {
+  say "installing /Applications/Autopoet.app (real copy — Spotlight/Launchpad index it)"
   rm -rf "/Applications/Autopoet.app"
-fi
-ln -sfn "$APP" "/Applications/Autopoet.app"
+  ditto "$APP" "/Applications/Autopoet.app"
+  /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
+    -f "/Applications/Autopoet.app" >/dev/null 2>&1 || true
+}
 
 # ── 5. build the DMG ────────────────────────────────────────────────────────
 say "creating dmg"
@@ -251,6 +253,7 @@ echo "dmg: $DMG ($(du -h "$DMG" | cut -f1))"
 # ── 6. notarize + staple ────────────────────────────────────────────────────
 if [[ "${SKIP_NOTARY:-}" == "1" ]]; then
   say "SKIP_NOTARY=1 — signed but NOT notarized (Gatekeeper needs a manual override)"
+  install_app
   exit 0
 fi
 [[ -n "$NOTARY_KEY" && -n "$NOTARY_KEY_ID" && -n "$NOTARY_ISSUER" ]] || {
@@ -262,5 +265,7 @@ say "stapling"
 xcrun stapler staple "$DMG"
 xcrun stapler staple "$APP"
 spctl -a -t open --context context:primary-signature -vv "$DMG" 2>&1 || true
+
+install_app
 
 say "done → $DMG"

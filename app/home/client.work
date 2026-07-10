@@ -4316,7 +4316,31 @@ function captureClusterShapes() {
   if (changed) saveClusters();
 }
 const saveClusters = () => localStorage.setItem("ap-clusters", JSON.stringify(clusters));
+// gray is RESERVED for the built-in system cluster — the palette below never deals it.
+// It's a THEME VAR (light gray on light, deep gray on dark) so the emoji reads on both.
 const CLPAL = ["#8e7cc3", "#6aa84f", "#e07a5f", "#4a90d9", "#d96ba0", "#2aa198", "#c9a04e"];
+const SYSTEM_GRAY = "var(--sys-node)";
+
+// ── the built-in "system" cluster: everything the app ships (guide pages, the
+// agents registry, the oota library, infra agents) grouped as ONE gray node,
+// expandable like any cluster — default content is visible-but-compact, never
+// scattered across the canvas and never invisibly hidden.
+const SYS_TYPES = new Set(["guide", "system", "library"]);
+function seedSystemCluster(data) {
+  (data.system_types || []).forEach(t => SYS_TYPES.add(t));
+  // an already-seeded cluster tracks the reserved theme gray (migrates old hex)
+  const sys = clusterById("sys");
+  if (sys && sys.color !== SYSTEM_GRAY) { sys.color = SYSTEM_GRAY; saveClusters(); }
+  if (sys || localStorage.getItem("ap-syscluster-dissolved")) return;
+  // grouping replaces hiding: release any legacy hidden state on these types
+  let migrated = false;
+  for (const t of SYS_TYPES) if (hiddenTypes.delete(t)) migrated = true;
+  if (migrated) saveHidden();
+  clusters.push({ id: "sys", name: "system", builtin: true, collapsed: true,
+    color: SYSTEM_GRAY, emoji: "⚙️", rule: { kind: "system" },
+    note: "reference pages + plumbing the app ships with — not authored by you" });
+  saveClusters();
+}
 function addCluster(c) {
   c.id = c.id || "cl" + Date.now().toString(36) + Math.floor(Math.random() * 1e4);
   c.color = c.color || CLPAL[clusters.length % CLPAL.length];
@@ -4326,6 +4350,9 @@ function addCluster(c) {
 const clusterById = id => clusters.find(c => c.id === id);
 function removeCluster(id) {
   const c = clusterById(id);
+  // dissolving the built-in system cluster is respected forever (tombstone) —
+  // it never re-seeds itself behind the owner's back
+  if (c && c.builtin) localStorage.setItem("ap-syscluster-dissolved", "1");
   clusters = clusters.filter(x => x.id !== id);
   saveClusters();
   if (c && c.collapsed) draw(); else clusterChanged();   // expanded: hull just melts away
@@ -4344,7 +4371,8 @@ function clusterChanged() {
 // membership: explicit ids, or a live rule over the current nodes (self never joins)
 function clusterMembers(c, nodes) {
   let ids;
-  if (c.rule && c.rule.kind === "type") ids = nodes.filter(n => n.type === c.rule.value).map(n => n.id);
+  if (c.rule && c.rule.kind === "system") ids = nodes.filter(n => SYS_TYPES.has(n.type)).map(n => n.id);
+  else if (c.rule && c.rule.kind === "type") ids = nodes.filter(n => n.type === c.rule.value).map(n => n.id);
   else if (c.rule && c.rule.kind === "match") {
     const q = c.rule.value.toLowerCase();
     ids = nodes.filter(n => (n.label + " " + (n.detail || "") + " " + n.type).toLowerCase().includes(q)).map(n => n.id);
@@ -4362,7 +4390,7 @@ function applyClusterTransform(data) {
   for (const c of clusters) if (c.collapsed) {
     const count = Object.values(owner).filter(x => x === c).length;
     if (count) nodes.push({ id: "cluster:" + c.id, type: "cluster", label: c.name, count,
-      clusterId: c.id, detail: `cluster · ${count} nodes collapsed\n${c.note || ""}` });
+      emoji: c.emoji || "", clusterId: c.id, detail: `cluster · ${count} nodes collapsed\n${c.note || ""}` });
   }
   const seen = new Set(), links = [];
   for (const l of data.links) {
@@ -4544,10 +4572,12 @@ async function draw() {
   try { data = await (await fetch("/graph.json")).json(); }
   catch (err) { return fatal("graph.json fetch failed: " + err); }
   if (!data.nodes || !data.nodes.length) return fatal("graph.json returned no nodes");
+  seedSystemCluster(data);   // BEFORE the collapse pass — system nodes fold into it
   data = applyClusterTransform(data);
-  // first load with no saved choice: adopt the server's default_hidden (I3)
+  // first load with no saved choice: adopt the server's default_hidden (I3) —
+  // except the system types, which the built-in cluster presents instead
   if (!hiddenAdopted) {
-    (data.default_hidden || []).forEach(t => hiddenTypes.add(t));
+    (data.default_hidden || []).filter(t => !SYS_TYPES.has(t)).forEach(t => hiddenTypes.add(t));
     hiddenAdopted = true;
     saveHidden();
   }
@@ -4769,12 +4799,15 @@ async function draw() {
     .attr("r", radius).attr("fill", d => color(d))
     .attr("fill-opacity", 0.85).attr("stroke", "var(--paper)").attr("stroke-width", 2);
 
-  // a collapsed cluster = one compact squircle carrying its member count
+  // a collapsed cluster = one compact squircle carrying its emoji (or, with
+  // none set, its member count — the count always lives in the click panel)
   const clG = node.filter(d => d.type === "cluster");
   clG.append("rect").attr("x", -20).attr("y", -20).attr("width", 40).attr("height", 40).attr("rx", 12)
     .attr("fill", d => color(d)).attr("fill-opacity", 0.9).attr("stroke", "var(--paper)").attr("stroke-width", 2);
-  clG.append("text").attr("class", "cl-count").attr("text-anchor", "middle").attr("dy", 4)
-    .text(d => d.count);
+  clG.append("text").attr("class", "cl-count").attr("text-anchor", "middle")
+    .attr("dy", d => d.emoji ? 7 : 4)
+    .attr("font-size", d => d.emoji ? "20px" : null)
+    .text(d => d.emoji || d.count);
 
   // the self node renders as the CUBE overlay (ensureSelfCube); its svg group
   // is only the physics/zoom anchor the cube tracks
@@ -5836,8 +5869,9 @@ function showClusterPanel(c) {
     : clusterMembers(c, worldData.nodes).length;
   panel.innerHTML = `
     <h3>${esc(c.name)}</h3>
-    <span class="tag" style="background:${c.color}">cluster · ${n} node${n === 1 ? "" : "s"}${c.rule ? " · rule: " + esc(c.rule.kind === "type" ? "type:" + c.rule.value : c.rule.value) : ""}</span>
+    <span class="tag" style="background:${c.color}">cluster · ${n} node${n === 1 ? "" : "s"}${c.rule ? " · rule: " + esc(c.rule.kind === "system" ? "system content" : c.rule.kind === "type" ? "type:" + c.rule.value : c.rule.value) : ""}</span>
     <div class="clrow"><input id="cl-name" value="${esc(c.name)}" spellcheck="false" title="name"></div>
+    <div class="clrow"><input id="cl-emoji" value="${esc(c.emoji || "")}" placeholder="emoji shown when collapsed…" maxlength="4" spellcheck="false" title="emoji"></div>
     <div class="clrow"><input id="cl-tags" value="${esc((c.tags || []).join(", "))}" placeholder="tags, comma separated…" spellcheck="false"></div>
     <div class="clrow"><textarea id="cl-note" rows="3" placeholder="context for this group…" spellcheck="false">${esc(c.note || "")}</textarea></div>
     <div class="clpal">${CLPAL.map(col =>
@@ -5849,11 +5883,16 @@ function showClusterPanel(c) {
   panel.style.display = "block";
   const commit = () => {
     c.name = document.getElementById("cl-name").value.trim() || c.name;
+    c.emoji = document.getElementById("cl-emoji").value.trim();
     c.tags = document.getElementById("cl-tags").value.split(",").map(s => s.trim()).filter(Boolean);
     c.note = document.getElementById("cl-note").value;
     saveClusters();
   };
-  ["cl-name", "cl-tags", "cl-note"].forEach(id => document.getElementById(id).onchange = () => { commit(); clusterChanged(); });
+  // an emoji/name change on a COLLAPSED cluster lives on its squircle → redraw
+  ["cl-name", "cl-emoji", "cl-tags", "cl-note"].forEach(id => document.getElementById(id).onchange = () => {
+    commit();
+    if (c.collapsed) draw(); else clusterChanged();
+  });
   panel.querySelectorAll(".swb").forEach(b => b.onclick = () => {
     c.color = b.dataset.c; commit(); clusterChanged();
     panel.querySelectorAll(".swb").forEach(x => x.classList.toggle("sel", x === b));
@@ -8686,18 +8725,24 @@ window.PlanBrain = (() => {
     // turns this session's deck into the plan.* contract and builds the first
     // workspace/agents/rules from it — the conversation actually becomes the
     // system. Then the app opens on the first proposal.
+    // the payload matches the route's contract ({form, pairing}); the deck
+    // itself lives server-side (data/decks/current.md, appended per slide) so
+    // it is never trusted from here
     let built = null;
     try {
       const r = await fetch("/plan/finalize", {
         method: "POST",
         headers: { authorization: "Bearer " + TOKEN, "content-type": "application/json" },
-        body: JSON.stringify(state.form || {})
+        body: JSON.stringify({ form: state.form || {}, pairing: state.pairing || {} })
       });
       if (r.ok) built = await r.json();
     } catch (_) {}
-    if (built && built.workspace) {
-      const sub = proc.querySelector(".pm-proc-sub");
-      if (sub) sub.textContent = `built ${built.workspace} · ${(built.agents || []).length} agent(s) · ${(built.pages || []).length} pages`;
+    const sub = proc.querySelector(".pm-proc-sub");
+    if (sub) {
+      if (built && built.workspace)
+        sub.textContent = `built ${built.workspace} · ${(built.agents || []).length} agent(s) · ${(built.pages || []).length} pages`;
+      else
+        sub.textContent = "the build hit a snag — your plan is saved; it will retry on entry";
     }
     setTimeout(() => { const d = opts.onDone; d && d(); }, 2600);
   }

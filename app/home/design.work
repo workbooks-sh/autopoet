@@ -23,6 +23,9 @@ design :part0 do
     --border:#e0e4ea; --border-soft:rgba(25,35,55,.08); --border-mid:rgba(25,35,55,.16);
     /* world-graph edges + major grid (JS-drawn, read via var() in SVG attrs) */
     --edge:#e2e6ea; --edge-ref:#b8c4d0; --grid-major:#d8dce0;
+    /* the built-in system cluster's reserved gray — a quiet tile the emoji
+       reads against (light theme: light gray; dark theme overrides darker) */
+    --sys-node:#d7dce1;
     /* elevation */
     --shadow-1:0 1px 3px rgba(25,35,55,.10); --shadow-2:0 8px 30px rgba(25,35,55,.16);
     /* accents / status — hue kept, tuned per theme for legibility */
@@ -56,6 +59,7 @@ design :part0 do
     --ink-fainter:#4d5763;
     --border:#2b323c; --border-soft:rgba(220,230,245,.08); --border-mid:rgba(220,230,245,.15);
     --edge:#2f3742; --edge-ref:#41505f; --grid-major:#242a33;
+    --sys-node:#333a43;
     --shadow-1:0 1px 3px rgba(0,0,0,.45); --shadow-2:0 10px 34px rgba(0,0,0,.55);
     --blue:#6a9ae0; --blue-soft:#7fa8d8; --blue-deep:#5b8cc9;
     --purple:#a99bd6; --green:#7cb861; --green-deep:#6aa84f; --red:#d96a6a;

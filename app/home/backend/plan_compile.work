@@ -31,12 +31,22 @@ defmodule Autopoet.PlanCompile do
   Returns {:ok, plan_map} — the same shape `Intake.parse_plan` reads back.
   """
   def from_deck(deck_md, pairing \\ %{}, form \\ %{}) do
+    # a nil/garbage payload must degrade to the deterministic lane, never raise
+    # — this endpoint is the last step of onboarding and has to survive anything
+    deck_md = to_string(deck_md || "")
+    pairing = if is_map(pairing), do: pairing, else: %{}
+    form = if is_map(form), do: form, else: %{}
+
     plan =
       # any live lane — the fast conversational provider (Cerebras, via the
       # Workbooks CF AI Gateway when configured) OR the planner. GOAL: all
       # traffic through the gateway; Providers.openrouter already routes through
       # it when CF_AIG_URL/TOKEN are set, so this needs no change to get there.
-      if Autopoet.VoiceBrain.available?() or Autopoet.Providers.openrouter?() do
+      # An EMPTY deck skips the LLM outright: the model has nothing to compile
+      # and reliably echoes the blank template back (measured), so asking is
+      # a guaranteed VALIDATE miss.
+      if String.trim(deck_md) != "" and
+           (Autopoet.VoiceBrain.available?() or Autopoet.Providers.openrouter?()) do
         case ask_llm(deck_md, pairing, form) do
           {:ok, p} -> p
           _ -> fallback(deck_md, form)
@@ -102,18 +112,29 @@ defmodule Autopoet.PlanCompile do
     {"workspace_title":"","pages":[""],"agents":[{"name":"","job":""}],"rules":[],"setting":"","connect":[],"firstrun":""}
     """
 
-    case complete([%{"role" => "user", "content" => prompt}]) do
+    attempt([%{"role" => "user", "content" => prompt}], 1)
+  end
+
+  # one corrective retry: a miss usually means the model echoed the template
+  # or wrapped the JSON — append the exact failure and ask again before giving
+  # up to the deterministic fallback
+  defp attempt(messages, tries_left) do
+    case complete(messages) do
       {:ok, content} ->
         case decode(content) do
           {:ok, raw} ->
             case validate(raw) do
-              {:ok, plan} -> {:ok, plan}
-              :error -> Autopoet.Log.puts("plan_compile: VALIDATE miss — #{inspect(Map.take(raw, ["workspace_title", "agents"]))}"); :error
+              {:ok, plan} ->
+                {:ok, plan}
+
+              :error ->
+                Autopoet.Log.puts("plan_compile: VALIDATE miss — #{inspect(Map.take(raw, ["workspace_title", "agents"]))}")
+                retry(messages, tries_left, "Your JSON had an empty workspace_title, pages, or agents. Fill EVERY field with real content compiled from the deck — never echo the blank template.")
             end
 
           :error ->
             Autopoet.Log.puts("plan_compile: DECODE miss — #{String.slice(content, 0, 250)}")
-            :error
+            retry(messages, tries_left, "Your reply was not parseable JSON. Reply with ONLY the single JSON object — no prose, no code fences.")
         end
 
       other ->
@@ -121,6 +142,11 @@ defmodule Autopoet.PlanCompile do
         :error
     end
   end
+
+  defp retry(_messages, 0, _nudge), do: :error
+
+  defp retry(messages, tries_left, nudge),
+    do: attempt(messages ++ [%{"role" => "system", "content" => nudge}], tries_left - 1)
 
   defp validate(raw) do
     title = clean(raw["workspace_title"] || "")

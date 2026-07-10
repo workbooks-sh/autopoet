@@ -18,7 +18,7 @@ all: $(NIF)
 $(NIF): $(SRC)
 	@mkdir -p $(PRIV)
 	clang -O2 -fobjc-arc -dynamiclib -undefined dynamic_lookup \
-	  -I"$(ERTS_INCLUDE_DIR)" -framework Cocoa -framework WebKit \
+	  -I"$(ERTS_INCLUDE_DIR)" -framework Cocoa -framework WebKit -framework AVFoundation \
 	  $(SRC) -o $(NIF)
 else
 all:

@@ -109,13 +109,43 @@ server :onboard do
     end
   end
 
-  # deck (the human-readable plan) → plan.* contract → the Intake builds the vault
+  # deck (the human-readable plan) → plan.* contract → the Intake builds the vault.
+  # The SERVER's persisted deck (data/decks/current.md, appended slide-by-slide
+  # during the session) is the source of truth — the client payload is only a
+  # fallback, so a payload-shape drift can never compile an empty deck again.
   def plan_finalize(req) do
     body = if is_map(req.body), do: req.body, else: %{}
 
-    case Autopoet.PlanCompile.from_deck(body["deck"], body["pairing"], body["form"]) do
-      {:ok, result} -> result
-      {:error, reason} -> {500, %{error: to_string(reason)}}
+    deck =
+      case File.read(Path.join([Autopoet.Discovery.home(), "data", "decks", "current.md"])) do
+        {:ok, md} when byte_size(md) > 0 -> md
+        _ -> to_string(body["deck"] || "")
+      end
+
+    pairing =
+      case body["pairing"] do
+        %{} = p when map_size(p) > 0 ->
+          p
+
+        _ ->
+          case Autopoet.Requisition.pairing() do
+            {:ok, identity} -> identity
+            _ -> %{}
+          end
+      end
+
+    # old clients posted the form AS the body; new ones post it under "form"
+    form = if is_map(body["form"]), do: body["form"], else: body
+
+    case Autopoet.PlanCompile.from_deck(deck, pairing, form) do
+      {:ok, plan} ->
+        # the compiled contract is on the profile — NOW build the world from it.
+        # start/0 is marker-guarded (data/bootstrapped): safe to call repeatedly.
+        Autopoet.Intake.start()
+        %{workspace: plan.title, pages: plan.pages, agents: Enum.map(plan.agents, & &1.name)}
+
+      {:error, reason} ->
+        {500, %{error: to_string(reason)}}
     end
   end
 

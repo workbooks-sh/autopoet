@@ -68,15 +68,25 @@ defmodule Autopoet.PlanBrain do
                      "no prose, no code fences, no text before or after it."}
 
   defp ask_llm(state, history, fork_done, exchanges) do
+    # the SERVER's deck (appended slide-by-slide) is what the model must not
+    # re-cover — the client's title list alone let it re-draft old ground under
+    # a fresh title, narrating a near-identical line each time (the "repeats")
+    deck_md = read_deck()
+
     prompt =
-      [%{"role" => "system", "content" => system_prompt(state, fork_done, exchanges)} | trim(history)] ++
+      [%{"role" => "system", "content" => system_prompt(state, fork_done, exchanges, deck_md)} | trim(history)] ++
         [@format_anchor]
     titles = state["deck_titles"] |> List.wrap() |> Enum.map(&String.downcase(to_string(&1)))
+    body_keys = deck_body_keys(deck_md)
 
-    last_say =
+    # every recent assistant line, not just the last — a repeat two lines back
+    # sounds exactly as broken out loud as an immediate echo
+    recent_says =
       history
       |> Enum.reverse()
-      |> Enum.find_value("", fn m -> if m["role"] == "assistant", do: m["content"], else: nil end)
+      |> Enum.filter(&(&1["role"] == "assistant"))
+      |> Enum.take(6)
+      |> Enum.map(&to_string(&1["content"] || ""))
 
     # THE VOICE LADDER — LOCKED (owner decree 2026-07-07): a spoken turn is answered
     # by EXACTLY two providers, in order, through the one gateway front:
@@ -96,7 +106,7 @@ defmodule Autopoet.PlanBrain do
 
     result =
       Enum.reduce_while(lanes, :error, fn {lane, call}, _ ->
-        case try_move(call, fork_done, titles, last_say) do
+        case try_move(call, fork_done, titles, body_keys, recent_says) do
           {:ok, move} ->
             {:halt, {:ok, {lane, move}}}
 
@@ -119,14 +129,14 @@ defmodule Autopoet.PlanBrain do
     end
   end
 
-  defp try_move(call, fork_done, titles, last_say) do
+  defp try_move(call, fork_done, titles, body_keys, recent_says) do
     case call.() do
       {:ok, content} ->
         with {:ok, raw} when is_map(raw) <- decode_move(content),
              {:ok, move} <- validate(raw, fork_done),
              move <- statement_only(move),
-             false <- repeats?(move, last_say) do
-          {:ok, dedupe(move, titles)}
+             false <- repeats?(move, recent_says) do
+          {:ok, dedupe(move, titles, body_keys)}
         else
           _ ->
             # the model ANSWERED but the move didn't survive parse/validate —
@@ -150,28 +160,61 @@ defmodule Autopoet.PlanBrain do
 
   defp statement_only(move), do: move
 
-  # reject a say that echoes the previous line (normalized prefix match) — the
+  # reject a say that echoes ANY recent line (normalized prefix match) — the
   # attempt fails, so ask_llm tries the next lane / the repair nudge
-  defp repeats?(%{"say" => say}, last_say) when is_binary(last_say) and last_say != "" do
-    norm = fn s -> s |> String.downcase() |> String.replace(~r/[^a-z0-9 ]/, "") |> String.slice(0, 60) end
-    a = norm.(say)
-    a != "" and a == norm.(last_say)
+  defp repeats?(%{"say" => say}, recent_says) when is_list(recent_says) do
+    a = norm_say(say)
+    a != "" and Enum.any?(recent_says, &(norm_say(&1) == a))
   end
 
   defp repeats?(_, _), do: false
 
-  # a slide whose title matches one already on the deck adds NOTHING — keep
-  # the narration/question, drop the duplicate card (prompt asks; this enforces)
-  defp dedupe(%{"md" => md, "title" => t} = move, titles) when is_binary(md) do
+  defp norm_say(s),
+    do: s |> to_string() |> String.downcase() |> String.replace(~r/[^a-z0-9 ]/, "") |> String.slice(0, 60)
+
+  # a slide whose title, heading, or BODY matches one already on the deck adds
+  # NOTHING — keep the narration/question, drop the duplicate card (prompt
+  # asks; this enforces). The body check is what stops a re-draft of covered
+  # ground under a fresh title (e.g. "The Vision: X" then "The Goal: X").
+  defp dedupe(%{"md" => md, "title" => t} = move, titles, body_keys) when is_binary(md) do
     title = String.downcase(to_string(t))
     heading = md |> String.split("\n", parts: 2) |> hd() |> String.replace(~r/^#+\s*/, "") |> String.downcase()
 
-    if (title != "" and title in titles) or heading in titles,
-      do: Map.drop(move, ["md", "title"]) |> Map.put_new("move", "ask"),
-      else: move
+    if (title != "" and title in titles) or heading in titles or
+         MapSet.member?(body_keys, slide_body_key(md)),
+       do: Map.drop(move, ["md", "title"]) |> Map.put_new("move", "ask"),
+       else: move
   end
 
-  defp dedupe(move, _), do: move
+  defp dedupe(move, _, _), do: move
+
+  # ── the deck on disk: the authoritative record of covered ground ──
+  defp read_deck do
+    case File.read(Path.join([Autopoet.Discovery.home(), "data", "decks", "current.md"])) do
+      {:ok, md} -> md
+      _ -> ""
+    end
+  end
+
+  defp deck_body_keys(deck_md) do
+    deck_md
+    |> String.split(~r/^---$/m)
+    |> Enum.map(&slide_body_key/1)
+    |> Enum.reject(&(&1 == ""))
+    |> MapSet.new()
+  end
+
+  # a slide's body fingerprint: everything after the heading, normalized —
+  # near-identical content collides here even when the title is reworded
+  defp slide_body_key(slide_md) do
+    slide_md
+    |> String.split("\n")
+    |> Enum.reject(&String.match?(&1, ~r/^#+\s/))
+    |> Enum.join(" ")
+    |> String.downcase()
+    |> String.replace(~r/[^a-z0-9]/, "")
+    |> String.slice(0, 100)
+  end
 
   # THE two locked voice providers, each pinned at the transport (OpenRouter
   # provider routing — rides the gateway front when CF_AIG_* is configured):
@@ -197,13 +240,21 @@ defmodule Autopoet.PlanBrain do
   defp lane_content(_), do: :error
 
 
-  defp system_prompt(state, fork_done, exchanges) do
+  defp system_prompt(state, fork_done, exchanges, deck_md) do
     form = state["form"] || %{}
     pairing = state["pairing"] || %{}
     persona = pairing["persona_desc"] || ""
     ap_name = pairing["name"] || "your autopoet"
     delivery = pairing["delivery"] || ""
     titles = state["deck_titles"] |> List.wrap() |> Enum.join(", ")
+
+    # the model sees the last slides IN FULL — titles alone let it re-cover the
+    # same ground under a reworded heading (spoken as a repeated-sounding line)
+    deck_tail =
+      deck_md
+      |> String.split(~r/^---$/m)
+      |> Enum.take(-8)
+      |> Enum.map_join("\n---\n", &String.trim/1)
 
     # FREE-FORM conversation — no scripted fork, no forced arc. Just a real,
     # curious back-and-forth that gradually drafts the plan deck.
@@ -266,7 +317,10 @@ defmodule Autopoet.PlanBrain do
     scripted. You have already greeted them; do NOT re-introduce yourself.
 
     THE OWNER'S FORM (AP-7 marks): #{Jason.encode!(form)}
-    SLIDES SO FAR: #{if titles == "", do: "(just the cover)", else: titles}
+    SLIDES SO FAR (all titles): #{if titles == "", do: "(just the cover)", else: titles}
+    THE MOST RECENT SLIDES, IN FULL — this ground is COVERED; never re-draft or
+    re-narrate any of it, under ANY title:
+    #{if String.trim(deck_tail) == "", do: "(just the cover)", else: deck_tail}
     QUESTIONS ASKED: #{exchanges}.
 
     THIS TURN: #{stage_rule}
