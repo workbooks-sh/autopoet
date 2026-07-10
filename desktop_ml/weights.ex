@@ -16,7 +16,7 @@ defmodule Autopoet.Weights do
 
   # the R2 public bucket (zero-egress), versioned prefix — weights and app
   # move independently; a new weights rev = new prefix, old apps keep working
-  @base "https://pub-WEIGHTS-PENDING.r2.dev/v1"
+  @base "https://pub-4312893991fc4c7ca39caed53b82582f.r2.dev/v1"
 
   # sha256 manifest of every file the engines load — baked at compile time so
   # the download source can't drift silently ({path, sha256, bytes})
@@ -49,6 +49,11 @@ defmodule Autopoet.Weights do
     {"affect/model_quantized.onnx", "0c1981c5b479674747911c8e2228f0c4ec90bf47bf66e830f7d4fc62be082958", 125_397_543},
     {"affect/tokenizer.json", "90e2336a1cdacffe5d4328ab323aa9e5c33889026e4e4881323bebdeeb0e179d", 2_108_856}
   ]
+
+  # wrangler's upload lane caps objects at 300MiB — larger files live in the
+  # bucket as sequential `<name>.partN` objects and are reassembled locally
+  # BEFORE the manifest's sha256/size check (which stays over the whole file)
+  @parts %{"kokoro/model_fp32.onnx" => 2}
 
   # the engines to poke once files land — each re-runs its load continue
   @engines [Autopoet.Kokoro, Autopoet.Stt, Autopoet.Affect]
@@ -128,12 +133,28 @@ defmodule Autopoet.Weights do
 
   defp fetch_one(rel, sha, bytes) do
     dest = Path.join(models_dir(), rel)
-    tmp = dest <> ".part"
+    tmp = dest <> ".fetch"
     File.mkdir_p!(Path.dirname(dest))
     File.rm(tmp)
 
-    url = ~c"#{@base}/#{rel}"
+    result =
+      case Map.get(@parts, rel) do
+        nil -> download("#{@base}/#{rel}", tmp)
+        n -> download_parts(rel, tmp, n)
+      end
 
+    with :ok <- result,
+         {:size, ^bytes} <- {:size, File.stat!(tmp).size},
+         {:sha, ^sha} <- {:sha, sha256(tmp)} do
+      File.rename!(tmp, dest)
+      :ok
+    else
+      {:error, why} -> File.rm(tmp); {:error, why}
+      {what, got} -> File.rm(tmp); {:error, {what, got}}
+    end
+  end
+
+  defp download(url, tmp) do
     ssl = [
       verify: :verify_peer,
       cacerts: :public_key.cacerts_get(),
@@ -141,25 +162,36 @@ defmodule Autopoet.Weights do
       customize_hostname_check: [match_fun: :public_key.pkix_verify_hostname_match_fun(:https)]
     ]
 
-    case :httpc.request(:get, {url, []}, [ssl: ssl, timeout: 600_000], stream: to_charlist(tmp)) do
-      {:ok, :saved_to_file} ->
-        with {:size, ^bytes} <- {:size, File.stat!(tmp).size},
-             {:sha, ^sha} <- {:sha, sha256(tmp)} do
-          File.rename!(tmp, dest)
-          :ok
-        else
-          {what, got} ->
-            File.rm(tmp)
-            {:error, {what, got}}
+    case :httpc.request(:get, {to_charlist(url), []}, [ssl: ssl, timeout: 600_000], stream: to_charlist(tmp)) do
+      {:ok, :saved_to_file} -> :ok
+      {:ok, {{_, code, _}, _, _}} -> {:error, {:http, code}}
+      {:error, why} -> {:error, why}
+    end
+  end
+
+  defp download_parts(rel, tmp, n) do
+    fetched =
+      Enum.reduce_while(0..(n - 1), [], fn i, acc ->
+        part = "#{tmp}.p#{i}"
+        File.rm(part)
+
+        case download("#{@base}/#{rel}.part#{i}", part) do
+          :ok -> {:cont, [part | acc]}
+          {:error, why} -> {:halt, {:error, {:part, i, why}}}
         end
+      end)
 
-      {:ok, {{_, code, _}, _, _}} ->
-        File.rm(tmp)
-        {:error, {:http, code}}
+    case fetched do
+      {:error, _} = e ->
+        e
 
-      {:error, why} ->
-        File.rm(tmp)
-        {:error, why}
+      parts ->
+        parts = Enum.reverse(parts)
+        {:ok, out} = File.open(tmp, [:write, :binary, :raw])
+        for p <- parts, chunk <- File.stream!(p, 1_048_576), do: IO.binwrite(out, chunk)
+        File.close(out)
+        Enum.each(parts, &File.rm/1)
+        :ok
     end
   end
 

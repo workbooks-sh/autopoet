@@ -8,7 +8,7 @@ the deck, the call bar, the sidebar, the onboarding gate, and the world graph.
 ## part0
 
 design :part0 do
-  :root { --ink:#223; --paper:#fbfbf9; --grid:#e6e8ea; --line:#e3e5e8;
+  :root { color-scheme:light; --ink:#223; --paper:#fbfbf9; --grid:#e6e8ea; --line:#e3e5e8;
     /* surfaces (paper tiers) */
     --surface:#fff; --surface-2:#fdfdfc; --panel:#f7f7f4; --fill:#f2f4f7;
     --fill-hover:#eef1f8;
@@ -50,6 +50,7 @@ design :part0 do
     --hist-lane-3:#d78d1e; --hist-lane-4:#c94f4f; --hist-lane-5:#2a9d94;
     --hist-lane-6:#7a5cc0; }
   :root[data-theme="dark"] {
+    color-scheme:dark;
     --ink:#e4e7ec; --paper:#101318; --grid:#262c35; --line:#262c35;
     --surface:#171a20; --surface-2:#1b1f26; --panel:#14171c; --fill:#1b1f26;
     --fill-hover:#20262f;
@@ -375,7 +376,9 @@ design :new_in_vault_modal_ours_in_theme_lig do
   #modal .destbc > span { flex:1; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   #modal .destbc svg.lucide { width:13px; height:13px; flex:none; color:var(--ink-faint); }
   #modal input { width:100%; box-sizing:border-box; margin:0 0 11px; padding:8px 11px;
-    font:inherit; font-size:13px; border:1px solid var(--line); border-radius:9px; outline:none; }
+    font:inherit; font-size:13px; border:1px solid var(--line); border-radius:9px; outline:none;
+    background:var(--surface-2); color:var(--ink); }
+  #modal input::placeholder { color:var(--ink-dim); }
   #modal input:focus { border-color:var(--blue-soft); }
   /* labelled rows (type, tags) */
   #modal .mrow { display:flex; align-items:flex-start; gap:10px; margin-bottom:11px; }
@@ -398,7 +401,8 @@ design :new_in_vault_modal_ours_in_theme_lig do
     background:var(--fill-hover); color:var(--ink-2); border-radius:6px; padding:2px 4px 2px 7px; }
   #modal .tagbox .tag b { cursor:pointer; color:var(--ink-faint); font-weight:400; font-size:13px; }
   #modal .tagbox .tag b:hover { color:var(--red); }
-  #modal .tagbox input { flex:1; min-width:70px; margin:0; padding:2px; border:none; font-size:12px; }
+  #modal .tagbox input { flex:1; min-width:70px; margin:0; padding:2px; border:none; font-size:12px;
+    background:transparent; color:var(--ink); }
   #modal .acts { display:flex; justify-content:flex-end; gap:8px; margin-top:4px; }
   #modal .acts button { font:inherit; font-size:12px; padding:7px 15px; border-radius:9px;
     border:1px solid var(--line); background:var(--surface); color:var(--ink-dim); cursor:pointer; }
@@ -521,7 +525,7 @@ design :the_save_prompt_command_only_now_liv do
     transition:border-color .15s ease; }
   #composer .card:focus-within { border-color:var(--blue-soft); }
   #composer textarea { width:100%; box-sizing:border-box; resize:none; border:none;
-    outline:none; background:none; padding:11px 13px 4px;
+    outline:none; background:none; color:var(--ink); padding:11px 13px 4px;
     font:13.5px/1.55 -apple-system,BlinkMacSystemFont,sans-serif; max-height:190px; }
   #composer .bar { display:flex; align-items:center; gap:2px; padding:0 8px 8px; }
   #composer .bar .tb { width:30px; height:30px; display:grid; place-items:center;
@@ -861,7 +865,8 @@ design :sidebar_footer_account_settings_env do
   #footpop .fp-env { display:flex; flex-direction:column; gap:5px; padding:4px 8px 8px; max-height:240px; overflow:auto; }
   #footpop .fp-envrow { display:flex; gap:5px; align-items:center; }
   #footpop .fp-envrow input { font:11.5px ui-monospace,monospace; border:1px solid var(--line);
-    border-radius:7px; padding:5px 7px; outline:none; min-width:0; }
+    border-radius:7px; padding:5px 7px; outline:none; min-width:0;
+    background:var(--surface-2); color:var(--ink); }
   #footpop .fp-envrow .k { width:44%; } #footpop .fp-envrow .v { flex:1; }
   #footpop .fp-envrow .rm { border:none; background:none; color:var(--ink-fainter); cursor:pointer; font-size:15px; padding:0 3px; }
   #footpop .fp-envrow .rm:hover { color:var(--red); }
@@ -903,6 +908,7 @@ design :sidebar_footer_account_settings_env do
   #filterpop .flt-composer textarea { width:100%; box-sizing:border-box;
     resize:vertical; min-height:58px; max-height:260px;
     font:11.5px ui-monospace,monospace; line-height:1.5; color:var(--ink-2);
+    background:var(--surface-2);
     border:1px solid var(--line); border-radius:9px; padding:8px 10px; outline:none; }
   #filterpop .flt-composer textarea:focus { border-color:var(--blue-soft); }
   #filterpop .flt-compbar { display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-top:5px; }
@@ -1259,8 +1265,8 @@ body.pm-convo #vs-caption { display:none !important; }
 /* NAME — full-width field, same border/height as every other control */
 .pmd-nameinput { width:100%; height:var(--ctl-h); box-sizing:border-box; border:1.4px solid var(--line);
   border-radius:11px; padding:0 14px; font:600 14px ui-sans-serif,system-ui; color:var(--ink);
-  background:#fff; outline:none; transition:border-color .15s; }
-.pmd-nameinput::placeholder { color:#b6bcc4; font-weight:500; }
+  background:var(--surface-2); outline:none; transition:border-color .15s; }
+.pmd-nameinput::placeholder { color:var(--ink-dim); font-weight:500; }
 .pmd-nameinput:focus { border-color:var(--ink); }
 
 /* SHAPE — three buttons split the full width evenly */

@@ -37,7 +37,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKScript
   var quitting = false
 
   var port: String { ProcessInfo.processInfo.environment["AUTOPOET_PORT"] ?? "4477" }
-  var appURL: URL { URL(string: "http://127.0.0.1:\(port)/")! }
+  // ?frameless=1 — the page draws its own stoplights only when the shell is
+  // frameless (same contract as the wx lane); without it the chrome stays
+  // hidden and the window has NO visible controls
+  var appURL: URL { URL(string: "http://127.0.0.1:\(port)/?frameless=1")! }
   var probeURL: URL { URL(string: "http://127.0.0.1:\(port)/auth/state.json")! }
 
   func applicationDidFinishLaunching(_ note: Notification) {
