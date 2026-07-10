@@ -197,6 +197,11 @@ defmodule Autopoet.Intake do
           #{if plan.fleet, do: "Fleet: #{plan.fleet}.", else: ""}
           Work inside [[#{ws.name}/index]]; read [[intake/briefing]] to know who
           you serve — their words are in it, verbatim. Keep your pages current.
+          ORGANIZE BY WORKSPACE, never by bare folder: a workspace is a declared
+          grouping (the # tree entries; the manifest's workspaces= line) and is
+          where content lives — folders exist only INSIDE a workspace, for real
+          sub-structure. Never create a new top-level folder; new areas of work
+          become workspaces. A workspace is a grouping, not an item.
           If anything is missing, broken, or beyond your grant:
           `request self '<what needs to change>'` and continue. Never wait.
           \"\"\"
@@ -452,6 +457,13 @@ defmodule Autopoet.Intake do
   # the built world reads as loose folders; with it every surface — the graph's
   # auto-clusters, the files tree, the cloud — organizes by workspace.
   defp declare_workspace(ws) do
+    # the vault mirror (data/notes/<slug>) must READ as a workspace too — the
+    # tree types a dir by its .workspace marker; without it the studio shows
+    # as a bare folder, the exact organize-by-folder smell the convention bans
+    mirror = Path.join(Autopoet.Notes.dir(), ws.name)
+    File.mkdir_p!(mirror)
+    File.write!(Path.join(mirror, ".workspace"), "")
+
     manifest = Path.join(Nexus.Paths.data_dir(), "index.work")
     entry = "#{ws.name} | #{ws.title}"
 
