@@ -3448,7 +3448,13 @@ const TOKEN = window.TOKEN;
 const authed = { headers: { authorization: `Bearer ${TOKEN}` } };
 
 // ── window chrome ─────────────────────────────────────────────────────────
-function win(a) { fetch("/win/" + a, { method: "POST", ...authed }); }
+// window controls: the native Swift shell exposes a message-handler bridge —
+// use it when present; the wx lane keeps the HTTP route (POST /win/:action)
+function win(a) {
+  const bridge = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.autopoet;
+  if (bridge) { try { bridge.postMessage(a); return; } catch (_) {} }
+  fetch("/win/" + a, { method: "POST", ...authed });
+}
 document.querySelector("#chrome .close")?.addEventListener("click", () => win("close"));
 document.querySelector("#chrome .min")?.addEventListener("click", () => win("minimize"));
 document.querySelector("#chrome .max")?.addEventListener("click", () => win("maximize"));
@@ -4807,6 +4813,9 @@ async function draw() {
   clG.append("text").attr("class", "cl-count").attr("text-anchor", "middle")
     .attr("dy", d => d.emoji ? 7 : 4)
     .attr("font-size", d => d.emoji ? "20px" : null)
+    // the system tile is the quiet theme gray — accent-white count fails on it
+    // in light mode (emoji glyphs render their own colors either way)
+    .attr("fill", d => d.clusterId === "sys" ? "var(--ink)" : null)
     .text(d => d.emoji || d.count);
 
   // the self node renders as the CUBE overlay (ensureSelfCube); its svg group
@@ -5869,7 +5878,7 @@ function showClusterPanel(c) {
     : clusterMembers(c, worldData.nodes).length;
   panel.innerHTML = `
     <h3>${esc(c.name)}</h3>
-    <span class="tag" style="background:${c.color}">cluster · ${n} node${n === 1 ? "" : "s"}${c.rule ? " · rule: " + esc(c.rule.kind === "system" ? "system content" : c.rule.kind === "type" ? "type:" + c.rule.value : c.rule.value) : ""}</span>
+    <span class="tag ${c.builtin ? "sys" : ""}" style="background:${c.color}">cluster · ${n} node${n === 1 ? "" : "s"}${c.rule ? " · rule: " + esc(c.rule.kind === "system" ? "system content" : c.rule.kind === "type" ? "type:" + c.rule.value : c.rule.value) : ""}</span>
     <div class="clrow"><input id="cl-name" value="${esc(c.name)}" spellcheck="false" title="name"></div>
     <div class="clrow"><input id="cl-emoji" value="${esc(c.emoji || "")}" placeholder="emoji shown when collapsed…" maxlength="4" spellcheck="false" title="emoji"></div>
     <div class="clrow"><input id="cl-tags" value="${esc((c.tags || []).join(", "))}" placeholder="tags, comma separated…" spellcheck="false"></div>

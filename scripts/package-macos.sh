@@ -51,13 +51,14 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$ROOT/native/Info.plist"      "$APP/Contents/Info.plist"
 cp "$ROOT/priv/static/autopoet.icns" "$APP/Contents/Resources/autopoet.icns"
-# The main executable MUST be a compiled Mach-O (native/launcher.c → exec's
-# Resources/launch.sh): with a script at Contents/MacOS, macOS resolves the
-# app's root process to /bin/bash — a system binary TCC categorically refuses
-# to prompt — so no mic/camera dialog could EVER appear for any child process.
+# The main executable is the NATIVE SWIFT SHELL (wb-402zq): a real AppKit app
+# that owns the window/WKWebView/Dock/menus/TCC on THIS bundle and spawns the
+# BEAM release headless via Resources/launch.sh. (The old lane — launcher.c
+# exec'ing launch.sh into a wx window — kept fighting AppKit from outside.)
 cp "$ROOT/native/launch.sh" "$APP/Contents/Resources/launch.sh"
 chmod +x "$APP/Contents/Resources/launch.sh"
-clang -O2 -o "$APP/Contents/MacOS/Autopoet" "$ROOT/native/launcher.c"
+say "compiling the Swift shell"
+swiftc -O "$ROOT/native/AutopoetShell.swift" -o "$APP/Contents/MacOS/Autopoet"
 
 # 2a. the mix release
 clone "$REL_SRC" "$APP/Contents/Resources/rel"
@@ -82,6 +83,10 @@ cat > "$ERTS_DIR/bin/beam.smp" <<'SHIM'
 exec "$(cd "$(dirname "$0")/../.." && pwd)/AutopoetRuntime.app/Contents/MacOS/beam.smp" "$@"
 SHIM
 chmod +x "$ERTS_DIR/bin/beam.smp"
+# the RUNNING GUI process is this helper — macOS hangs the Dock tile/icon on
+# ITS bundle, not the outer app's, so the helper must carry the same icon
+mkdir -p "$HELPER/Contents/Resources"
+cp "$ROOT/priv/static/autopoet.icns" "$HELPER/Contents/Resources/autopoet.icns"
 cat > "$HELPER/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -93,6 +98,10 @@ cat > "$HELPER/Contents/Info.plist" <<'PLIST'
 	<string>Autopoet</string>
 	<key>CFBundleExecutable</key>
 	<string>beam.smp</string>
+	<key>CFBundleDisplayName</key>
+	<string>Autopoet</string>
+	<key>CFBundleIconFile</key>
+	<string>autopoet</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>LSUIElement</key>
