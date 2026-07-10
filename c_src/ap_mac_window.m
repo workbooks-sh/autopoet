@@ -53,22 +53,82 @@ static ERL_NIF_TERM loaded_nif(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv
   return ok(env);
 }
 
+// De-PANEL the frame. wx's "window" is actually a wxNSPanel — an NSPanel
+// subclass — and NSPanel is a UTILITY window: it can sit at a floating level
+// ABOVE other apps' windows, hides on deactivate in some styles, skips Exposé/
+// window cycling, and HARDCODES canBecomeMainWindow → NO. That is the whole
+// "doesn't behave like a normal Mac app" class of bugs (fills the screen OVER
+// other apps and stays there, odd focus/ordering). This pass strips every
+// panel behavior so the frame acts like a standard document NSWindow.
+static void normalize_window(NSWindow *w) {
+  if (!w) return;
+  if (w.level != NSNormalWindowLevel) w.level = NSNormalWindowLevel;
+  w.hidesOnDeactivate = NO;
+  w.styleMask &= ~(NSWindowStyleMaskUtilityWindow | NSWindowStyleMaskHUDWindow |
+                   NSWindowStyleMaskNonactivatingPanel);
+  if ([w isKindOfClass:[NSPanel class]]) {
+    NSPanel *p = (NSPanel *)w;
+    p.floatingPanel = NO;
+    p.becomesKeyOnlyIfNeeded = NO;
+    p.worksWhenModal = NO;
+  }
+  w.collectionBehavior |= NSWindowCollectionBehaviorFullScreenPrimary |
+                          NSWindowCollectionBehaviorManaged |
+                          NSWindowCollectionBehaviorParticipatesInCycle;
+  // A window that can never become MAIN confuses AppKit everywhere (menu
+  // targeting, ordering, fullscreen). Give THIS instance a dynamic subclass
+  // that accepts main/key status. Skip if the instance is KVO-isa-swizzled —
+  // object_setClass there would sever the observers.
+  Class cls = object_getClass(w);
+  NSString *clsName = NSStringFromClass(cls);
+  if (![clsName hasSuffix:@"_ApMainable"] && ![clsName hasPrefix:@"NSKVONotifying_"]) {
+    NSString *name = [clsName stringByAppendingString:@"_ApMainable"];
+    Class sub = NSClassFromString(name);
+    if (!sub) {
+      sub = objc_allocateClassPair(cls, name.UTF8String, 0);
+      if (sub) {
+        IMP yes = imp_implementationWithBlock(^BOOL(id self) { return YES; });
+        class_addMethod(sub, @selector(canBecomeMainWindow), yes, "c@:");
+        class_addMethod(sub, @selector(canBecomeKeyWindow), yes, "c@:");
+        objc_registerClassPair(sub);
+      }
+    }
+    if (sub) object_setClass(w, sub);
+  }
+  if ([w isKeyWindow] && ![w isMainWindow]) [w makeMainWindow];
+}
+
 static ERL_NIF_TERM apply_inset_nif(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
   NSString *title = term_to_nsstring(env, argv[0]);
   on_main(^{
     NSWindow *w = find_window(title);
     if (!w) return;
+    NSLog(@"[ap_mac_window] normalize (class=%@ level=%ld style=%lx behavior=%lx)",
+          NSStringFromClass(object_getClass(w)), (long)w.level,
+          (unsigned long)w.styleMask, (unsigned long)w.collectionBehavior);
     w.styleMask |= NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
                    NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable |
                    NSWindowStyleMaskFullSizeContentView;
     w.titlebarAppearsTransparent = YES;
     w.titleVisibility = NSWindowTitleHidden;
-    // opt into REAL macOS fullscreen (its own Space, three-finger swipeable) — wx
-    // frames don't set this, which is why the green action could only ever zoom
-    w.collectionBehavior |= NSWindowCollectionBehaviorFullScreenPrimary;
+    normalize_window(w);
     [[w standardWindowButton:NSWindowCloseButton] setHidden:YES];
     [[w standardWindowButton:NSWindowMiniaturizeButton] setHidden:YES];
     [[w standardWindowButton:NSWindowZoomButton] setHidden:YES];
+    // wx re-asserts panel state on show/navigation (observed with the UIDelegate
+    // too) — watchdog: re-normalize whenever the panel behaviors creep back, and
+    // LOG each eviction so the drift is visible in the app log.
+    [NSTimer scheduledTimerWithTimeInterval:2.0 repeats:YES block:^(NSTimer *t) {
+      NSWindow *w2 = find_window(title);
+      if (!w2) return;
+      BOOL drifted = w2.level != NSNormalWindowLevel || w2.hidesOnDeactivate ||
+                     !(w2.collectionBehavior & NSWindowCollectionBehaviorFullScreenPrimary);
+      if (drifted) {
+        NSLog(@"[ap_mac_window] normalize RE-asserted (level=%ld behavior=%lx)",
+              (long)w2.level, (unsigned long)w2.collectionBehavior);
+        normalize_window(w2);
+      }
+    }];
   });
   return ok(env);
 }
@@ -95,10 +155,10 @@ static ERL_NIF_TERM toggle_fullscreen_nif(ErlNifEnv *env, int argc, const ERL_NI
   NSString *title = term_to_nsstring(env, argv[0]);
   on_main(^{
     NSWindow *w = find_window(title);
-    // set fullscreen capability HERE, not just at apply_inset: wx rebuilds window
-    // state on show and the boot-time behavior didn't stick (observed behavior=0 →
+    // re-normalize HERE, not just at apply_inset: wx rebuilds window state on
+    // show and the boot-time behavior didn't stick (observed behavior=0 →
     // toggleFullScreen: was a silent no-op). Idempotent, so every toggle re-asserts.
-    w.collectionBehavior |= NSWindowCollectionBehaviorFullScreenPrimary;
+    normalize_window(w);
     NSLog(@"[ap_mac_window] toggle_fullscreen (window=%@ style=%lx behavior=%lx)",
           w, (unsigned long)w.styleMask, (unsigned long)w.collectionBehavior);
     [w toggleFullScreen:nil];

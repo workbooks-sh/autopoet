@@ -28,7 +28,15 @@ NOTARY_KEY="${APPLE_NOTARY_KEY_PATH:-${APPLE_API_KEY_PATH:-}}"
 NOTARY_KEY_ID="${APPLE_NOTARY_KEY_ID:-${APPLE_API_KEY:-}}"
 NOTARY_ISSUER="${APPLE_NOTARY_ISSUER:-${APPLE_API_ISSUER:-}}"
 
-say() { printf '\n\033[1m→ %s\033[0m\n' "$*"; }
+# every stage banner carries the elapsed clock — the build's own profiler, so
+# "why is bundling slow" is always answerable from any build log
+T0=$SECONDS
+say() { printf '\n\033[1m→ [%3ds] %s\033[0m\n' "$((SECONDS - T0))" "$*"; }
+
+# APFS copy-on-write clone (instant, zero extra disk) with a real-copy fallback
+# for cross-volume targets — the 1.2GB app otherwise gets byte-copied TWICE
+# (dmg staging + /Applications install)
+clone() { cp -c -R "$1" "$2" 2>/dev/null || ditto "$1" "$2"; }
 
 # ── 1. build the prod release (self-contained ERTS) ─────────────────────────
 if [[ "${SKIP_BUILD:-}" != "1" ]]; then
@@ -52,7 +60,7 @@ chmod +x "$APP/Contents/Resources/launch.sh"
 clang -O2 -o "$APP/Contents/MacOS/Autopoet" "$ROOT/native/launcher.c"
 
 # 2a. the mix release
-cp -R "$REL_SRC" "$APP/Contents/Resources/rel"
+clone "$REL_SRC" "$APP/Contents/Resources/rel"
 
 # 2a'. the RUNTIME HELPER bundle — beam.smp must carry a real app-bundle
 # identity (mainBundle → usage strings → TCC). An unbundled beam in erts/bin
@@ -99,7 +107,7 @@ PLIST
 
 # 2b. the app/home surface (Nexus.Server root = AUTOPOET_HOME/app/home)
 mkdir -p "$APP/Contents/Resources/app-home/app"
-cp -R "$ROOT/app/home" "$APP/Contents/Resources/app-home/app/home"
+clone "$ROOT/app/home" "$APP/Contents/Resources/app-home/app/home"
 # strip any stray dev state that may sit under the source tree
 rm -rf "$APP/Contents/Resources/app-home/app/home/.DS_Store"
 # overlay the TRACKED vendor code from priv/static onto the gitignored app/home/static
@@ -113,15 +121,15 @@ cp -f "$ROOT"/priv/static/vendor/*.mjs "$ROOT"/priv/static/vendor/*.js "$ROOT"/p
 # 2c. lean ML weights — ONLY what loads at runtime (Kokoro fp32 + Moonshine + Affect)
 M="$APP/Contents/Resources/models"
 mkdir -p "$M/kokoro/voices" "$M/moonshine" "$M/affect"
-cp "$ROOT/data/models/kokoro/model_fp32.onnx" "$M/kokoro/"
-cp "$ROOT/data/models/kokoro/tokenizer.json"  "$M/kokoro/"
-cp "$ROOT"/data/models/kokoro/voices/*.bin    "$M/kokoro/voices/"
-cp "$ROOT/data/models/moonshine/encoder_model.onnx"            "$M/moonshine/"
-cp "$ROOT/data/models/moonshine/decoder_model.onnx"           "$M/moonshine/"
-cp "$ROOT/data/models/moonshine/decoder_with_past_model.onnx" "$M/moonshine/"
-cp "$ROOT/data/models/moonshine/tokenizer.json"               "$M/moonshine/"
-cp "$ROOT/data/models/affect/model_quantized.onnx" "$M/affect/"
-cp "$ROOT/data/models/affect/tokenizer.json"       "$M/affect/"
+cp -c "$ROOT/data/models/kokoro/model_fp32.onnx" "$M/kokoro/" 2>/dev/null || cp "$ROOT/data/models/kokoro/model_fp32.onnx" "$M/kokoro/"
+cp -c "$ROOT/data/models/kokoro/tokenizer.json"  "$M/kokoro/" 2>/dev/null || cp "$ROOT/data/models/kokoro/tokenizer.json"  "$M/kokoro/"
+cp -c "$ROOT"/data/models/kokoro/voices/*.bin    "$M/kokoro/voices/" 2>/dev/null || cp "$ROOT"/data/models/kokoro/voices/*.bin    "$M/kokoro/voices/"
+cp -c "$ROOT/data/models/moonshine/encoder_model.onnx"            "$M/moonshine/" 2>/dev/null || cp "$ROOT/data/models/moonshine/encoder_model.onnx"            "$M/moonshine/"
+cp -c "$ROOT/data/models/moonshine/decoder_model.onnx"           "$M/moonshine/" 2>/dev/null || cp "$ROOT/data/models/moonshine/decoder_model.onnx"           "$M/moonshine/"
+cp -c "$ROOT/data/models/moonshine/decoder_with_past_model.onnx" "$M/moonshine/" 2>/dev/null || cp "$ROOT/data/models/moonshine/decoder_with_past_model.onnx" "$M/moonshine/"
+cp -c "$ROOT/data/models/moonshine/tokenizer.json"               "$M/moonshine/" 2>/dev/null || cp "$ROOT/data/models/moonshine/tokenizer.json"               "$M/moonshine/"
+cp -c "$ROOT/data/models/affect/model_quantized.onnx" "$M/affect/" 2>/dev/null || cp "$ROOT/data/models/affect/model_quantized.onnx" "$M/affect/"
+cp -c "$ROOT/data/models/affect/tokenizer.json"       "$M/affect/" 2>/dev/null || cp "$ROOT/data/models/affect/tokenizer.json"       "$M/affect/"
 
 # 2d. the empty-world deploy manifest (seeded per-install on first run)
 mkdir -p "$APP/Contents/Resources/seed"
@@ -234,7 +242,7 @@ spctl -a -t exec -vv "$APP" 2>&1 || true   # will say "rejected/unnotarized" unt
 install_app() {
   say "installing /Applications/Autopoet.app (real copy — Spotlight/Launchpad index it)"
   rm -rf "/Applications/Autopoet.app"
-  ditto "$APP" "/Applications/Autopoet.app"
+  clone "$APP" "/Applications/Autopoet.app"
   /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
     -f "/Applications/Autopoet.app" >/dev/null 2>&1 || true
 }
@@ -243,9 +251,12 @@ install_app() {
 say "creating dmg"
 rm -f "$DMG"
 STAGE="$DIST/dmg-stage"; rm -rf "$STAGE"; mkdir -p "$STAGE"
-cp -R "$APP" "$STAGE/"
+clone "$APP" "$STAGE/Autopoet.app"
 ln -s /Applications "$STAGE/Applications"
-hdiutil create -volname "Autopoet" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
+# ULFO (lzfse): the payload is ~70% ML weights — high-entropy bytes neither
+# codec shrinks (UDZO managed only 24%) — so pay lzfse's fast compressor, not
+# zlib's slow one; the dmg lands within a few % of the same size, minutes sooner
+hdiutil create -volname "Autopoet" -srcfolder "$STAGE" -ov -format ULFO "$DMG" >/dev/null
 rm -rf "$STAGE"
 codesign --force --timestamp --sign "$IDENTITY" "$DMG"
 echo "dmg: $DMG ($(du -h "$DMG" | cut -f1))"
