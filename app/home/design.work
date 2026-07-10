@@ -549,17 +549,28 @@ design :the_save_prompt_command_only_now_liv do
     text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   #picker .prow .tag { font:9px ui-monospace,monospace; text-transform:uppercase;
     padding:2px 6px; border-radius:5px; flex:none; }
-  #emojipop, #emojipick { display:none;
-    grid-template-columns:repeat(8,1fr); gap:2px; background:var(--surface);
-    border:1px solid var(--line); border-radius:12px; padding:6px; width:236px;
-    box-shadow:0 12px 32px var(--border-mid); z-index:21; }
-  #emojipop { position:absolute; bottom:100%; left:12px; margin-bottom:8px; }
-  #emojipick { position:fixed; z-index:45; }
-  #emojipop.on, #emojipick.on { display:grid; animation:lnin .18s ease; }
-  #emojipop button, #emojipick button { font-size:16px; height:28px; border:none; background:none;
-    border-radius:6px; cursor:pointer; transition:transform .12s ease; }
-  #emojipop button:hover, #emojipick button:hover { background:var(--fill); transform:scale(1.12); }
-  #emojipick button.none { font:600 10px ui-monospace,monospace; color:var(--ink-faint); }
+  /* the one emoji picker: search + grouped full-set grid, fixed 32px cells —
+     the grid can never outgrow its card */
+  #emojipick { position:fixed; z-index:45; display:none; width:296px;
+    background:var(--surface); border:1px solid var(--line); border-radius:12px;
+    box-shadow:0 12px 32px var(--border-mid); overflow:hidden; }
+  #emojipick.on { display:flex; flex-direction:column; animation:lnin .18s ease; }
+  #emojipick .eg-top { display:flex; gap:6px; padding:8px; border-bottom:1px solid var(--line); }
+  #emojipick #eg-search { flex:1; font:12px ui-monospace,monospace; border:1px solid var(--line);
+    border-radius:8px; padding:5px 9px; outline:none; background:var(--surface-2); color:var(--ink); }
+  #emojipick #eg-search::placeholder { color:var(--ink-dim); }
+  #emojipick .eg-none { font:600 10px ui-monospace,monospace; color:var(--ink-faint);
+    border:1px solid var(--line); background:var(--surface); border-radius:8px; padding:0 10px; cursor:pointer; }
+  #emojipick .eg-none:hover { background:var(--fill); color:var(--ink); }
+  #emojipick .eg-body { overflow-y:auto; max-height:308px; padding:4px 8px 8px; overscroll-behavior:contain; }
+  #emojipick .eg-name { font:600 10px ui-monospace,monospace; letter-spacing:.05em; text-transform:uppercase;
+    color:var(--ink-faint); padding:9px 2px 4px; position:sticky; top:0; background:var(--surface); }
+  #emojipick .eg-grid { display:grid; grid-template-columns:repeat(8,34px); justify-content:space-between; }
+  #emojipick .eg-grid button { width:34px; height:32px; font-size:19px; line-height:1; border:none;
+    background:none; border-radius:7px; cursor:pointer; padding:0; overflow:hidden;
+    transition:transform .12s ease, background .12s ease; }
+  #emojipick .eg-grid button:hover { background:var(--fill); transform:scale(1.14); }
+  #emojipick .eg-empty { font:11.5px ui-monospace,monospace; color:var(--ink-faint); padding:14px 4px; }
   /* the cluster panel's emoji chip — tap to pick */
   #panel .cl-emojichip { width:34px; height:34px; border-radius:9px; border:1px solid var(--line);
     background:var(--surface-2); font-size:17px; cursor:pointer; display:flex;

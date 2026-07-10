@@ -132,7 +132,6 @@ client :shell do
       <div id="chatsessions"></div>
       <div id="composer">
         <div id="picker"><div class="ph" id="pickerhead"></div><div class="rows" id="pickerrows"></div></div>
-        <div id="emojipop"></div>
         <div class="card">
           <textarea id="chatin" rows="1" placeholder="talk with the autopoet…" spellcheck="false"></textarea>
           <div class="bar">
@@ -4430,9 +4429,9 @@ const SYSTEM_GRAY = "var(--sys-node)";
 const SYS_TYPES = new Set(["guide", "system", "library"]);
 function seedSystemCluster(data) {
   (data.system_types || []).forEach(t => SYS_TYPES.add(t));
-  // an already-seeded cluster tracks the reserved theme gray (migrates old hex)
+  // migrate the pre-theme-var hex ONCE — a color the owner picked stays theirs
   const sys = clusterById("sys");
-  if (sys && sys.color !== SYSTEM_GRAY) { sys.color = SYSTEM_GRAY; saveClusters(); }
+  if (sys && sys.color === "#8b9298") { sys.color = SYSTEM_GRAY; saveClusters(); }
   if (sys || clusterTombstoned("sys")) return;
   // grouping replaces hiding: release any legacy hidden state on these types
   let migrated = false;
@@ -6118,7 +6117,9 @@ function showClusterPanel(c) {
     if (c.collapsed) draw(); else clusterChanged();
   });
   panel.querySelectorAll(".swb").forEach(b => b.onclick = () => {
-    c.color = b.dataset.c; commit(); clusterChanged();
+    c.color = b.dataset.c; commit();
+    // a COLLAPSED cluster's squircle is painted at draw time — repaint it now
+    if (c.collapsed) draw(); else clusterChanged();
     panel.querySelectorAll(".swb").forEach(x => x.classList.toggle("sel", x === b));
   });
   document.getElementById("cl-collapse").onclick = () => { commit(); c.collapsed = !c.collapsed; saveClusters(); panel.style.display = "none"; draw(); };
@@ -6376,35 +6377,64 @@ function choosePick(row) {
   updatePicker(); syncSend();
   chatin.focus();
 }
-const EMOJI = ["👍","👎","🎉","👀","✅","❤️","🔥","😄","😂","🙏","👏","💯",
-  "🚀","⭐","💡","🤔","😅","😎","🙌","👌","💪","🎯","⚡","✨","🐛","🛠️","📌","🚨","😬","🥳",
-  "🗂️","📁","📚","🧠","🎨","📈","🛒","💼","🌱","🔬","✍️","🎙️"];
-// the SAME picker, as a shared floating seam: pickEmoji(anchor, cb) opens the
-// grid by any element and hands back the choice (null = cleared). The chat
-// composer keeps its own anchored instance below.
-window.pickEmoji = (anchor, cb) => {
+// ── THE emoji picker: one real component, everywhere. The FULL Unicode set
+// (vendored from unicode.org emoji-test.txt → /static/vendor/emoji.txt: 1900+
+// glyphs in 9 CLDR groups, names included) with search, group headers, and a
+// clear cell. pickEmoji(anchor, cb) floats it by any element; cb(glyph|null).
+let _emojiData = null;
+async function emojiData() {
+  if (_emojiData) return _emojiData;
+  const txt = await (await fetch("/static/vendor/emoji.txt")).text();
+  const groups = [];
+  for (const line of txt.split("\n")) {
+    if (line.startsWith("@")) groups.push({ name: line.slice(1), items: [] });
+    else if (line.includes("\t") && groups.length) {
+      const [glyph, name] = line.split("\t");
+      groups[groups.length - 1].items.push({ glyph, name });
+    }
+  }
+  return (_emojiData = groups);
+}
+window.pickEmoji = async (anchor, cb) => {
+  const groups = await emojiData();
   let p = document.getElementById("emojipick");
   if (!p) { p = document.createElement("div"); p.id = "emojipick"; document.body.appendChild(p); }
-  p.innerHTML = `<button class="none" title="no emoji">none</button>` + EMOJI.map(e => `<button>${e}</button>`).join("");
+  const grid = gs => gs.map(g => g.items.length ? `
+      <div class="eg-name">${esc(g.name)}</div>
+      <div class="eg-grid">${g.items.map(it => `<button title="${esc(it.name)}" data-e="${esc(it.glyph)}">${it.glyph}</button>`).join("")}</div>` : "").join("");
+  p.innerHTML = `
+    <div class="eg-top">
+      <input id="eg-search" placeholder="search emoji…" spellcheck="false">
+      <button class="eg-none" title="no emoji">none</button>
+    </div>
+    <div class="eg-body">${grid(groups)}</div>`;
   const r = anchor.getBoundingClientRect();
   p.classList.add("on");
-  const w = 236, h = p.offsetHeight || 200;
+  const w = p.offsetWidth || 300, h = p.offsetHeight || 360;
   p.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + "px";
-  p.style.top = (r.top - h - 8 > 8 ? r.top - h - 8 : r.bottom + 8) + "px";
+  p.style.top = (r.top - h - 8 > 8 ? r.top - h - 8 : Math.min(r.bottom + 8, innerHeight - h - 8)) + "px";
   const close = () => { p.classList.remove("on"); document.removeEventListener("click", away, true); };
   const away = e => { if (!p.contains(e.target) && e.target !== anchor) close(); };
   setTimeout(() => document.addEventListener("click", away, true), 0);
-  p.querySelectorAll("button").forEach(b => b.onclick = () => { close(); cb(b.classList.contains("none") ? null : b.textContent); });
+  const body = p.querySelector(".eg-body");
+  body.onclick = e => { const b = e.target.closest("button[data-e]"); if (b) { close(); cb(b.dataset.e); } };
+  p.querySelector(".eg-none").onclick = () => { close(); cb(null); };
+  const search = p.querySelector("#eg-search");
+  search.oninput = () => {
+    const q = search.value.trim().toLowerCase();
+    if (!q) { body.innerHTML = grid(groups); return; }
+    const hits = groups.flatMap(g => g.items.filter(it => it.name.includes(q)));
+    body.innerHTML = hits.length
+      ? `<div class="eg-grid">${hits.slice(0, 160).map(it => `<button title="${esc(it.name)}" data-e="${esc(it.glyph)}">${it.glyph}</button>`).join("")}</div>`
+      : `<div class="eg-empty">nothing matches "${esc(q)}"</div>`;
+  };
+  setTimeout(() => search.focus(), 40);
 };
-document.getElementById("emojipop").innerHTML = EMOJI.map(e => `<button>${e}</button>`).join("");
-document.querySelectorAll("#emojipop button").forEach(b =>
-  b.onclick = () => {
-    chatin.value += b.textContent;
-    document.getElementById("emojipop").classList.remove("on");
-    syncSend(); chatin.focus();
-  });
-document.getElementById("tb-emoji").onclick = () =>
-  document.getElementById("emojipop").classList.toggle("on");
+// the chat composer rides the same component (its old 30-glyph strip retired)
+document.getElementById("tb-emoji").onclick = e => {
+  e.stopPropagation();
+  pickEmoji(e.currentTarget, emo => { if (emo) { chatin.value += emo; syncSend(); chatin.focus(); } });
+};
 document.getElementById("tb-at").onclick = () => {
   chatin.value += (chatin.value && !chatin.value.endsWith(" ") ? " " : "") + "@";
   updatePicker(); chatin.focus();

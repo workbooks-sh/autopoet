@@ -125,6 +125,7 @@ rm -rf "$APP/Contents/Resources/app-home/app/home/.DS_Store"
 # (module 404→SPA-shell HTML → the whole avatar module died, no cube). Code files
 # are canonical in priv/static/vendor; the big wasm/onnx blobs stay app-local.
 cp -f "$ROOT"/priv/static/vendor/*.mjs "$ROOT"/priv/static/vendor/*.js "$ROOT"/priv/static/vendor/*.glb \
+  "$ROOT"/priv/static/vendor/*.txt \
   "$APP/Contents/Resources/app-home/app/home/static/vendor/"
 
 # 2c. ML weights: NOT bundled by default (wb-yucr0) — the lean app downloads
