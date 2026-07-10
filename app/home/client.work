@@ -3520,7 +3520,13 @@ async function loadTree() {
   document.getElementById("treeroot").innerHTML = renderTree(tree);
   document.querySelectorAll("#tree .row[data-path]").forEach(el => {
     const path = el.dataset.path, kind = el.dataset.kind, folder = el.dataset.folder !== undefined;
-    if (!folder) el.onclick = () => openFile(path, kind);
+    if (!folder) el.onclick = e => {
+      // multi-select: cmd toggles, shift range-selects — selection never opens
+      if (e.metaKey || e.ctrlKey) { toggleSel(path); return; }
+      if (e.shiftKey) { rangeSel(path); return; }
+      clearSel();
+      openFile(path, kind);
+    };
     if (folder) el.onclick = () => {
       lastFocusDir = path;   // new items default into the folder/workspace you last touched
       const nowClosed = !closedFolders.has(path);
@@ -5389,43 +5395,99 @@ function deleteNote(path) {
     });
 }
 
-// ── tree drag-drop: set-list order + move into folders ────────────────────
+// ── tree selection: cmd toggles, shift ranges — the drag lane moves the SET ──
+const treeSel = new Set();
+function paintSel() {
+  document.querySelectorAll("#tree .row[data-path]").forEach(el =>
+    el.classList.toggle("msel", treeSel.has(el.dataset.path)));
+}
+function clearSel() { if (treeSel.size) { treeSel.clear(); paintSel(); } }
+function toggleSel(path) { treeSel.has(path) ? treeSel.delete(path) : treeSel.add(path); paintSel(); }
+function rangeSel(path) {
+  // range over the VISIBLE file rows, from the last selected to the clicked one
+  const rows = [...document.querySelectorAll("#tree .row[data-path]:not([data-folder])")]
+    .filter(r => r.offsetParent !== null).map(r => r.dataset.path);
+  const last = [...treeSel].pop();
+  const a = rows.indexOf(last), b = rows.indexOf(path);
+  if (a === -1 || b === -1) { toggleSel(path); return; }
+  for (let i = Math.min(a, b); i <= Math.max(a, b); i++) treeSel.add(rows[i]);
+  paintSel();
+}
+addEventListener("keydown", e => { if (e.key === "Escape") clearSel(); });
+
+// move one item to a destination dir ("" = root) — shared by every drop lane
+async function moveNote(from, toDir) {
+  const name = from.split("/").pop();
+  const fromDir = from.includes("/") ? from.slice(0, from.lastIndexOf("/")) : "";
+  if (fromDir === toDir) return;
+  await fetch(`/notes/rename?from=${encodeURIComponent(from)}&to=${encodeURIComponent((toDir ? toDir + "/" : "") + name)}`,
+    { method: "POST", ...authed });
+}
+// the set that actually drags: the selection when the grabbed row is in it,
+// else just the grabbed row. Never move a folder into itself/descendant.
+function dragSet(from) {
+  const set = treeSel.has(from) ? [...treeSel] : [from];
+  return set.filter(p => !set.some(q => q !== p && p.startsWith(q + "/")));
+}
+
+// ── tree drag-drop: multi-aware move into folders, reorder, un-nest to root ──
 let dragging = null;
 function bindTreeDnD() {
   document.querySelectorAll("#tree .row").forEach(el => {
     el.draggable = true;
-    el.addEventListener("dragstart", e => { dragging = el; e.dataTransfer.effectAllowed = "move"; });
-    el.addEventListener("dragover", e => { e.preventDefault(); el.classList.add("dragover"); });
+    el.addEventListener("dragstart", e => {
+      dragging = el;
+      e.dataTransfer.effectAllowed = "move";
+      const n = dragSet(el.dataset.path).length;
+      if (n > 1) el.dataset.dragn = n;   // count chip on the ghost row
+    });
+    el.addEventListener("dragend", () => { delete el.dataset.dragn; });
+    el.addEventListener("dragover", e => { e.preventDefault(); e.stopPropagation(); el.classList.add("dragover"); });
     el.addEventListener("dragleave", () => el.classList.remove("dragover"));
     el.addEventListener("drop", async e => {
-      e.preventDefault(); el.classList.remove("dragover");
+      e.preventDefault(); e.stopPropagation(); el.classList.remove("dragover");
       if (!dragging || dragging === el) return;
-      const from = dragging.dataset.path, name = from.split("/").pop();
+      const set = dragSet(dragging.dataset.path);
       if (el.dataset.folder !== undefined) {
-        // into the folder
-        await fetch(`/notes/rename?from=${encodeURIComponent(from)}&to=${encodeURIComponent(el.dataset.path + "/" + name)}`,
-          { method: "POST", ...authed });
+        const dest = el.dataset.path;
+        if (set.some(p => dest === p || dest.startsWith(p + "/"))) { toast("can't move a folder into itself"); dragging = null; return; }
+        for (const p of set) await moveNote(p, dest);
       } else if (el.dataset.path) {
         const toDir = el.dataset.path.includes("/") ? el.dataset.path.slice(0, el.dataset.path.lastIndexOf("/")) : "";
-        const fromDir = from.includes("/") ? from.slice(0, from.lastIndexOf("/")) : "";
-        if (toDir !== fromDir) {
-          await fetch(`/notes/rename?from=${encodeURIComponent(from)}&to=${encodeURIComponent((toDir ? toDir + "/" : "") + name)}`,
+        for (const p of set) await moveNote(p, toDir);
+        // reorder only makes sense for a SINGLE dragged item
+        if (set.length === 1) {
+          const name = set[0].split("/").pop();
+          const rows = [...document.querySelectorAll(`#tree .row`)].filter(r => {
+            const p = r.dataset.path || "";
+            const d = p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "";
+            return d === toDir && p;
+          }).map(r => (r.dataset.path || "").split("/").pop());
+          const without = rows.filter(n => n !== name);
+          without.splice(without.indexOf(el.dataset.path.split("/").pop()), 0, name);
+          await fetch(`/notes/reorder?dir=${encodeURIComponent(toDir)}&names=${encodeURIComponent(without.join("\n"))}`,
             { method: "POST", ...authed });
         }
-        // reorder: place the dragged name before the drop target within its dir
-        const rows = [...document.querySelectorAll(`#tree .row`)].filter(r => {
-          const p = r.dataset.path || "";
-          const d = p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "";
-          return d === toDir && p;
-        }).map(r => (r.dataset.path || "").split("/").pop());
-        const without = rows.filter(n => n !== name);
-        without.splice(without.indexOf(el.dataset.path.split("/").pop()), 0, name);
-        await fetch(`/notes/reorder?dir=${encodeURIComponent(toDir)}&names=${encodeURIComponent(without.join("\n"))}`,
-          { method: "POST", ...authed });
       }
       dragging = null;
-      loadTree(); draw();
+      clearSel(); loadTree(); draw();
     });
+  });
+  // UN-NEST: the tree's empty space is the ROOT drop zone — drag anything out
+  // of its parent and let go below the rows
+  const rootUl = document.getElementById("treeroot");
+  rootUl.addEventListener("dragover", e => {
+    if (e.target !== rootUl) return;
+    e.preventDefault(); rootUl.classList.add("rootdrop");
+  });
+  rootUl.addEventListener("dragleave", () => rootUl.classList.remove("rootdrop"));
+  rootUl.addEventListener("drop", async e => {
+    if (e.target !== rootUl) return;
+    e.preventDefault(); rootUl.classList.remove("rootdrop");
+    if (!dragging) return;
+    for (const p of dragSet(dragging.dataset.path)) await moveNote(p, "");
+    dragging = null;
+    clearSel(); loadTree(); draw();
   });
 }
 
@@ -6021,7 +6083,10 @@ function showClusterPanel(c) {
     <h3>${esc(c.name)}</h3>
     <span class="tag ${c.builtin ? "sys" : ""}" style="background:${c.color}">cluster · ${n} node${n === 1 ? "" : "s"}${c.rule ? " · rule: " + esc(c.rule.kind === "system" ? "system content" : c.rule.kind === "workspace" ? "workspace" : c.rule.kind === "folder" ? "folder" : c.rule.kind === "type" ? "type:" + c.rule.value : c.rule.value) : ""}</span>
     <div class="clrow"><input id="cl-name" value="${esc(c.name)}" spellcheck="false" title="name"></div>
-    <div class="clrow"><input id="cl-emoji" value="${esc(c.emoji || "")}" placeholder="emoji shown when collapsed…" maxlength="4" spellcheck="false" title="emoji"></div>
+    <div class="clrow emo">
+      <button class="cl-emojichip" id="cl-emoji" title="emoji shown when collapsed">${c.emoji ? esc(c.emoji) : '<span class="noemo">none</span>'}</button>
+      <span class="emolbl">emoji — shows on the collapsed tile</span>
+    </div>
     <div class="clrow"><input id="cl-tags" value="${esc((c.tags || []).join(", "))}" placeholder="tags, comma separated…" spellcheck="false"></div>
     <div class="clrow"><textarea id="cl-note" rows="3" placeholder="context for this group…" spellcheck="false">${esc(c.note || "")}</textarea></div>
     <div class="clpal">${CLPAL.map(col =>
@@ -6033,13 +6098,22 @@ function showClusterPanel(c) {
   panel.style.display = "block";
   const commit = () => {
     c.name = document.getElementById("cl-name").value.trim() || c.name;
-    c.emoji = document.getElementById("cl-emoji").value.trim();
     c.tags = document.getElementById("cl-tags").value.split(",").map(s => s.trim()).filter(Boolean);
     c.note = document.getElementById("cl-note").value;
     saveClusters();
   };
-  // an emoji/name change on a COLLAPSED cluster lives on its squircle → redraw
-  ["cl-name", "cl-emoji", "cl-tags", "cl-note"].forEach(id => document.getElementById(id).onchange = () => {
+  // the REAL picker (the shared emoji grid) on the chip — an emoji change on a
+  // COLLAPSED cluster lives on its squircle → redraw
+  document.getElementById("cl-emoji").onclick = e => {
+    e.stopPropagation();
+    pickEmoji(e.currentTarget, emo => {
+      c.emoji = emo || "";
+      saveClusters();
+      document.getElementById("cl-emoji").innerHTML = c.emoji ? esc(c.emoji) : '<span class="noemo">none</span>';
+      if (c.collapsed) draw(); else clusterChanged();
+    });
+  };
+  ["cl-name", "cl-tags", "cl-note"].forEach(id => document.getElementById(id).onchange = () => {
     commit();
     if (c.collapsed) draw(); else clusterChanged();
   });
@@ -6303,7 +6377,25 @@ function choosePick(row) {
   chatin.focus();
 }
 const EMOJI = ["👍","👎","🎉","👀","✅","❤️","🔥","😄","😂","🙏","👏","💯",
-  "🚀","⭐","💡","🤔","😅","😎","🙌","👌","💪","🎯","⚡","✨","🐛","🛠️","📌","🚨","😬","🥳"];
+  "🚀","⭐","💡","🤔","😅","😎","🙌","👌","💪","🎯","⚡","✨","🐛","🛠️","📌","🚨","😬","🥳",
+  "🗂️","📁","📚","🧠","🎨","📈","🛒","💼","🌱","🔬","✍️","🎙️"];
+// the SAME picker, as a shared floating seam: pickEmoji(anchor, cb) opens the
+// grid by any element and hands back the choice (null = cleared). The chat
+// composer keeps its own anchored instance below.
+window.pickEmoji = (anchor, cb) => {
+  let p = document.getElementById("emojipick");
+  if (!p) { p = document.createElement("div"); p.id = "emojipick"; document.body.appendChild(p); }
+  p.innerHTML = `<button class="none" title="no emoji">none</button>` + EMOJI.map(e => `<button>${e}</button>`).join("");
+  const r = anchor.getBoundingClientRect();
+  p.classList.add("on");
+  const w = 236, h = p.offsetHeight || 200;
+  p.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + "px";
+  p.style.top = (r.top - h - 8 > 8 ? r.top - h - 8 : r.bottom + 8) + "px";
+  const close = () => { p.classList.remove("on"); document.removeEventListener("click", away, true); };
+  const away = e => { if (!p.contains(e.target) && e.target !== anchor) close(); };
+  setTimeout(() => document.addEventListener("click", away, true), 0);
+  p.querySelectorAll("button").forEach(b => b.onclick = () => { close(); cb(b.classList.contains("none") ? null : b.textContent); });
+};
 document.getElementById("emojipop").innerHTML = EMOJI.map(e => `<button>${e}</button>`).join("");
 document.querySelectorAll("#emojipop button").forEach(b =>
   b.onclick = () => {
@@ -9367,16 +9459,61 @@ async function fetchConnections() {
   return { local, toolkits };
 }
 
+// A composio connected_account item is {toolkit: {slug}, status: "ACTIVE"|
+// "EXPIRED"|"INITIATED"|…} — normalize BOTH lanes to one row shape the
+// components render: {slug, state: on|warn|off, statusText}.
+function normalizeConns(local, toolkits) {
+  const providers = LOCAL_PROVIDERS.map(p => ({
+    slug: p, lane: "provider",
+    state: local[p] ? "on" : "off",
+    statusText: local[p] ? "connected" : "not connected"
+  }));
+  const tks = toolkits.map(t => {
+    const slug = (t.toolkit && t.toolkit.slug) || t.slug || "toolkit";
+    const st = String(t.status || (t.data && t.data.status) || "").toUpperCase();
+    return {
+      slug, lane: "toolkit",
+      state: st === "ACTIVE" ? "on" : st === "EXPIRED" ? "warn" : "off",
+      statusText: st === "ACTIVE" ? "connected" : st === "EXPIRED" ? "expired" : (st || "pending").toLowerCase()
+    };
+  });
+  return { providers, tks };
+}
+// brand tile: known services get their hue; everything else a stable hash hue
+const BRAND_HUE = { github: 210, google: 217, cloudflare: 28, slack: 282, gmail: 5, notion: 40 };
+function svcTile(slug) {
+  let h = BRAND_HUE[slug];
+  if (h === undefined) { h = 0; for (const c of slug) h = (h * 31 + c.charCodeAt(0)) % 360; }
+  return `<span class="ce-tile" style="--h:${h}">${esc(slug[0].toUpperCase())}</span>`;
+}
+const connRow = (c, action) => `
+  <div class="ce-conn">
+    ${svcTile(c.slug)}
+    <span class="ce-id"><span class="ce-name">${esc(c.slug)}</span>
+      <span class="ce-status st-${c.state}"><span class="dot ${c.state === "on" ? "on" : c.state === "warn" ? "warn" : ""}"></span>${esc(c.statusText)}</span></span>
+    ${action || ""}
+  </div>`;
+
+// opening a toolkit's OAuth url: the Swift shell routes window.open to the
+// default browser; a plain browser tab just opens a tab
+async function connectToolkit(slug) {
+  try {
+    const r = await fetch("/cloud/connect/" + encodeURIComponent(slug), { method: "POST", ...authed });
+    const url = (await r.text()).trim();
+    if (r.ok && /^https?:\/\//.test(url)) { window.open(url, "_blank"); toast(`finish connecting ${slug} in the browser`); }
+    else toast("toolkit connect unavailable");
+  } catch (_) { toast("toolkit connect unavailable"); }
+}
+
 document.getElementById("foot-env").onclick = async e => {
   e.stopPropagation();
   const anchor = e.currentTarget;
   const { local, toolkits } = await fetchConnections();
-  const active = LOCAL_PROVIDERS.filter(p => local[p])
-    .map(p => `<div class="fp-conn"><span class="dot on"></span>${esc(p)}</div>`)
-    .concat(toolkits.map(t => `<div class="fp-conn"><span class="dot on"></span>${esc(t.toolkit || t.name || t.slug || "toolkit")}</div>`));
+  const { providers, tks } = normalizeConns(local, toolkits);
+  const live = providers.filter(c => c.state === "on").concat(tks);
   openFootPop(anchor, `
     <div class="fp-title">connections</div>
-    ${active.length ? active.join("") : `<div class="fp-note">nothing connected yet</div>`}
+    ${live.length ? live.map(c => connRow(c)).join("") : `<div class="fp-note">nothing connected yet</div>`}
     <div class="fp-sep"></div>
     <button class="fp-item" id="fp-editconn"><i data-lucide="settings-2"></i>edit connections &amp; environment</button>`);
   refreshIcons();
@@ -9385,35 +9522,37 @@ document.getElementById("foot-env").onclick = async e => {
 
 async function openConnEnvModal() {
   const { local, toolkits } = await fetchConnections();
+  const { providers, tks } = normalizeConns(local, toolkits);
   const envRows = getEnv();
   openModalRaw(`
     <h3>connections &amp; environment</h3>
     <div class="ce-grid">
       <div class="ce-col">
-        <div class="ce-sub">connections</div>
-        ${LOCAL_PROVIDERS.map(p => `
-          <div class="ce-conn">
-            <span class="dot ${local[p] ? "on" : ""}"></span><span class="ce-name">${esc(p)}</span>
-            <button class="ce-tgl" data-p="${p}" data-on="${local[p] ? 1 : 0}">${local[p] ? "disconnect" : "connect"}</button>
-          </div>`).join("")}
-        ${toolkits.length ? `<div class="ce-sub" style="margin-top:10px">toolkits</div>` : ""}
-        ${toolkits.map(t => `<div class="ce-conn"><span class="dot on"></span><span class="ce-name">${esc(t.toolkit || t.name || t.slug || "toolkit")}</span></div>`).join("")}
+        <div class="ce-sub">accounts</div>
+        ${providers.map(c => connRow(c,
+          `<button class="ce-tgl" data-p="${c.slug}" data-on="${c.state === "on" ? 1 : 0}">${c.state === "on" ? "disconnect" : "connect"}</button>`)).join("")}
+        <div class="ce-sub gap">toolkits</div>
+        ${tks.length ? tks.map(c => connRow(c,
+          c.state === "on" ? "" : `<button class="ce-tgl" data-tk="${esc(c.slug)}">reconnect</button>`)).join("")
+          : `<div class="ce-empty">no toolkits connected yet — the library covers slack, gmail, notion, linear and hundreds more</div>`}
         <div class="ce-addtk">
-          <input id="ce-tkin" placeholder="connect a toolkit (e.g. notion, slack)…" spellcheck="false">
+          <input id="ce-tkin" placeholder="toolkit slug — notion, linear, stripe…" spellcheck="false">
           <button id="ce-tkgo">connect</button>
         </div>
       </div>
       <div class="ce-col">
         <div class="ce-sub">environment variables</div>
         <div class="fp-env" id="ce-env">
-          ${envRows.map(r => `<div class="fp-envrow"><input class="k" placeholder="KEY" value="${esc(r.k || '')}"><input class="v" placeholder="value" value="${esc(r.v || '')}"><button class="rm">×</button></div>`).join("")}
+          ${envRows.length ? envRows.map(r => `<div class="fp-envrow"><input class="k" placeholder="KEY" value="${esc(r.k || '')}"><input class="v" placeholder="value" value="${esc(r.v || '')}"><button class="rm" title="remove">×</button></div>`).join("")
+            : `<div class="ce-empty">no variables yet</div>`}
         </div>
-        <button class="fp-envadd" id="ce-envadd">+ variable</button>
-        <div class="fp-note">// dev-local for now — wires to runtime config later</div>
+        <button class="ce-add" id="ce-envadd"><i data-lucide="plus"></i>variable</button>
+        <div class="ce-foot">stored on this machine — wires into runtime config later</div>
       </div>
     </div>
     <div class="acts"><button id="ce-done" class="go">done</button></div>`);
   document.getElementById("modal").classList.add("big");
+  refreshIcons();
   const commit = () => setEnvRows([...document.querySelectorAll("#ce-env .fp-envrow")].map(row =>
     ({ k: row.querySelector(".k").value, v: row.querySelector(".v").value })));
   document.querySelectorAll("#ce-env input").forEach(inp => inp.oninput = commit);
@@ -9423,16 +9562,15 @@ async function openConnEnvModal() {
   document.getElementById("ce-envadd").onclick = () => {
     commit(); const rs = getEnv(); rs.push({ k: "", v: "" }); setEnvRows(rs); closeModal(); openConnEnvModal();
   };
-  document.querySelectorAll(".ce-tgl").forEach(b => b.onclick = async () => {
+  document.querySelectorAll(".ce-tgl[data-p]").forEach(b => b.onclick = async () => {
     const p = b.dataset.p, on = b.dataset.on === "1";
     await fetch(`/auth/${on ? "disconnect" : "connect"}/${p}`, { method: "POST", ...authed }).catch(() => {});
     closeModal(); openConnEnvModal();
   });
-  document.getElementById("ce-tkgo").onclick = async () => {
+  document.querySelectorAll(".ce-tgl[data-tk]").forEach(b => b.onclick = () => connectToolkit(b.dataset.tk));
+  document.getElementById("ce-tkgo").onclick = () => {
     const tk = document.getElementById("ce-tkin").value.trim().toLowerCase();
-    if (!tk) return;
-    await fetch("/cloud/connect/" + encodeURIComponent(tk), { method: "POST", ...authed }).catch(() => {});
-    closeModal(); openConnEnvModal();
+    if (tk) connectToolkit(tk);
   };
   document.getElementById("ce-done").onclick = () => closeModal();
 }

@@ -549,14 +549,33 @@ design :the_save_prompt_command_only_now_liv do
     text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   #picker .prow .tag { font:9px ui-monospace,monospace; text-transform:uppercase;
     padding:2px 6px; border-radius:5px; flex:none; }
-  #emojipop { position:absolute; bottom:100%; left:12px; margin-bottom:8px; display:none;
+  #emojipop, #emojipick { display:none;
     grid-template-columns:repeat(8,1fr); gap:2px; background:var(--surface);
     border:1px solid var(--line); border-radius:12px; padding:6px; width:236px;
     box-shadow:0 12px 32px var(--border-mid); z-index:21; }
-  #emojipop.on { display:grid; animation:lnin .18s ease; }
-  #emojipop button { font-size:16px; height:28px; border:none; background:none;
+  #emojipop { position:absolute; bottom:100%; left:12px; margin-bottom:8px; }
+  #emojipick { position:fixed; z-index:45; }
+  #emojipop.on, #emojipick.on { display:grid; animation:lnin .18s ease; }
+  #emojipop button, #emojipick button { font-size:16px; height:28px; border:none; background:none;
     border-radius:6px; cursor:pointer; transition:transform .12s ease; }
-  #emojipop button:hover { background:var(--fill); transform:scale(1.12); }
+  #emojipop button:hover, #emojipick button:hover { background:var(--fill); transform:scale(1.12); }
+  #emojipick button.none { font:600 10px ui-monospace,monospace; color:var(--ink-faint); }
+  /* the cluster panel's emoji chip — tap to pick */
+  #panel .cl-emojichip { width:34px; height:34px; border-radius:9px; border:1px solid var(--line);
+    background:var(--surface-2); font-size:17px; cursor:pointer; display:flex;
+    align-items:center; justify-content:center; }
+  #panel .cl-emojichip:hover { background:var(--fill-hover); }
+  #panel .cl-emojichip .noemo { font:600 10px ui-monospace,monospace; color:var(--ink-faint); }
+  #panel .clrow.emo { display:flex; align-items:center; gap:9px; }
+  #panel .clrow.emo .emolbl { font:11px ui-monospace,monospace; color:var(--ink-faint); }
+
+  /* tree multi-select + group drag + root drop zone */
+  #tree .row.msel { background:var(--sel-bg); }
+  #tree .row.msel:hover { background:var(--sel-bg); }
+  #tree .row[data-dragn]::after { content:attr(data-dragn); margin-left:6px; min-width:15px; height:15px;
+    border-radius:99px; background:var(--blue); color:var(--on-accent); font:600 9.5px ui-monospace,monospace;
+    display:inline-flex; align-items:center; justify-content:center; padding:0 4px; }
+  #treeroot.rootdrop { outline:2px dashed var(--blue-soft); outline-offset:-4px; border-radius:10px; }
 
 end
 
@@ -866,18 +885,34 @@ design :sidebar_footer_account_settings_env do
     display:flex; align-items:center; justify-content:center; padding:0 4px; }
 
   /* ── connections popover rows + the full connections/env modal ── */
-  #footpop .fp-conn { display:flex; align-items:center; gap:8px; padding:6px 9px;
-    font:12px ui-monospace,monospace; color:var(--ink-2); }
-  .dot { width:8px; height:8px; border-radius:50%; background:var(--ink-fainter); flex:none; }
+  .dot { width:7px; height:7px; border-radius:50%; background:var(--ink-fainter); flex:none; }
   .dot.on { background:var(--green); }
+  .dot.warn { background:var(--amber); }
+  /* one connection row component — popover and modal share it */
+  .ce-conn { display:flex; align-items:center; gap:10px; padding:7px 4px; }
+  .ce-tile { width:26px; height:26px; border-radius:8px; flex:none; display:flex; align-items:center;
+    justify-content:center; font:700 12px ui-monospace,monospace;
+    background:hsl(var(--h) 42% 90%); color:hsl(var(--h) 45% 32%); }
+  :root[data-theme="dark"] .ce-tile { background:hsl(var(--h) 30% 24%); color:hsl(var(--h) 55% 74%); }
+  .ce-id { flex:1; display:flex; flex-direction:column; gap:1px; min-width:0; }
+  .ce-name { font:500 12.5px ui-monospace,monospace; color:var(--ink-2); }
+  .ce-status { display:flex; align-items:center; gap:5px; font:10.5px ui-monospace,monospace; color:var(--ink-faint); }
+  .ce-status.st-warn { color:var(--orange); }
+  #footpop .ce-conn { padding:6px 9px; }
   #modal.big { width:min(720px,92vw); top:10vh; max-height:76vh; overflow:auto; }
   .ce-grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
   @media (max-width:760px) { .ce-grid { grid-template-columns:1fr; } }
   .ce-sub { font-size:11px; letter-spacing:.05em; color:var(--ink-faint); text-transform:uppercase;
     margin:2px 0 8px; }
-  .ce-conn { display:flex; align-items:center; gap:9px; padding:7px 4px;
-    border-bottom:1px solid var(--border-soft); font-size:12.5px; color:var(--ink-2); }
-  .ce-name { flex:1; }
+  .ce-sub.gap { margin-top:16px; }
+  .ce-empty { font:11.5px ui-monospace,monospace; color:var(--ink-faint); padding:8px 4px 10px;
+    line-height:1.55; }
+  .ce-foot { font:10.5px ui-monospace,monospace; color:var(--ink-fainter); margin-top:8px; }
+  .ce-add { display:inline-flex; align-items:center; gap:5px; margin-top:8px;
+    font:11px ui-monospace,monospace; border:1px solid var(--line); background:var(--surface);
+    color:var(--ink-dim); border-radius:8px; padding:5px 11px; cursor:pointer; }
+  .ce-add:hover { background:var(--fill-hover); color:var(--ink); }
+  .ce-add svg.lucide { width:12px; height:12px; }
   .ce-tgl { font:11px ui-monospace,monospace; border:1px solid var(--line); background:var(--surface);
     color:var(--ink-dim); border-radius:7px; padding:3px 9px; cursor:pointer; }
   .ce-tgl:hover { background:var(--fill-hover); color:var(--ink); }

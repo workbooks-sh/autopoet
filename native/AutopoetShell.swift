@@ -173,6 +173,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKScript
     decisionHandler(.grant)
   }
 
+  // window.open / target=_blank → the user's DEFAULT BROWSER (OAuth flows —
+  // toolkit connects — leave the app shell; the page itself never navigates away)
+  func webView(_ webView: WKWebView,
+               createWebViewWith configuration: WKWebViewConfiguration,
+               for navigationAction: WKNavigationAction,
+               windowFeatures: WKWindowFeatures) -> WKWebView? {
+    if let url = navigationAction.request.url { NSWorkspace.shared.open(url) }
+    return nil
+  }
+
   // ── the page's stoplights ──────────────────────────────────────────────────
   func userContentController(_ ucc: WKUserContentController, didReceive message: WKScriptMessage) {
     guard message.name == "autopoet", let cmd = message.body as? String else { return }
