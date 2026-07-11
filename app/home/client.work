@@ -4882,6 +4882,18 @@ async function draw() {
         const port = pinPoints(c, mpts)[0];
         bp = [port[0], port[1] - 32];
       }
+      // the autopoet's field owns the badge layer too: the cube is an HTML overlay ABOVE
+      // the svg, so a badge that lands under the face is unreadable — push any badge whose
+      // home falls inside the field out to its rim (radially, so it stays by its cluster)
+      const selfB = byId.get("self");
+      if (selfB && selfB.x != null) {
+        const KEEP = 150;   // cube footprint half + badge reach — clear of the face at rest
+        const dx = bp[0] - selfB.x, dy = bp[1] - selfB.y, L = Math.hypot(dx, dy);
+        if (L < KEEP) {
+          const ux = L ? dx / L : 0, uy = L ? dy / L : -1;
+          bp = [selfB.x + ux * KEEP, selfB.y + uy * KEEP];
+        }
+      }
       drawClusterBadge(badgeLayer || gp, c, bp[0], bp[1]);
     }
   }
@@ -4899,7 +4911,15 @@ async function draw() {
   const node = nodeSel = g.append("g").selectAll("g").data(data.nodes).join("g")
     .style("cursor", "pointer")
     .call(d3.drag()
-      .on("start", (e, d) => { if (!e.active) sim.alphaTarget(0.25).restart();
+      // CALM DRAG (default): moving one node must not spread the rest of the world —
+      // every other free node is temporarily pinned for the duration; the sim keeps
+      // ticking only so links/hulls/cube repaint. Hold Alt to drag with LIVE physics
+      // (neighbors follow — the old behavior) when you WANT the layout to re-settle.
+      .on("start", (e, d) => {
+        d._live = !!(e.sourceEvent && e.sourceEvent.altKey);
+        if (!e.active) sim.alphaTarget(d._live ? 0.25 : 0.06).restart();
+        if (!d._live) for (const n of data.nodes)
+          if (n !== d && n.fx == null) { n.fx = n.x; n.fy = n.y; n._calm = 1; }
         d.fx = d.x; d.fy = d.y; d._dv = 0; d._dlast = [e.x, e.y, performance.now()];
         d._justJoined = null; d._justLeft = null; })
       .on("drag", (e, d) => {
@@ -4911,6 +4931,8 @@ async function draw() {
         maybeJoinCluster(d);    // membrane entry — the moment the border is crossed
       })
       .on("end", (e, d) => { if (!e.active) sim.alphaTarget(0);
+        for (const n of data.nodes)
+          if (n._calm) { n.fx = null; n.fy = null; delete n._calm; }
         if (d.id !== "self") { d.fx = null; d.fy = null; }
         d._justJoined = null; d._justLeft = null;
         captureClusterShapes(); persistForcePos(); }))
